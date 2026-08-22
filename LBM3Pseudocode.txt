@@ -1,0 +1,412 @@
+Cíl:
+Umožnit simulaci celého proudového motoru najednou, samozřejmě i jeho vybraných částí. To vyžaduje:
+- Automatickou tvorbu všech úrovní sítě. 
+	Zjemnění se automaticky zapíná u stěn, poté marker zjemnění projde uživatelskou funkcí getRefinement, kde se dá nechat výchozí, vynutit nebo zablokovat zjemnění.
+	Hrubá síť se v oblasti deep refinementu maže, maximální úspora paměti.
+	Interface se může nacházet na hranici nebo procházet stěnou. Nutno vyřešit.
+	-> Aplikovat okrajové podmínky pro okrajové buňky hned po streamingu. Potom jsou ve všech fluid buňkách validní data a můžu udělat interface komunikaci
+- Přesný interpolovaný bounceback. 
+	Tvorba sítě zatím interpolaci nepotřebuje, buňky budeme markovat stejně jako předtím. 
+	Je nutno zavést voxelizer pro každou síť, ne jen pro tu nejjemnější. Voxelizery by měly být 3: BB, MBB, Total. 
+	-> Otázka dělení objektů - můžu každému objektu přiřadit jeden voxelizer a jednu raymap (pouze během inicializace) a potom mít prostě list wallListů, tím se zjednodušuje i výpočet sil / momentů na jediné těleso
+	Pohyblivou geometrii vyřeším zvlášť -> supersamplovaná mřížka ??
+	Ideální by bylo zmenšit paměťovou náročnost rayMap, vím jak to udělat. Je to jednoduché, protože je statická, vytvoří se to jenom jednou. Celý voxelizer pak můžu zapomenout. 
+	Po vytvoření sítě potřebuju najít list BB a MBB buněk (stačí mi dva listy indexů) a pro ně získat link ratios -> to už v podstatě umim teď
+- Pohyblivá geometrie pomocí supersamplovaného voxelizování?
+	Působení přesně takovým forcingem, aby se vynutila cílová rychlost.
+	
+Struktury
+
+Grid
+	Pole o délce cellCount
+		27xfloat fArray
+		float reportArray
+		IJK: int iArray, jArray, kArray
+		NBR: int jPlusArray, kPlusArray, jMinusArray, kMinusArray.
+		bool BBMarkerArray
+		bool MBBMarkerArray
+		float16 forcedVelocityMarkerArray
+	Pole o délce rozhraní (+ rezerva v paměti):
+		fineToCoarseIndexArray, fineToCoarseChildArray
+		coarseToFineIndexArray, coarseToFineChildArray
+	Inty:
+		cellCount
+		cellCountX
+		cellCountY
+		cellCountZ
+
+SkeletonGrid
+	Volám jí jako virtuální hrubou strukturovanou síť nad nejhrubším levelem sítě.
+	Má nějaké osekané info
+	Asi by měla mít dvě markerArray velikosti cellCount = cellCountX * cellCountY * cellCountZ (strukturovaná síť)
+	keepCellMarkerArray
+	bufferMarkerArray
+
+Voxelizer
+	rayMapDepth
+	Info (Info bude stejné jako u nejjemnější sítě)
+	rayMapBounceback -> 3D array velikosti cellCountX * cellCountY * rayMapDepth <-konstanta, !otázka řazení v paměti! Má jít nejrychleji X nebo depth? nutno otestovat!
+	rayMapMovingBounceback
+	rayMapTotal
+	intersectionCounter -> 2D int array cellCountX * cellCountY buffer pro počítání průsečíků
+	- při updatování voxelizace se rayMapTotal inicializuje na int max a použije se jako buffer, abych mohl nejdřív nasčítat rayMapMovingBounceback.
+	každé STL se otiskne do bufferu a buffer se přičte k rayMapMovingBounceback, pak se bufer nastaví na int max a jde se na další STL
+	Po dokončení rayMapMovingBounceback zkopíruju rayMapTotal = rayMapBounceback a k tomu přičtu rayMapMovingBounceback.
+
+Algoritmy
+
+voxelizeSTL with thread balancing -> hotovo!
+1) 	paralelní loop přes trojúhelníky
+	u každého si zapiš, kolik průsečíků je třeba kontrolovat -> přidat array do STL structu
+2)	potřebuju každému jádru přiřadit právě jeden trojúhelník a nějaký počet jeho průsečíků. Potřebuju průsečík_start a průsečík_end
+
+??rebuildVoxelizer( Voxelizer, movingSTLs )
+	otiskni první STL do rayMapMovingBounceback
+	loop přes další STLs
+		otiskni STL do rayMapTotal
+		sumRayMaps( rayMapMovingBounceback, rayMapTotal )
+	Prohoď pointery rayMapTotal a rayMapBounceback
+	k rayMapTotal přičti rayMapMovingBounceback
+		
+sumRayMaps( rayMapSum, rayMap ) -> přičte rayMap do rayMapSum jako součet jejich intervalů solidu -> hotovo!
+	depth = poslední prvek z getSizes(rayMapCummulative)
+	Paralelní loop přes I, J paprsky
+		result[depth] = intMax
+		A[depth] = sem načti rayMapSum[ij]
+		B[depth] = sem načti rayMap[ij]
+		ten algoritmus sem celej psát nebudu vymyslim to v kódu nebo to vymyslí gemini
+		na konci se result napíše do rayMapSum[ij]		
+
+markFinestFluid( VirtualStructuredGrid, markerArray, rayMap ) -> hotovo!
+
+markFinestFluid( Grid, markerArray, rayMaps, horní mez! ) -> hotovo!
+
+markFinestBounceback( Grid, markerArray, rayMaps, horní mez! ) -> hotovo!
+
+markGeometricNBR( IJK, NBR, horní mez!, bool: mám dělat i minusové? ) -> hotovo!
+	projeď všechny plusové (případně minusové) sousedy a koukni na jejich IJK
+	pokud IJK souseda odpovídá geometrickému sousedství, v NBR geometric validity napiš 1
+	
+skipUnmarkedNBR ( NBRArray, NBRArrayTemp, markerArray, markerBuffer, horní mez (je potřeba specifikovat)! ) -> hotovo!
+-> dostane NBR array, která ovšem ukazuje i na buňky, které chceme přeskočit
+-> cílem je opravit NBR array tak, aby ukazovala pouze na omarkované buňky
+-> přepíše NBRArray, temp používá pro přepisování
+1) 	invalidNeighbourMarkerArray inicializováno s jedničkami
+2)	invalidCount = cellCount
+3)	while invalidCount > 0: ALE zastropováno aby 2^it bylo menší než max(cellCountX, cellCountY, cellCountZ)
+		for cell in cells:
+			check invalidNeighbourMarkerArray[cell]. If valid already, skip cell.
+			load neighbour
+			if neighbour is invalid:
+				load neighbour of my neighbour
+				overwrite: neighbour = neighbour of my neighbour
+				overwrite in temp memory too
+				// to znamená že jsme změnili souseda -> zkontrolujeme jestli náhodou už není správný
+				if neighbour is valid:
+					invalidNeighbourMarkerArray[cell] = 0
+			else:
+				invalidNeighbourMarkerArray[cell] = 0
+		invalidCount = suma invalidNeighbourMarkerArray
+		pointer swap temp <-> NBRArray
+
+markerSpread ( Grid, markerArraySource, markerArrayTarget, horní mez! ) -> hotovo!
+	Pro každou buňku:
+	Podívej se do všech 8 sousedů (já plus NBR)
+	Šířím oběma směry: Pokud já anebo kterýkoli soused je 1, přepisuju vše na 1, buď atomickou operací nebo je to možná jedno? Chci jen přidávat jedničky, nuly nepíšu
+	Ovšem, každý link při čtení i zápisu násobím geometrickou validitou linku definovanou v NBR
+	
+markerSpread ( SkeletonGrid, markerArraySource, markerArrayTarget ) -> hotovo!
+	Pro každou buňku:
+	Podívej se do všech 8 sousedů (já plus NBR)
+	Šířím oběma směry: Pokud já anebo kterýkoli soused je 1, přepisuju vše na 1, buď atomickou operací nebo je to možná jedno? Chci jen přidávat jedničky, nuly nepíšu
+	Ovšem, každý link při čtení i zápisu násobím geometrickou validitou linku definovanou v NBR
+
+markKeepCells( Grid, rayMaps, horní mez! ) -> hotovo!
+	1)	Hledám oblast tekutiny -> markFinestFluid( keepCellMarkerArray, rayMapAll )
+		Pustím markerSpread jednou. Výsledek uložím do keepCellMarkerArray.
+		K tomu budu ještě chtít přidat tlustší region movingBouncebacku.
+		markFinestBounceback( movingBouncebackMarkerArray, rayMapMoving )
+		markerSpread od moving bouncebacku kolikrát potřebuji, výsledek přímo do sebe
+		markerSpread od keepCellMarkerArray, výsledek do bufferu
+		keepCellMarkerArray = keepCellMarkerArray + buffer * movingBounceback
+		
+markKeepCells( SkeletonGrid, rayMaps ) -> hotovo!
+
+markRefinementCells( Grid, rayMaps, horní mez! ) -> hotovo!
+	1)	markKeepCells
+	2)	Hledám oblast zjemnění. Označím všechny, které mohou obsahovat nejjemnější solid -> markFinestBounceback( deepRefinementMarkerArray, rayMapAll )
+		Pustím Marker spread tolikrát, kolik chci přidat vrstev (wallRefinementCount?). 
+		deepRefinementMarkerArray = deepRefinementMarkerArray * keepCellMarkerArray
+	3)	Hledám fineToCoarse interface. 
+		fineToCoarseMarkerArray = deepRefinementMarkerArray
+		markerSpread( fineToCoarseMarkerArray )
+		fineToCoarseMarkerArray = fineToCoarseMarkerArray * keepCellMarkerArray * !deepRefinementMarkerArray
+	4)	Hledám coarseToFine interface. Pustím Marker spread na fineToCoarseMarkerArray.
+		coarseToFineMarkerArray = fineToCoarseMarkerArray
+		markerSpread( coarseToFineMarkerArray )
+		coarseToFineMarkerArray = coarseToFineMarkerArray * keepCellMarkerArray * !deepRefinementMarkerArray * !fineToCoarseMarkerArray
+	5)	refinementMarkerArray = deepRefinementMarkerArray + fineToCoarseMarkerArray + coarseToFineMarkerArray
+
+buildFinerGrid( GridCoarse, GridFine ) -> hotovo!
+	Pomocí informací z GridCoarse sestaví IJK, NBR a parentMap GridFine a zároveň childMapArray pro GridCoarse
+	1)	intBuffer3 hrubé sítě = refinementMarker, inplaceExclusiveScan( bufferIntArray )
+	2)	Využiju intBuffer3 jemné sítě 4. Má osminásobnou velikost, tedy se do něj jistě vejde 5 "hrubých" polí. i-té pole bude začínat od indexu i*refinementCount.
+			Vytáhnu si jeho referenci jako &multiField = intBuffer3 gridu 4
+	3)	loop do cellCount gridu 3
+				if refinementMarker[cell]:
+					index = intBuffer3[cell]
+					multiField[index] = cell
+			-> první část multiField = refinedParentList, obsahuje popořadě indexy zjemněných hrubých buněk v rámci IJKFull
+	4)	4 pomocná pole, abych mohl sestavit IJK sítě 4
+			firstInPlane = multiField od 1*refinementCount - obsahuje index první buňky v dané Z=const rovině
+				loop přes multiField[0], pokud se má buňka liší v Z oproti minulé, zapíšu můj index, jinak píšu nulu
+				Přes to projedu maximový inkluzivní sken.
+				for index in refinementCount:
+					cell = multiField[index]
+					previousCell = multiField[index - 1]
+					if jFull[cell] != jFull[previousCell]:
+						multiField[ 1 * refinementCount + index ] = index
+					else
+						multiField[ 1 * refinementCount + index ] = 0
+				maximový inkluzivní sken( multiField od 1 * refinementCount do 2 * refinementCount )
+							
+			lastInPlane = multiField od 2*refinementCount - obsahuje index poslední buňky v dané Z=const rovině
+				Projíždím přes firstInPlane. Pokud zjistím, že následující buňka leží v rozdílné rovině, zapíšu index své buňky do lastInPlane[firstInPlane[cell]], jinak píšu nulu
+				Přes to projedu maximový inkluzivní sken.
+				for index in refinementCount:
+					firstInPlane = multiField[refinementCount + index]
+					next = multiField[refinementCount + index + 1]
+					if next != firstInPlane:
+						multiField[ 2*refinementCount + multiField[refienementCount + index]]
+				maximový inkluzivní sken(multiField od 2*refinementCount do 3*refinementCount)
+			firstInRow = multiField od 3*refinementCount - index první buňky v daném ZY=const řádku -> jako firstInPlane
+			lastInRow = multiField od 4*refinementCount - index poslední buňky v daném ZY=const řádku -> jako lastInPlane
+			
+	5)	Hledám funkci, která pro každé hrubé ijk najde 8 fine ijk a určí jejich indexy v jemné síti 4. K tomu se použijou 4 pole výše.
+			iFine = 2*iCoarse + iAdd, jFine = 2*jCoarse + jAdd, kFine = 2*kCoarse + kAdd, add jde od 0 do 1
+			
+			fineIndex(refinedIndex, iAdd, jAdd, kAdd) = 
+				firstInPlane[refinedIndex] * 8 // to jsou předchozí Z vrstvy
+				+ (lastInPlane[refinedIndex] - firstInPlane[refinedIndex] + 1) * 4 * kAdd // to je jedna předchozí Z vrstva
+				+ (firstInRow[refinedIndex] - firstInPlane[refinedIndex]) * 4 // to je předchozí polorovina
+				+ (lastInRow[refinedIndex] - firstInRow[refinedIndex] + 1) * 2 * jAdd // to je jeden předchozí řádek
+				+ (refinedIndex - firstInRow[refinedIndex]) * 2 // to je předchozí půlřádek
+				+ iAdd
+	
+	6)	... TENTO POPIS 6) JE OUTDATED, sestavim oldToFull ROVNOU
+		V příštím kroku budu přepisovat parentMapArray sítě 4. Musím jí teď využít k tomu co potřebuju dřív, než bude nadobro přepsaná.
+		Projdu všechny buňky jemné sítě do cellCountOld a přečtu parentMapArray[cell] 
+		-> mám parentIndex buňky ze trojky. Podívám se, jestli je v plánu tuto hrubou buňku zjemnit. Pokud ano,
+		zapíšu 1 do willThereBeAfterMarkerArray[cell], jinak píšu nulu. 
+		Zároveň childExistenceMarkerArrays trojky inicializuju na nuly, když existuju tak se tam přes parentIndex dostanu a zapíšu jedničku
+		Taky by se mohlo stát, že parentIndex je -1 (vůbec už tahle buňka neexistuje) 
+		-> potom do willThereBeAfter píšu nulu.
+		... TENTO POPIS 6) JE OUTDATED, sestavim oldToFull ROVNOU
+	
+	7)	Projíždím přes refinedParentList (do refinementCount trojky). Pro každou buňku načtu hrubé ijk. Loop pro 8 zjemněných buněk.
+		Pro každou určím jemné ijk z hrubého ijk a index v jemné síti pomocí funkce 5)
+		Zároveň do childMapArray[parentIndex] zapíšu index levé dolní (=nulté) zjemněné buňky.
+		Zároveň do parentMapArray[childIndex] zapíšu parentIndex
+		
+	8)	Teď jdu stavět sousedy jemné sítě. To musím dělat po jednotlivých směrech, protože nemám dost místa v paměti, abych dělal všechny najednou.
+		Pro každý směr (jsou jen 3: j, k, jk):
+			NBRSkipped = intBuffer1, zkopíruju si sem NBR hrubé sítě
+			NBRTemp = intBuffer2
+			skipUnmarkedNBR ( NBRSkipped, NBRArrayTemp, refinementMarkerArray, markerBuffer, horní mez = cellCount trojky )
+			Teď mám v NBRSkipped validní sousedy pro zjemněnou část sítě.
+			Projíždím přes refinedParentList do refinementCount. Pro mou hrubou buňku spočítám indexy všech jemných buněk přes funkci 5.
+			Pro mou hrubou buňku načtu hrubého souseda z NBRSkipped. Spočítám i indexy všech jemných buněk ležících v hrubém sousedovi
+			-> mám celkem 16 jemných indexů
+			Loop pro 8 zjemněných buněk uvnitř mé hrubé buňky. 
+			Vyplním všechny jemné sousedy, které můžu vyplnit. Tohle bude chtít prostorovou představivost.
+	
+	9)	Plánuji dělat další markerSpread na čtyřce, tedy projedu nové čtyřkové IJK a NBR přes geometric validity, horní mez = cellCountFull čtyřky. Minusové zatím nepotřebuju.
+	
+buildFinerGrid( VirtualStructuredGridCoarse, GridFine ) -> verze pro nejhrubší síť, achich ouvej to je tolik psaní -> hotovo!
+
+rebuildGrid( Grid, rayMaps )
+	- představme si gridy 1, 2, 3, 4, 5 kde 5 je nejjemnější. Chci přestavět gridy 4, 5 -> tuto funkci postupně zavolám na 4, 5. 
+	Nejprve volám rebuildGrid na grid 4.
+	Co mění rebuild čtyřky na gridu 5:
+		parentMapArray - 
+			po updatu sítě 4 má pětka staré indexy. Tohle pole má ukazovat na geometricky správnou hrubší buňku. Stačí updatovat indexy pomocí převodníku oldToKeep.
+	Co mění rebuild čtyřky na gridu 4:
+		Staví se znova:
+			IJK
+			NBR
+			bouncebackMarkerArray
+			movingBouncebackMarkerArray
+			parentMapArray
+			keepCellMarkerArray
+		Pouze se přesortuje, zachová se geometrický význam. Přesortování pomocí oldToKeep převodníku:
+			fArray
+			Mohl bych převádět i řadu dalších, ale to nemá cenu, protože hned vzápětí pošlu rebuild na síť pod sebou a ta mi to stejně přepíše.
+		Přepsání intů:
+			cellCountFull
+			cellCount
+	Co mění rebuild čtyřky na gridu 3:
+		Staví se znova:
+			childMapArray
+			refinementMarkerArray
+			deepRefinementMarkerArray
+			fineToCoarseMarkerArray
+			coarseToFineMarkerArray	
+			fineToCoarseIndexArray
+			coarseToFineIndexArray
+		Přepsání intů:
+			refinementCount
+			deepRefinementCount
+			fineToCoarseCount
+			coarseToFineCount
+								
+	Výjimka pokud jsem nejjemnější síť: 
+		Nemám vůbec inicializované tyhle pole:
+			childMapArray
+			refinementMarkerArray
+			deepRefinementMarkerArray
+			fineToCoarseMarkerArray
+			coarseToFineMarkerArray
+			fineToCoarseIndexArray
+			coarseToFineIndexArray
+			-> tedy je nemusím přesortovávat.. jinak je to asi stejné?
+		
+	Výjimka pokud jsem nejhrubší síť:
+		Nemám vůbec inicializované tyhle pole:
+			parentMapArray
+		Místo skutečné hrubší sítě si vytvořím virtuální hrubší síť, která je jedinou strukturovanou sítí v systému
+			VirtualStructuredGrid
+	
+	Postup -> pojďme teď implementovat výjimky pro nejhrubší i nejjemnější síť (může nastat obojí současně!)
+	
+	-1)	Pokud jsem nejhrubší:
+		GridCoarse = virtualStructuredGrid
+		Jinak:
+		GridCoarse = předchozí level
+	
+	0) 	cellCountOld = cellCount (na gridu 4)
+	
+	1)	Na gridu 4 pomocí fBufferu přendám všechny f data do své vlastní buňky (pryč ze sousedů), jedu do cellCountOld -> Od teď už nepotřebuju NBR sítě 4 a můžu ho přepsat
+			Všimněme si že při prvním passu je cellCountOld nulový takže tohle nevadí
+	
+	2)	Pokud jsem nejhrubší:
+			markKeepArea na GridCoarse
+			cellCountFull čtyřky = 8 * suma(keepCellMarkerArray) do cellCount trojky
+		Jinak:
+			markRefinementArea na trojku, horní mez=cellCount -> vyplní keepCellMarkerArray, refinementMarkerArray, deepRefinementMarkerArray, fineToCoarseMarkerArray, coarseToFineMarkerArray sítě 3
+			deepRefinementCount trojky = suma(deepRefinementMarkerArray) do cellCount
+			refinementCount trojky = suma(refinementMarkerArray) do cellCount
+			fineToCoarseCount trojky = suma(fineToCoarseMarkerArray) do cellCount
+			coarseToFineCount trojky = suma(coarseToFineMarkerArray) do cellCount
+			cellCountFull čtyřky = 8 * refinementCount trojky
+		Pokud to dělám poprvé:
+			Pokud nejsem nejjemnější:
+				Alokace polí čtyřky velikosti cellCountFull + rezerva
+			Pokud jsem nejjemnější:
+				Alokace jen těch polí čtyřky, která budu potřebovat (nedělám na sobě zjemnění)
+		Jinak:
+			Kontrola paměti na cellCountFull!
+	
+	3)  Sestavení IJK a NBR jemné sítě 4 = buildFinerGrid( gridCoarse, gridFine ) -> odteď už musím držet IJK a NBR
+	
+	--- ZRUŠIT ČÁST 4 protože já dokážu oldToFull sestavit rovnou! Krok 6 v buildFinerGrid.
+	Pokud to nedělám poprvé:
+	4)	Teď mám vyplněné wasThereBefore and willThereBeAfter. Můžu sestavit převodník oldToFull.
+		Potřebuju dva int buffery - můžu klidně vzít dvě pole z NBRMinus.
+		Zkopíruju intBuffer1 -> willThereBeAfterScan = willThereBeAfterMarker projedu přes exkluzivní sumační sken pouze do cellCountOld.
+		intBuffer2 -> wasThereBeforeScan = wasThereBeforeMarker projedu přes exkluzivní sumační sken, tentokrát do cellCountFull.
+		intBuffer3 -> afterScanToFull
+		for cell in cellCountFull:
+			if cell was there before:
+				afterScanToFull[ wasThereBeforeScan[cell] ] = cell
+		teď už nepotřebuju wasThereBeforeScan
+		intBuffer2 -> oldToFull
+		for cell in cellCountOld:
+			if cell will there be after:
+				oldToFull[cell] = afterScanToFull[ willThereBeAfterScan[cell] ]
+			else:
+				oldToFull[cell] = -1
+		-> mám převodník oldToFull v bufferu 2, buffer 1 a 3 můžu zapomenout	
+	--- ZRUŠIT ČÁST 4 protože já dokážu oldToFull sestavit rovnou! Krok 6 v buildFinerGrid.
+	
+	4)	Teď se jdu osekat síť 4, aby tam nebyla zbytečně tlustá vrstva bounceback markeru.
+		Pustím na síť 4 markKeepArea, horní mez = cellCountFull
+		Teď víme které necháme
+		-> cellCount = suma(keepCellMarkerArray) do cellCountFull
+		Pokud to dělám poprvé:
+			Alokace polí čtyřky velikosti cellCount + rezerva
+		Jinak:
+			Kontrola paměti na cellCount!
+	
+	5)	Už vím zachovávanou oblast, tedy na své NBR pustím skipUnmarkedNBR(NBRArray, intBufferArray1, keepCellMarkerArray, horní mez = cellCountFull)
+	
+	6)	Zavedu fullToKeepIndexMap = intBufferArray1. Markuju zde všechny keep buňky (ty co nejsou hluboko ve zdi) jako 1. Projedu exkluzivní sumační sken do cellCountFull. 
+		Výsledek mi říká, kam se přesouvají aktivní buňky.
+	
+	7)	Pomocí intBufferArray3 a fullToKeepIndexMap přeskládám IJK a NBR, aby odpovídal aktivní oblasti:
+		for every arrayFull from IJK, NBR:
+			for cell in cellCountFull:
+				if cell is kept:
+					newIndex = fullToKeepIndexMap[cell]
+					buffer[index] = arrayFull[cell]
+			swap pointer of buffer and array
+		
+	8)	Taky teď vím, kam se přesunou indexy buněk v rozhraní trojky
+		Pokud nejsem nejhrubší:
+		for coarseCell in cellCount trojky:
+			fineIndex = childMapArray[coarseCell]
+			if not -1:
+				if čtyřkový keepCellMarker[fineIndex]:
+					childMapArray[coarseCell] = fullToKeepIndexMap[fineIndex]
+
+	Pokud to nedělám poprvé:
+		9)	Teď chci sestavit převodník oldToKeep. Mám převodníky oldToFull a fullToKeep. Tedy zavedu oldToKeep jako intBufferArray 3
+			for cellOld in cellCountOld:
+				oldToKeep[cellOld] = fullToKeep[oldToFull[cellOld]]
+			
+		10)	Mám převodník oldToKeep. Zbylé intBufferArray 1 a 2 můžu zapomenout. Převodníkem oldToKeep převedu geometricky zachovávané data, tedy:
+				fArray pošlu na nová místa a zároveň je už i rozestrkám do sousedů NBR.
+				Mohl bych převádět i řadu dalších polí, ale to nemá cenu, protože hned vzápětí pošlu rebuild na síť pod sebou a ta mi to stejně přepíše.
+		
+		11)	Pokud nejsem nejjemnější:
+			Přeindexoval jsem sebe, tedy potřebuju o tom informovat síť 5. Pomocí oldToKeep spravím parentMapArray pětky.
+			for fineCell in cellCount pětky:
+				parent = parentMapArray[fineCell]
+				if parent not -1:
+					parentMapArray[fineCell] = oldToKeep[parent]
+	
+	12)	Poslední krok - potřebuju sestavit list buněk trojky, které leží v rozhraní mezi trojkou a čtyřkou.
+		Pokud nejsem nejhrubší:
+		fineToCoarseCount = suma fineToCoarseMarkerArray do cellCount
+		Pokud to dělám poprvé:
+			Alokace polí trojky velikosti fineToCoarseCount + rezerva
+		Jinak:
+			Kontrola paměti na fineToCoarseCount!
+		Buffer 1 -> fineToCoarseMarkerScan = fineToCoarseMarkerArray, projedu sumační exkluzivní sken
+		for cell in cellCount trojky:
+			if fineToCoarseMarkerArray[cell]:
+				index = fineToCoarseMarkerScan[cell]
+				fineToCoarseIndexList[index] = cell
+		Stejně tak naplním coarseToFineIndexList.
+		
+	13)	Teď už nepotřebuju používat NBR minus jako buffery -> sestavím platné NBR minus:
+		Loop přes plusové sousedy do cellCount. Do indexu souseda zapíšu sebe jakožto záporného souseda.
+	
+	14)	Na finální NBR pustím geometric validity. Horní mez=cellCount. Dělej i minusové.
+		
+	15)	Pokud nejsem nejjemnější: Zavolám rebuild na síť pod sebou!
+
+Inicializace?
+1) 	Sestavím nejjemnější voxelizaci pro bounceback. Ten se dál nemění a budu ho držet celou dobu.
+2)	Sestavím nejjemnější voxelizaci pro movingBounceback. Ten budu později přepisovat.
+
+InitializeTopMasterGrid
+	dostane bounds oblasti a fyziku
+	vyplní svoje Info
+	alokuje paměť
+	
+initializeGrids( grids )
+	Pokud jsem nejhrubší:
+		origin, dtPhys, res, nu už mám
+		provedu initializeTopMasterGrid
+	else
+		Vyřešit origin, dtPhys, res a všechny related věci -> řídí se to informacemi z GridCoarse

@@ -1,0 +1,321 @@
+#pragma once
+
+#include "./types.h"
+#include "./genericArrayFunctions.h"
+
+__host__ __device__ void finishNBRPlus( NBRStruct &NBR, const InfoStruct &Info )
+{
+	NBR.iPlus = NBR.self + 1; if ( NBR.iPlus >= Info.cellCount ) NBR.iPlus = 0;		
+	NBR.ijPlus = NBR.jPlus + 1; if ( NBR.ijPlus >= Info.cellCount ) NBR.ijPlus = 0;
+	NBR.ikPlus = NBR.kPlus + 1; if ( NBR.ikPlus >= Info.cellCount ) NBR.ikPlus = 0;
+	NBR.ijkPlus = NBR.jkPlus + 1; if ( NBR.ijkPlus >= Info.cellCount ) NBR.ijkPlus = 0;
+}
+
+__host__ __device__ void finishNBRAll( NBRStruct &NBR, const InfoStruct &Info )
+{
+	NBR.iPlus = NBR.self + 1; if ( NBR.iPlus >= Info.cellCount ) NBR.iPlus = 0;		
+	NBR.ijPlus = NBR.jPlus + 1; if ( NBR.ijPlus >= Info.cellCount ) NBR.ijPlus = 0;
+	NBR.ikPlus = NBR.kPlus + 1; if ( NBR.ikPlus >= Info.cellCount ) NBR.ikPlus = 0;
+	NBR.ijkPlus = NBR.jkPlus + 1; if ( NBR.ijkPlus >= Info.cellCount ) NBR.ijkPlus = 0;
+	NBR.iMinus = NBR.self - 1; if ( NBR.iMinus < 0 ) NBR.iMinus = Info.cellCount-1;		
+}
+
+// this is used to bit unpack the information from Grid.NBR.isGeometricBitPackedMarkerArray
+__host__ __device__ inline void byteToBools( const uint8_t &value, bool (&bools)[8] )
+{
+    for (int i = 0; i < 8; ++i)
+    {
+        bools[i] = ((value >> i) & uint8_t{1}) != 0;
+    }
+}
+
+// this is used to bit pack the information for Grid.NBR.isGeometricBitPackedMarkerArray
+__host__ __device__ inline void boolsToByte( uint8_t& value, const bool (&bools)[8] )
+{
+    value = 0;
+    for (int i = 0; i < 8; i++ )
+    {
+        if (bools[i])
+        {
+            value |= static_cast<uint8_t>(uint8_t{1} << i);
+        }
+    }
+}
+
+void getNBRArrayForSkeleton( IntArrayType &nbrArray, const int jPlus, const int kPlus, const SkeletonGridStruct &SkeletonGrid )
+{
+	const int cellCount = SkeletonGrid.Info.cellCount;
+	const int cellCountX = SkeletonGrid.Info.cellCountX;
+	const int cellCountY = SkeletonGrid.Info.cellCountY;
+	const int cellCountZ = SkeletonGrid.Info.cellCountZ;
+	const int cellCountXY = cellCountX * cellCountY;
+	auto nbrView = nbrArray.getView();
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int kCell = cell / cellCountXY;
+		const int remainder = cell % cellCountXY;
+		const int jCell = remainder / cellCountX;
+		const int iCell = remainder % cellCountX;
+		const int iNbr = iCell;
+		int jNbr = jCell + jPlus;
+		int kNbr = kCell + kPlus;
+		if ( jNbr >= cellCountY ) jNbr = 0;
+		if ( kNbr >= cellCountZ ) kNbr = 0;
+		const int nbr = kNbr * cellCountXY + jNbr * cellCountX + iNbr;
+		nbrView[ cell ] = nbr;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );
+}
+
+void markGeometricNBRPlus( GridStruct &Grid, const int &upperBound )
+{
+	auto iView = Grid.IJK.iArray.getConstView();
+	auto jView = Grid.IJK.jArray.getConstView();
+	auto kView = Grid.IJK.kArray.getConstView();
+	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
+	auto isGeometricBitPackedMarkerView = Grid.NBR.isGeometricBitPackedMarkerArray.getView();
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int iCell = iView[ cell ];
+		const int jCell = jView[ cell ];
+		const int kCell = kView[ cell ];
+		
+		const int iPlus = (cell + 1 < upperBound) ? cell + 1 : 0;
+		const int jPlus = jPlusView[ cell ];
+		const int ijPlus = (jPlus + 1 < upperBound) ? jPlus + 1 : 0;
+		const int kPlus = kPlusView[ cell ];
+		const int ikPlus = (kPlus + 1 < upperBound) ? kPlus + 1 : 0;
+		const int jkPlus = jPlusView[ kPlus ];		
+		const int ijkPlus = (jkPlus + 1 < upperBound) ? jkPlus + 1 : 0;
+		
+		bool isGeometricMarker[8] = {false};
+		
+		isGeometricMarker[0] = ( iView[iPlus]==iCell+1 && jView[iPlus]==jCell && kView[iPlus]==kCell );
+		isGeometricMarker[1] = ( iView[jPlus]==iCell && jView[jPlus]==jCell+1 && kView[jPlus]==kCell );
+		isGeometricMarker[2] = ( iView[ijPlus]==iCell+1 && jView[ijPlus]==jCell+1 && kView[ijPlus]==kCell );
+		isGeometricMarker[3] = ( iView[kPlus]==iCell && jView[kPlus]==jCell && kView[kPlus]==kCell+1 );
+		isGeometricMarker[4] = ( iView[ikPlus]==iCell+1 && jView[ikPlus]==jCell && kView[ikPlus]==kCell+1 );
+		isGeometricMarker[5] = ( iView[jkPlus]==iCell && jView[jkPlus]==jCell+1 && kView[jkPlus]==kCell+1 );
+		isGeometricMarker[6] = ( iView[ijkPlus]==iCell+1 && jView[ijkPlus]==jCell+1 && kView[ijkPlus]==kCell+1 );
+		
+		uint8_t isGeometricBitPack;
+		boolsToByte( isGeometricBitPack, isGeometricMarker );
+		
+		isGeometricBitPackedMarkerView( cell ) = isGeometricBitPack;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, upperBound, cellLambda );	
+}
+
+void connectNBRHoles( IntArrayType &nbrArray, const NBRHoleMapStruct &NBRHoleMap, const int &firstBound, const int &secondBound )
+{
+	auto nbrView = nbrArray.getView();
+	auto holeStartView = NBRHoleMap.holeStartArray.getConstView();
+	auto holeEndView = NBRHoleMap.holeEndArray.getConstView();
+	auto startCounterView = NBRHoleMap.startCounterArray.getConstView();
+	auto endCounterView = NBRHoleMap.endCounterArray.getConstView();
+	
+	// now check for overflow and mismatch between start and end counts
+	auto fetch = [ = ] __cuda_callable__( const int singleIndex )
+	{
+		const int iHole = singleIndex % firstBound;
+		const int jHole = singleIndex / firstBound;
+		const int startCount = startCounterView( iHole, jHole );
+		if ( startCount >= RAY_MAP_DEPTH / 2 ) return 1;
+		const int endCount = endCounterView( iHole, jHole );
+		if ( endCount >= RAY_MAP_DEPTH / 2 ) return 1;
+		if ( startCount != endCount ) return 1;
+		else return 0;
+	};
+	auto reduction = [] __cuda_callable__( const int& a, const int& b )
+	{
+		return a + b;
+	};
+	const int start = 0;
+	const int end = firstBound * secondBound;
+	const int errorCount = TNL::Algorithms::reduce<TNL::Devices::Cuda>( start, end, fetch, reduction, 0 );
+	if ( errorCount > 0 ) 
+	{
+		std::cout << "connect NBRHoles errorCount: " << errorCount << std::endl;
+		throw std::runtime_error("connectNBRHoles failed. Either the number of starts and ends doesn't match, or their count exceeded RAY_MAP_DEPTH. RAY_MAP_DEPTH can be increased in the main file.");
+	}
+
+	auto holeLambda = [=] __cuda_callable__ ( const IntPairType& doubleIndex ) mutable
+	{
+		const int iHole = doubleIndex.x();
+		const int jHole = doubleIndex.y();
+		const int holeCount = startCounterView( iHole, jHole );
+		if (holeCount == 0) return;
+		// load starts and ends up to holeCount
+		int starts[ RAY_MAP_DEPTH / 2 ];
+		for ( int holeIndex = 0; holeIndex < holeCount; holeIndex++ ) starts[holeIndex] = holeStartView( iHole, jHole, holeIndex );
+		int ends[ RAY_MAP_DEPTH / 2 ];
+		for ( int holeIndex = 0; holeIndex < holeCount; holeIndex++ ) ends[holeIndex] = holeEndView( iHole, jHole, holeIndex );
+		// sort starts
+		for ( int holeIndex = 1; holeIndex < holeCount; holeIndex++ ) 
+		{
+			int key = starts[holeIndex];
+			int slider = holeIndex - 1;
+			while ( slider >= 0 && starts[slider] > key ) 
+			{
+				starts[slider + 1] = starts[slider];
+				slider = slider - 1;
+			}
+			starts[slider + 1] = key;
+		}
+		// sort ends
+		for ( int holeIndex = 1; holeIndex < holeCount; holeIndex++ ) 
+		{
+			int key = ends[holeIndex];
+			int slider = holeIndex - 1;
+			while ( slider >= 0 && ends[slider] > key ) 
+			{
+				ends[slider + 1] = ends[slider];
+				slider = slider - 1;
+			}
+			ends[slider + 1] = key;
+		}
+		// now we want to connect the first start to the first larger end. 
+		const bool holeWrapsAround = ( starts[0] >= ends[0] );
+		// If first end is smaller than first start, wrap around
+		for ( int holeIndex = 0; holeIndex < holeCount; holeIndex++ ) 
+		{
+			const int startCell = starts[ holeIndex ];
+			int endCell;
+			if ( !holeWrapsAround ) endCell = ends[ holeIndex ];
+			else endCell = ends[ (holeIndex + 1) % holeCount ];
+			nbrView[ startCell ] = endCell;
+		}
+	};
+	IntPairType startList{ 0, 0 };
+	IntPairType endList{ firstBound, secondBound };
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(startList, endList, holeLambda );
+}
+
+void skipUnmarkedNBRArray( IntArrayType &nbrArray, const BoolArrayType &markerArray, const int &jPlus, const int &kPlus, GridStruct &Grid, const int &upperBound )
+{
+	const int cellCountX = Grid.Info.cellCountX;
+	const int cellCountY = Grid.Info.cellCountY;
+	const int cellCountZ = Grid.Info.cellCountZ;
+	IntArray2DType &startCounterArray = Grid.NBRHoleMap.startCounterArray;
+	IntArray2DType &endCounterArray = Grid.NBRHoleMap.endCounterArray;
+	startCounterArray.setValue( 0 );
+	endCounterArray.setValue( 0 );
+	
+	auto nbrView = nbrArray.getView();
+	auto markerView = markerArray.getConstView();
+	auto holeStartView = Grid.NBRHoleMap.holeStartArray.getView();
+	auto holeEndView = Grid.NBRHoleMap.holeEndArray.getView();
+	auto startCounterView = startCounterArray.getView();
+	auto endCounterView = endCounterArray.getView();
+	auto iView = Grid.IJK.iArray.getConstView();
+	auto jView = Grid.IJK.jArray.getConstView();
+	auto kView = Grid.IJK.kArray.getConstView();
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int nbr = nbrView[ cell ];
+		const bool cellMarker = markerView[ cell ];
+		const bool nbrMarker = markerView[ nbr ];
+		if ( cellMarker && nbrMarker ) return;
+		if ( !cellMarker && !nbrMarker ) return;
+		if ( jPlus == 1 && kPlus == 0 ) // jPlus version
+		{
+			const int iCell = iView[ cell ];
+			const int kCell = kView[ cell ];
+			if ( cellMarker && !nbrMarker ) // NBR hole start
+			{
+				const int holeStartOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(startCounterView(iCell, kCell), 1);
+				if ( holeStartOrder < RAY_MAP_DEPTH / 2) holeStartView( iCell, kCell, holeStartOrder ) = cell;
+			}
+			else if ( !cellMarker && nbrMarker ) // NBR hole end
+			{
+				const int holeEndOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(endCounterView(iCell, kCell), 1);
+				if ( holeEndOrder < RAY_MAP_DEPTH / 2) holeEndView( iCell, kCell, holeEndOrder ) = nbr;
+			}
+		}
+		else if ( jPlus == 0 && kPlus == 1 ) // kPlus version
+		{
+			const int iCell = iView[ cell ];
+			const int jCell = jView[ cell ];
+			if ( cellMarker && !nbrMarker ) // NBR hole start
+			{
+				const int holeStartOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(startCounterView(iCell, jCell), 1);
+				if ( holeStartOrder < RAY_MAP_DEPTH / 2) holeStartView( iCell, jCell, holeStartOrder ) = cell;
+			}
+			else if ( !cellMarker && nbrMarker ) // NBR hole end
+			{
+				const int holeEndOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(endCounterView(iCell, jCell), 1);
+				if ( holeEndOrder < RAY_MAP_DEPTH / 2) holeEndView( iCell, jCell, holeEndOrder ) = nbr;
+			}
+		}
+	};	
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, upperBound, cellLambda );	
+	
+	if ( jPlus == 1 && kPlus == 0 )	connectNBRHoles( nbrArray, Grid.NBRHoleMap, cellCountX, cellCountZ );
+	else if ( jPlus == 0 && kPlus == 1 ) connectNBRHoles( nbrArray, Grid.NBRHoleMap, cellCountX, cellCountY );
+}
+
+void skipUnmarkedNBRArray( IntArrayType &nbrArray, const BoolArrayType &markerArray, const int &jPlus, const int &kPlus, SkeletonGridStruct &SkeletonGrid )
+{
+	const int cellCount = SkeletonGrid.Info.cellCount;
+	const int cellCountX = SkeletonGrid.Info.cellCountX;
+	const int cellCountY = SkeletonGrid.Info.cellCountY;
+	const int cellCountZ = SkeletonGrid.Info.cellCountZ;
+	const int cellCountXY = cellCountX * cellCountY;
+	IntArray2DType &startCounterArray = SkeletonGrid.NBRHoleMap.startCounterArray;
+	IntArray2DType &endCounterArray = SkeletonGrid.NBRHoleMap.endCounterArray;
+	startCounterArray.setValue( 0 );
+	endCounterArray.setValue( 0 );
+	
+	auto nbrView = nbrArray.getView();
+	auto markerView = markerArray.getConstView();
+	auto holeStartView = SkeletonGrid.NBRHoleMap.holeStartArray.getView();
+	auto holeEndView = SkeletonGrid.NBRHoleMap.holeEndArray.getView();
+	auto startCounterView = startCounterArray.getView();
+	auto endCounterView = endCounterArray.getView();
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int nbr = nbrView[ cell ];
+		const bool cellMarker = markerView[ cell ];
+		const bool nbrMarker = markerView[ nbr ];
+		if ( cellMarker && nbrMarker ) return;
+		if ( !cellMarker && !nbrMarker ) return;
+		const int kCell = cell / cellCountXY;
+		const int remainder = cell % cellCountXY;
+		const int jCell = remainder / cellCountX;
+		const int iCell = remainder % cellCountX;
+		if ( jPlus == 1 && kPlus == 0 ) // jPlus version
+		{
+			if ( cellMarker && !nbrMarker ) // NBR hole start
+			{
+				const int holeStartOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(startCounterView(iCell, kCell), 1);
+				if ( holeStartOrder < RAY_MAP_DEPTH / 2) holeStartView( iCell, kCell, holeStartOrder ) = cell;
+			}
+			else if ( !cellMarker && nbrMarker ) // NBR hole end
+			{
+				const int holeEndOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(endCounterView(iCell, kCell), 1);
+				if ( holeEndOrder < RAY_MAP_DEPTH / 2) holeEndView( iCell, kCell, holeEndOrder ) = nbr;
+			}
+		}
+		else if ( jPlus == 0 && kPlus == 1 ) // kPlus version
+		{
+			if ( cellMarker && !nbrMarker ) // NBR hole start
+			{
+				const int holeStartOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(startCounterView(iCell, jCell), 1);
+				if ( holeStartOrder < RAY_MAP_DEPTH / 2) holeStartView( iCell, jCell, holeStartOrder ) = cell;
+			}
+			else if ( !cellMarker && nbrMarker ) // NBR hole end
+			{
+				const int holeEndOrder = TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(endCounterView(iCell, jCell), 1);
+				if ( holeEndOrder < RAY_MAP_DEPTH / 2) holeEndView( iCell, jCell, holeEndOrder ) = nbr;
+			}
+		}
+	};	
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
+	
+	if ( jPlus == 1 && kPlus == 0 )	connectNBRHoles( nbrArray, SkeletonGrid.NBRHoleMap, cellCountX, cellCountZ );
+	else if ( jPlus == 0 && kPlus == 1 ) connectNBRHoles( nbrArray, SkeletonGrid.NBRHoleMap, cellCountX, cellCountY );
+}
