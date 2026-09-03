@@ -1,92 +1,181 @@
-Novinky:
-- compressed IJK
-Lze snížit paměťovou náročnost IJK ze 3 array na 1. Místo explicitního ukládání uložím pouze:
-1) krátké iArray, jArray, kArray -> IJK pouze pro vybrané buňky, které jsou první ve spojitém řádku
-	( spojitý řádek má shodné j, k a není přerušen mezerou, tedy i stoupá každou buňku o 1 )
-2) dlouhá IJKShifter -> 
-	shift = IJKShifter[cell]
-	if shift >=0:
-		ukazuje na index v krátkých iArray, jArray, kArray kde přečtu polohu svojí buňky
-		i = iArray[shift]
-		j = jArray[shift]
-		k = kArray[shift]
-	else:
-		Pokud je shift < 0, říká mi kolik mám odečíst ze svého indexu, abych dostal index první buňky ve spojitém řádku
-		Tedy přečtu 
-		firstInRow = IJKShifter[cell + shift]
-		i = iArray[firstInRow] - shift
-		j = jArray[firstInRow]
-		k = kArray[firstInRow]
-
-- Rotor struct: Res, Origin, Bounds, rotorMask
-	-> rotorMask je uint8t 3D array, k runs the slowest
-	-> mřížka 2x jemnější než nejjemnější síť, toto může být pevně dáno I guess
-	-> Inicializuju temporary 3D array jako jedničky a nuly, 1 = rotor present
-	-> do rotorMask uložím hodnoty z jednotkové krychle, kde jako dalších 7 bitů beru plusové směry
-		tím limituju data traffic pouze na jediný 8bitový read
-		potom dělám trilineární interpolaci v binární krychli. Efektem je rozmazání hranice rotoru na délce poloviny nejjemnější výpočetní buňky.
-
-Další k vyřešení:
-- Dokážu udělat nereflektivní BC lokální? Nutné vyzkoušet teď.
--> nejspíš dokážu, potřebuju pouze 1 float jako BC memory
-
-Jak vypadá updateGrid
-
-1) Loop přes všechny buňky
+Esotwist streaming and grid connectivity
+	- On unstructured grid this only requires 2 arrays of full length: jPlus, kPlus. 
+	These store the neighbour cell index in the jPlus and kPlus directions. For the rest of the cube, we do
+	jkPlus = jPlus[kPlus], iPlus = cell+1, ijPlus = jPlus + 1, ikPlus = kPlus + 1, ijkPlus = jkPlus + 1, for indexes >=N we wrap to zero.
+	If jPlus cell doesnt exist in this position, we continue travelling in this direction and wrap around borders periodically till we find a valid cell.
+	Same for kPlus. This way all cells have uniquely assigned neighbours.
+	On the border, doing jPlus[kPlus] could result in wrong geometry, but we are keeping one layer of wall cells which dont need correct neighbours.
+	All fluid cells will have correct geometric neighbours this way.
 	
-	Read wallIndex
-	if wallIndex == -2 return (= this cell itself is a wall)
-	
-	read compressed IJK -> iCell, jCell, kCell
-	read f
-	get rho, ux, uy, uz
-	
-	get BC
-		-> fills xRotor, yRotor, zRotor (= where the cell is in frame of reference of the rotor)
-		-> fills gx, gy, gz as if the rotor is present
-		
-	find if xRotor, yRotor, zRotor lies within rotor bounds -> I need a Rotor struct! Very clear
+Interpolation between grid levels
+	- this is already working from previously so we dont go into much detail in this document
+	- we store list of coarse interface cells and their bottom left fine children. The remaining 7 children inside one coarse cell are found thanks to jPlus, kPlus.
+	- the interpolation also requires negative neighbours -> we store jMinus, kMinus, but only for the interface. So these arrays will have the same length as
+	the interface which is minimal compared to full N.
+
+compressed IJK
+- The former approach to store geometry of the unstructured grid was iArray, jArray, kArray that held spatial indexes of cells.
+The memory footprint can be decreased from 3N to N:
+Only save i, j, k explicitly for the first-in-continuous-row cell. Such iArray, jArray, kArray is by an order shorter.
+Then allocate a fully long array IJKShifter, so that
+shift = IJKShifter[cell]
+if shift >= 0:
+	i = iArray[shift], j, k...
+else:
+	firstInRow = IJKShifter[cell + shift] (shift is negative for this branch so here we shift the index to the first cell in continuous row)
+	i = iArray[firstInRow] - shift
+	j = jArray[firstInRow]
+	k = kArray[firstInRow]
+
+Non reflective boundary conditions
+	Store a list of boundary cells. Also store one equally long float array which works as BC memory.
+	This is enough to implement some kind of non reflecting boundary conditions.
+	Loop through all boundary cells, get their i, j, k
+	From some acustic or impedance relations, must be local, and from the BC memory, determine a non reflecting value of rho
+	that should be prescribed for the cell. This only works for face cells 
+	(for corner or edge cells, we will apply a strict dirichlet	and dont try to calculate any non reflective values)
+	From i, j, k, via a user function determine whether this cell is dirichletU or dirichletRho
+	get the dirichlet values and a reflectivity value. The reflectivity says how much can the applied rho differ from the non reflecting rho.
+	non reflectivity set to 1 means that a strict dirichlet will be applied.
+	we do rhoFinal = clamp ( rhoDirichlet, rhoNonReflecting-nonReflectivity, rhoNonReflecting+nonReflectivity)
+	Based on this relation and also the relation of normal velocity and density in LBM, we solve rho and U for all cells 
+	(for both dirichletU and dirichletRho) and proceed to apply the already working MBBC (moment based boundary conditions)
+	Only write the unknown distributions.
+
+How to handle stationary walls or moving walls with axial symmetry (rotor hub) where cells dont change state
+	Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. Set l = gamma which also agrees with the Geier's version.
+	First, for all cells we need to remember whether they are a wall themselves, or if they have an adjacent wall nearby,
+	or if they are purely fluid. For this we allocate an array wallMap of full length N.
+	wallMap[cell] = -2 => this itself is a wall cell (we are keeping one layer of wall cells next to the fluid region)
+	wallMap[cell] = -1 => this is a free fluid cell (there is no wall nearby)
+	wallMap[cell] >= 0 -> this is a fluid cell with one or more wall neighbours. The int stores order of this particular wall adjacent cell.
+	To apply the interpolated BB by Zhao, Yong, we need to identify which of the neighbours are wall and their link lenghts. 
+	I will pack 26 link existences and distances into 128 bits. This can be either 4*uint32 or one 128bit CUDA vector (need to check if TNL works with this)
+	Then I treat it as 4 uint32 and assign 7, 7, 7, 5 links to them. 
+	Each link has a code from 0 to 22 inclusive. I unpack the link codes as following:
+		for i in 7 links:
+			uint32_t linkCode[i] = bitPackedValue % 23u;
+			bitPackedValue /= 23u;
+		if linkCode[i] == 0 -> link doesnt exist (there is no wall in this direction)
+		else -> map integer interval <1, 22> onto a float interval <0, 1>, this float is the resulting link distance.. 
+		beware, maybe you want to represent link length 0.5 exactly so the interval should be shortened to <1, 21>
+		also specify the edge cases 0 or 1! Do I allow those?
+	There could be 2 more links stored, this means we can store two more numbers from <0, 22>. We can use the first link
+	to store the wall code: as there may be multiple different bodies (multiple STLs), here we can store
+	the index of the STL / body that is adjacent to us. We can send this index to the BC function, that way
+	the BC function knows if it should return the rotor velocity (moving wall) or just zero (stationary wall).
+	This also allows to calculate force on each body separately.
+	In fact, it may be better to use the very first "link" to store the body index because we need to access this first.
+
+How to handle rotating geometry
+	For cells that are covered by a rotor, we enforce the rotor velocity via a forcing term.
+	The rotor is stored by a supersampled voxelization stored in a block format that uses the fact
+	that the rotor is sparse to save memory. Then on this voxelization we interpolate to find
+	how much is a given cell overlapped by the rotor, which ranges from 0 (free fluid) to 1 (deep rotor).
+	Struct Rotor will hold some stuff, importantly Bounds (if a point lands outside bounds we dont do any interpolation
+	and set 0 immediately)
 	The voxelization and interpolation goes like this:
-	I have the finest LBM grid, inside every finest LBM cell there are 8 rotor cells
-	Each rotor cell holds a value from 0 to 8. The value tells how many of the cell corners lie inside the rotor.
+	I have the finest LBM grid. I set the bounds with a little overlap and define a voxelizer grid inside it that is 2x finer than the finest LBM grid.
+	This voxelizer grid is collocated (1/8 of points are shared with the LBM grid, this differs from grid refinement where no points are shared)
+	Binary values are assigned to this grid (but I dont allocate this, I just use an efficient raymap to store this information)
+	Next, define the actual interpolation grid. This grid also has 2x finer resolution than the finest LBM grid, but is no longer collocated.
+	Inside every LBM cell there are now 8 rotor interpolation cells. For every of those interpolation cells, I sum the binary values of the
+	voxelizer, note that the voxelizer points are in the corners of the interpolation cells. This gives a value from 0 to 8, which can be stored in 4 bits.
 	I will code this into an int but also use the remaining bits to store the same information about 7 neighbour cells in the positive directions.
 	This way, to get the interpolation values, all I need is to read a single int from the cell that is the closest to me in the negative directions.
 	Because the rotor is going to be block-like (large blocks of zeros or ones), I will use a larger block structure to greatly save memory. 
-	The large blocks will contain, lets say, 4x4x4 of those cells. If every single value there is zero, this block receives a -2. If every single value
-	there is one ( or 8, just the one corresponding to full rotor everywhere ), this block receives a -1. If the values are not all the same, the block
-	will receive an integer which points to a second array. The second array contains sectors of 64 ints, those are the "in detail" values.
+	The large blocks will contain, lets say, 4x4x4 of those interpolation cells. If every single value there is zero, this block receives a -2. If every single value
+	there is one ( or 8, just the one corresponding to full rotor everywhere ), this block receives a -1. If the values are not all the same, this mixed block
+	will receive an integer which tells the order of this mixed block. Then we allocate a second array which contains sectors of 64 ints, those are the "in detail" values and
+	the only place where I actually start storing the interpolated values (I can get all the way here using just by browsing the rayMap).
+	They are ordered within the block just like everything else, k/z changes the slowest. Load the needed in detail int from here.
+	How to find volumetric fraction of a cell: 
+		1) project its position into the rotor frame
+		2) if not within bounds, return 0
+		3) identify which large block we are in. Read blockMap[block], if -2 return 0, if -1 return 1. Else, read interpolationArray[64*blockMap[block] + orderWithinBlock]
+		This int is bit packed as discussed previously, unpack it and convert the values to floats, inside this cube do trilinear interpolation. Return result.
+
+The core function that updates each grid level:
+updateGrid
+1) Loop through all cells
+	Read wallMap
+	if wallMap[cell] == -2 return (= this cell itself is a wall)
 	
-	I will pack all necessary reads into 2 ints. Because the rotor is going to be block-like (large blocks of zeros or ones),
-	I will use the first integer to code information about overlaping blocks.
-	if it does lie within rotor bounds, read the relevant 8bit cube, calculate where we are in the cube, 
-	transform that to <0, 1> on each axis, run a trilinear interpolation function that gets 3 coords and 1 uint8 as the bit packed corner values
-	result is a float. 
+	Read compressed IJK -> get iCell, jCell, kCell
+	Read jPlus, kPlus and finish esotwist connectivity as described above
+	Read pre collision f using esotwist principles
+	getRhoUxUyUz( calculate from pre collision f )
 	
-	Multiply gx, gy, gz by this float. -> forcing solved!
+	get BC ( as input this receives i, j, k and the current rho, ux, uy, uz ! and body index of the rotor (what if I have two rotors?) )
+		-> this is a general function that not only would fill dirichlet values for boundaries
+		but here it also identifies position of our cell in rotor coordinates and calculates the forcing
+		-> from i,j,k calculate xRotor, yRotor, zRotor (= where the cell is in frame of reference of the rotor)
+		-> fill gx, gy, gz as if the rotor is present (we dont know yet if it is present here)
+			gx, gy, gz is set in such a way that it would enforce the rotor velocity in this cell
 	
-	It remains to solve the walls. I need to know how much it will hinder performance if I leave additional 27 floats allocated
-		-> allocating +27 floats for every thread lowered glups from 4.69 to 4.59 so this doesnt seem too problematic, 
-		maybe I can really just remember fPre the whole time
+	get rotor fraction
+	multiply gx, gy, gz by rotor fraction
 	
 	if wallIndex == -1 (= plain fluid)
 		applyCollision(f)
 		write f
-	
-	else if wallIndex >=0 (= wall adjacent cell)
-		fPre = f
-		applyCollision(f)
-		&fPost = f (renaming it for later clarity)
+		return
 		
-		now I want to apply the wall BC -> what do I need to read?
-		1) which of the neighbour cells are a wall? 
-			one bit packed integer, 1 means (x,y,z) + (cx,cy,cz) is a wall
-		2) for those which point to a wall, read the link distance
-			I will pack the link distances into 128 bits. This can be either 4*uint32 or one 128bit CUDA vector (need to check if TNL works with this)
-			Then I treat it as 4 uint32 and assign 7, 7, 7, 5 links to them. 
-			Each link receives a number from 0 to 23 inclusive. I unpack the link number as following:
-				for i in 7 links:
-					uint32_t linkNumber[i] = value % 23u;
-					value /= 23u;
+	// if we got here, we are dealing with a cell that has a wall nearby
+	we are going to need both pre and post collision distributions. So do a copy:
+	fPre = f
+	applyCollision(f)
+	&fPost = f (rename the variable to make it clear later)
+	
+	read and unpack the body ID. For the links, we will be unpacking those sequentially.
+	we dont need the old BC anymore, now run get BC again but this time send a new body ID,
+	this way the BC function knows it should return dirichlet velocity value for the moving (or stationary) wall
+	Now do a loop.
+	For each direction:
+		if direction == 0 
+			write fPost using esotwist post collision treatment
+		else:
+			unpack link
+			if link doesnt exist (wall not present):
+				write fPost using esotwist post collision treatment
+			else:
+				calculate fWall using the interpolated BB formulas
+				write fWall, but use esotwist pre collision treatment for the future timestep
+				(there is no race condition here because this particular f is going to land inside a wall cell,
+				and the wall cells are not writing anything, they do the early return above)
+				note that fPost that is aiming into the wall is not written at all, we dont need it anymore
+
+Thats end of the main cell loop.
+Then:
+2) Apply streaming. This operation means only just to flip the esotwist index flipper, there is no data transfer.
+3) Loop through boundary cells and apply boundary conditions. This fixes the incoming pre collision distributions.
+After those steps are done, all fluid cells have valid pre collision distributions. Note that we did the walls "on the fly" 
+and other boundaries in a separate step. Why is the separate step needed? Because for walls, the BC value depends 
+on the previous (or present during the loop) timestep, but for open boundary cells it requires reading f from the future
+timestep.
+
+
+Grid levels are stored in an array grids.
+Then update all grids more or less like this:
+
+void updateGrid( std::vector<GridStruct>& grids, int level ) 
+{
+    updateGrid(grids[level]);
+    if (level < gridLevelCount - 1) 
+    {
+        for (int i = 0; i < 2; i++) updateGrid(grids, level + 1);
+        updateInterface(grids[level], grids[level + 1]);
+    }
+}
+
+To solve:
+Detailed description of how the grid levels are going to be generated. 
+I already have most of this in the previous codes I used but need to put it together with some improvements.
+Detailed descriptions of how I will track forces on the bodies.
+What if rotor is not only in the finest level? Do I need a rotorMap for every grid level?
+I already have the voxelizer and rayMap system but I need to make the rayMap storage more efficient:
+	Instead of storing 32 possible intersections for each ray, I will only store intersection count for each ray,
+	some scan over that and then store not 32 but only the actual intersections that happen.
 			
 	
 
