@@ -18,8 +18,43 @@ Lze snížit paměťovou náročnost IJK ze 3 array na 1. Místo explicitního u
 		j = jArray[firstInRow]
 		k = kArray[firstInRow]
 
+- Rotor struct: Res, Origin, Bounds, rotorMask
+	-> rotorMask je uint8t 3D array, k runs the slowest
+	-> mřížka 2x jemnější než nejjemnější síť, toto může být pevně dáno I guess
+	-> Inicializuju temporary 3D array jako jedničky a nuly, 1 = rotor present
+	-> do rotorMask uložím hodnoty z jednotkové krychle, kde jako dalších 7 bitů beru plusové směry
+		tím limituju data traffic pouze na jediný 8bitový read
+		potom dělám trilineární interpolaci v binární krychli. Efektem je rozmazání hranice rotoru na délce poloviny nejjemnější výpočetní buňky.
+
 Další k vyřešení:
 - Dokážu udělat nereflektivní BC lokální? Nutné vyzkoušet teď.
+-> nejspíš dokážu, potřebuju pouze 1 float jako BC memory
+
+Jak vypadá updateGrid
+
+1) Loop přes všechny buňky
+	
+	Read wallIndex
+	if wallIndex == -2 return (= this cell itself is a wall)
+	
+	read compressed IJK -> iCell, jCell, kCell
+	read f
+	get rho, ux, uy, uz
+	
+	get BC
+		-> fills xRotor, yRotor, zRotor (= where the cell is in frame of reference of the rotor)
+		-> fills gx, gy, gz as if the rotor is present
+		
+	find if xRotor, yRotor, zRotor lies within rotor bounds -> I need a Rotor struct! Very clear
+	if it does lie within rotor bounds, read the relevant 8bit cube, calculate where we are in the cube, 
+	transform that to <0, 1> on each axis, run a trilinear interpolation function that gets 3 coords and 1 uint8 as the bit packed corner values
+	result is a float. Multiply gx, gy, gz by this float. -> forcing solved!
+	
+	It remains to solve the walls. I need to know how much it will hinder performance if I leave additional 27 floats allocated
+	
+	
+	
+	
 
 Cíl:
 Umožnit simulaci celého proudového motoru najednou, samozřejmě i jeho vybraných částí. To vyžaduje:
