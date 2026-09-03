@@ -51,9 +51,44 @@ Jak vypadá updateGrid
 	result is a float. Multiply gx, gy, gz by this float. -> forcing solved!
 	
 	It remains to solve the walls. I need to know how much it will hinder performance if I leave additional 27 floats allocated
+		-> allocating +27 floats for every thread lowered glups from 4.69 to 4.59 so this doesnt seem too problematic, 
+		maybe I can really just remember fPre the whole time
 	
+	if wallIndex == -1 (= plain fluid)
+		applyCollision(f)
+		write f
 	
-	
+	else if wallIndex >=0 (= wall adjacent cell)
+		fPre = f
+		applyCollision(f)
+		&fPost = f (renaming it for later clarity)
+		
+		now I want to apply the wall BC -> what do I need to read?
+		1) which of the neighbour cells are a wall? 
+			one bit packed integer, 1 means (x,y,z) + (cx,cy,cz) is a wall
+		2) for those which point to a wall, read the link distance
+			-> what kind of accuracy do I want here? what are my options?
+			1 link = 8 bits -> 256... possibly too accurate
+			1 link = 4 bits -> 16... could be enough, but I cant read 4 bits separately
+			lets go the other way around:
+			if I save
+			3 integers -> 3 available bits per link
+			4 integers -> 4 available bits per link
+			5 integers -> 6 available bits per link, that would be enough
+			depends how I want to save the links, do I save all of them or only the ones that I need? 
+			Of course only the needed ones would be better, it just gets a bit more complex. But lets do it then and use 8 bits -> uint8 bit packed.
+			So:
+			calculate walls around
+			look at wallIndex... but here I would need another integer? Not really, but then I have to pack the first int into 4 uints,
+			the first int tells how many more bits I need to read. I guess that works and is probably the most memory efficient solution,
+			it also results in a single compact array
+			So every cell has:
+			4x bit packed uint8 to identify which links are wall
+			From that, calculate number of walls
+			read as many following uint8 as there are walls. The worst case is reading 4 uint8s to identify wall count, then if wall count is 26 we read 26 more uint8. 
+			More common case would be around 10 uint8s. Worst case is equivalent to 8 ints, common case equals less than 4 ints in total.
+			Edit: I should pack this all into ints rather than uint8s. Still easy to do but should be a bit faster.
+			
 	
 
 Cíl:
