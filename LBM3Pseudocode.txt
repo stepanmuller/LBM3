@@ -1,3 +1,26 @@
+Novinky:
+- compressed IJK
+Lze snížit paměťovou náročnost IJK ze 3 array na 1. Místo explicitního ukládání uložím pouze:
+1) krátké iArray, jArray, kArray -> IJK pouze pro vybrané buňky, které jsou první ve spojitém řádku
+	( spojitý řádek má shodné j, k a není přerušen mezerou, tedy i stoupá každou buňku o 1 )
+2) dlouhá IJKShifter -> 
+	shift = IJKShifter[cell]
+	if shift >=0:
+		ukazuje na index v krátkých iArray, jArray, kArray kde přečtu polohu svojí buňky
+		i = iArray[shift]
+		j = jArray[shift]
+		k = kArray[shift]
+	else:
+		Pokud je shift < 0, říká mi kolik mám odečíst ze svého indexu, abych dostal index první buňky ve spojitém řádku
+		Tedy přečtu 
+		firstInRow = IJKShifter[cell + shift]
+		i = iArray[firstInRow] - shift
+		j = jArray[firstInRow]
+		k = kArray[firstInRow]
+
+Další k vyřešení:
+- Dokážu udělat nereflektivní BC lokální? Nutné vyzkoušet teď.
+
 Cíl:
 Umožnit simulaci celého proudového motoru najednou, samozřejmě i jeho vybraných částí. To vyžaduje:
 - Automatickou tvorbu všech úrovní sítě. 
