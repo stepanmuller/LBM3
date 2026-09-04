@@ -6,6 +6,7 @@
 #include "./NBRFunctions.h"
 #include "./markerFunctions.h"
 #include "./updateInterface.h"
+#include "./updateForcedVelocity.h"
 #include "./boundaryConditions/applyInitialCondition.h"
 
 __host__ __device__ int getFinerGridIndex( 	const int &refinedIndex,
@@ -696,6 +697,113 @@ void buildFinerGrid( SkeletonGridStruct &SkeletonGrid, GridStruct &GridFine )
 	markGeometricNBRPlus( GridFine, cellCountFullFine );
 }
 
+void pullSingleFArrayIntoCells( GridStruct &Grid, const int direction, const int preCollisionLocation )
+{
+	auto fView  = Grid.fArray.getView();
+	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
+	//auto jkPlusView = Grid.NBR.jkPlusArray.getConstView();
+	const int cellCountOld = Grid.Info.cellCountOld;
+
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		int readIndex;
+		if      ( preCollisionLocation == 0 ) readIndex = cell;
+		else if ( preCollisionLocation == 1 ) readIndex = cell + 1; 
+		else if ( preCollisionLocation == 2 ) readIndex = jPlusView( cell ); 
+		else if ( preCollisionLocation == 3 ) readIndex = jPlusView( cell ) + 1;
+		else if ( preCollisionLocation == 4 ) readIndex = kPlusView( cell ); 
+		else if ( preCollisionLocation == 5 ) readIndex = kPlusView( cell ) + 1; 
+		else if ( preCollisionLocation == 6 ) readIndex = jPlusView( kPlusView( cell ) ); 
+		else    							   readIndex = jPlusView( kPlusView( cell ) ) + 1;		
+		if ( readIndex >= cellCountOld ) readIndex = 0;
+		const float f = fView( direction, readIndex );
+		fView( direction + 1, cell ) = f;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountOld, cellLambda );
+}
+
+void pullFArrayIntoCells( GridStruct &Grid )
+{
+	// Because of esotwist streaming, some distribution function of cell i is not always saved in cell i, but in a neighbour cell 
+	// To know the neighbour cell we need Grid.NBR
+	// This function moves all distribution functions into their own cells so that we can safely overwrite Grid.NBR after this step
+	if ( Grid.esotwistFlipper )
+	{
+		throw std::runtime_error("pullFArrayIntoCells failed, bool esotwistFlipper is 1. This function can only be called when esotwistFlipper is 0.");
+	}
+	// 						  List of pre collision memory locations
+	// 						  0 = self
+	// 						  1 = iPlus 
+	// 						  2 = jPlus
+	// 						  3 = ijPlus
+	// 						  4 = kPlus
+	// 						  5 = ikPlus
+	// 						  6 = jkPlus
+	// 						  7 = ijkPlus
+	//						  direction   { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26}
+	const int preCollisionLocation[27] = { 0, 0, 1, 4, 0, 2, 0, 4, 1, 0, 5, 3, 0, 4, 2, 1, 2, 0, 6, 5, 2, 3, 4, 6, 1, 7, 0 };	
+	for ( int direction = 26; direction >= 0; direction-- ) pullSingleFArrayIntoCells( Grid, direction, preCollisionLocation[ direction ] );
+}
+
+void oldToKeepSingleTransform( GridStruct &Grid, const int direction, const int preCollisionLocation )
+{
+	auto oldToKeepView = Grid.intBuffer3.getConstView();
+	auto fView  = Grid.fArray.getView();
+	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
+	const int cellCountOld = Grid.Info.cellCountOld;
+	const int cellCount = Grid.Info.cellCount;
+
+	auto cellLambda = [=] __cuda_callable__ ( const int cellOld ) mutable
+	{	
+		const int cellNew = oldToKeepView[ cellOld ];
+		if ( cellNew < 0 ) return;
+		const float f = fView( direction + 1, cellOld );
+		int writeIndex;
+		if      ( preCollisionLocation == 0 ) writeIndex = cellNew;
+		else if ( preCollisionLocation == 1 ) writeIndex = cellNew + 1; 
+		else if ( preCollisionLocation == 2 ) writeIndex = jPlusView( cellNew ); 
+		else if ( preCollisionLocation == 3 ) writeIndex = jPlusView( cellNew ) + 1;
+		else if ( preCollisionLocation == 4 ) writeIndex = kPlusView( cellNew ); 
+		else if ( preCollisionLocation == 5 ) writeIndex = kPlusView( cellNew ) + 1; 
+		else if ( preCollisionLocation == 6 ) writeIndex = jPlusView(kPlusView(cellNew));  
+		else    							   writeIndex = jPlusView(kPlusView(cellNew)) + 1;		
+		if ( writeIndex >= cellCount ) writeIndex = 0;
+		fView( direction, writeIndex ) = f;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountOld, cellLambda );
+}
+
+void oldToKeepTransform( GridStruct &Grid )
+{
+	// old to keep transformation of the fArray (which we pulled into our cells previously)
+	// At the same time, move all distribution functions from their own cells into cells given by esotwist streaming
+	if ( Grid.esotwistFlipper )
+	{
+		throw std::runtime_error("pullFArrayIntoCells failed, bool esotwistFlipper is 1. This function can only be called when esotwistFlipper is 0.");
+	}
+	// 						  List of pret collision memory locations
+	// 						  0 = self
+	// 						  1 = iPlus 
+	// 						  2 = jPlus
+	// 						  3 = ijPlus
+	// 						  4 = kPlus
+	// 						  5 = ikPlus
+	// 						  6 = jkPlus
+	// 						  7 = ijkPlus
+	//						  direction   { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26}
+	const int preCollisionLocation[27] = { 0, 0, 1, 4, 0, 2, 0, 4, 1, 0, 5, 3, 0, 4, 2, 1, 2, 0, 6, 5, 2, 3, 4, 6, 1, 7, 0 };	
+	for ( int direction = 0; direction < 27; direction++ ) oldToKeepSingleTransform( Grid, direction, preCollisionLocation[ direction ] );
+	
+	auto fView  = Grid.fArray.getView();
+	auto zeroOutBufferLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		fView( 27, cell ) = 0.f;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, zeroOutBufferLambda );
+}
+
 void fullToKeepTransform( IntArrayType &dataArray, const BoolArrayType &keepCellMarkerArray, const IntArrayType &fullToKeepArray, IntArrayType &intBuffer, const int &upperBound )
 {
 	auto dataView = dataArray.getView();
@@ -732,14 +840,20 @@ void fullToKeepTransformWithIndexRepair( IntArrayType &dataArray, const BoolArra
 	dataArray.swap( intBuffer );
 }
 
-void buildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelizer, const int level )
+void rebuildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelizer, const int level )
+// Consider grids 0, 1, 2, 3 where 3 is the finest. We want to rebuild grids 2, 3 -> we call this function on 2 (level=2) which recursively calls it on all levels below.
 {
 	const bool iAmCoarsest = ( level == 0 );
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
 	
 	GridStruct &Grid = grids[ level ];	
+	const bool initPass = ( Grid.fArray.getSizes()[0] < 1 );
 	
 	InfoStruct &Info = Grid.Info;	
+	Info.cellCountOld = Info.cellCount;
+	
+	Info.updatesSinceRebuild = 0; 
+	Info.updatesSinceMovingBouncebackUpdate = 0;
 	
 	SkeletonGridStruct &SkeletonGrid = Grid.SkeletonGrid;
 	InfoStruct &SkeletonInfo = SkeletonGrid.Info;
@@ -748,6 +862,15 @@ void buildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelize
     GridStruct &GridCoarse = iAmCoarsest ? dummyGrid : grids[ level - 1 ];
 	InfoStruct &InfoCoarse = GridCoarse.Info;
 	
+	// 0) sum fArray[ 27, all ] which tracks torque, add it to the cumulative tracker
+	auto fView  = Grid.fArray.getConstView();
+	auto fetch = [ = ] __cuda_callable__( const int cell ) { return fView( 27, cell ); };
+	auto reduction = [] __cuda_callable__( const float& a, const float& b ) { return a + b; };
+	float TzSum = TNL::Algorithms::reduce<TNL::Devices::Cuda>( 0, Info.cellCountOld, fetch, reduction, 0.f );
+	Info.torqueReportCumulative += ( TzSum / 1000.f ); // converting from Nmm to Nm
+	
+	// 1) Pull fArray into the correct cells to be able to forget NBR
+	if ( !initPass ) pullFArrayIntoCells( Grid );
 	// 2) Mark refinement area
 	if ( iAmCoarsest )
 	{
@@ -780,12 +903,14 @@ void buildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelize
 		Grid.parentMapArray.setSize( Info.memoryCountFull );
 		Grid.keepCellMarkerArray.setSize( Info.memoryCountFull );	
 		Grid.movingBouncebackMarkerArray.setSize( Info.memoryCountFull );
+		Grid.forcedVelocityMarkerArray.setSize( Info.memoryCountFull );
+		Grid.changedStateMarkerArray.setSize( Info.memoryCountFull ); Grid.changedStateMarkerArray.setValue( false );
 		Grid.markerBuffer.setSize( Info.memoryCountFull );
 		Info.mbbUpdateMemoryCount = ( ( Info.cellCountFull * MEMORY_MBB_UPDATE_PERCENTAGE ) / 100 );
 		Grid.newlyFluidIndexArray.setSize( Info.mbbUpdateMemoryCount );
 		Grid.newlyMBBIndexArray.setSize( Info.mbbUpdateMemoryCount );
 		Grid.fBufferArray.setSizes( 27, Info.mbbUpdateMemoryCount );
-		Info.gridMemoryBytes += (long long)(9 * 4 + 3 * 1 + 1 * 1) * (long long)(Info.memoryCountFull); // 9 int arrays, 3 bool arrays, 1 uint8_t
+		Info.gridMemoryBytes += (long long)(9 * 4 + 5 * 1 + 1 * 1) * (long long)(Info.memoryCountFull); // 9 int arrays, 5 bool arrays, 1 uint8_t
 		Info.gridMemoryBytes += (long long)(2 * 4 + 27 * 4) * (long long)(Info.mbbUpdateMemoryCount); // 2 int arrays, 27 float arrays
 		if ( iAmFinest )
 		{
@@ -1045,6 +1170,32 @@ void buildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelize
 		applyMarkersFromRayMap( Grid.movingBouncebackMarkerArray, Voxelizer.rayMapMovingBounceback, Grid, Grid.Info.cellCount );
 	}
 	
+	// 20) build list of interpolated BB cells
+	int interpolatedBBCount = countOnesInBoolArray( Grid.bouncebackMarkerArray, Info.cellCount );
+	interpolatedBBCount += countOnesInBoolArray( Grid.movingBouncebackMarkerArray, Info.cellCount );
+	Grid.interpolatedBBCellList.setSize( interpolatedBBCount );
+	Grid.interpolatedBBLinkLengths.setSizes( 27, interpolatedBBCount );
+	Grid.interpolatedBBLinkLengths.setValue( 0.5f );
+	Info.gridMemoryBytes += (long long)(4 * 1 + 26 * 4 * 1 ) * (long long)(interpolatedBBCount); // 1 int array, 26 float arrays
+	
+	Grid.markerBuffer.setValue( false );
+	spreadMarkers( Grid.markerBuffer, Grid.bouncebackMarkerArray, Grid, Info.cellCount );
+	Grid.markerBuffer = Grid.markerBuffer - Grid.bouncebackMarkerArray;
+	intArrayFromBoolArray( Grid.intBuffer3, Grid.markerBuffer, Info.cellCount );
+	TNL::Algorithms::inplaceExclusiveScan( Grid.intBuffer3, 0, Info.cellCount, TNL::Plus{} );
+	auto someMarkerView = Grid.markerBuffer.getConstView();
+	auto indexBBlistView = Grid.interpolatedBBCellList.getView();
+	auto intBuffer3View = Grid.intBuffer3.getConstView();
+	auto cellLambdaBleble = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( someMarkerView( cell ) )
+		{
+			indexBBlistView( intBuffer3View( cell ) ) = cell;
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambdaBleble );
+	
+	
 	// 15) we apply initial condition for fArray on the coarser grid, because only now we have marked it correctly
 	// if we are finest we can apply initial condition on ourselves too
 	// at the same time, report memory size
@@ -1080,6 +1231,7 @@ void buildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelize
 			kMinusViewCoarse[ kPlusViewCoarse[ cell ] ] = cell;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, grids[level - 1].Info.cellCount, NBRCoarseRepairLambda );
+		updateForcedVelocity( grids[level - 1], Voxelizer );
 		// fill bit packed marker
 		fillBitPackedMarkerArray( grids[level - 1], grids[level - 1].Info.cellCount );
 	}
@@ -1095,6 +1247,7 @@ void buildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelize
 			kMinusView[ kPlusView[ cell ] ] = cell;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusFinishLambda );
+		updateForcedVelocity( Grid, Voxelizer );
 		// fill bit packed marker
 		fillBitPackedMarkerArray( Grid, Grid.Info.cellCount );
 	}
@@ -1104,6 +1257,7 @@ void buildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxelize
 	{
 		updateInterface( grids[level - 1], Grid );
 	}
+	
 }
 
 void initializeGrids( std::vector<GridStruct> &grids, const BoundsStruct &Bounds, const int level )

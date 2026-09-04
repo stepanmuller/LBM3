@@ -140,7 +140,7 @@ __host__ __device__ void getRhoUxUyUz(
 		1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f };
 	for ( int direction = 0; direction < 27; direction++ ) f[direction] -= weights[direction];
 	*/
-	const float dRho = (((f[PPP]+f[MMM]) + (f[PMP]+f[MPM])) + ((f[PPM]+f[MMP]) + (f[PPM]+f[MMP])))
+	const float dRho = (((f[PPP]+f[MMM]) + (f[PMP]+f[MPM])) + ((f[PPM]+f[MMP]) + (f[PMM]+f[MPP])))
 					  + (((f[OPP]+f[OMM]) + (f[OPM]+f[OMP])) + ((f[POP]+f[MOM]) + (f[POM]+f[MOP])) + ((f[PPO]+f[MMO]) + (f[PMO]+f[MPO])))
 						+ ((f[POO]+f[MOO]) + (f[OPO]+f[OMO]) + (f[OOP]+f[OOM])) + f[OOO];			
     

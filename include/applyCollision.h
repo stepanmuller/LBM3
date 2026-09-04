@@ -10,19 +10,12 @@
 // from Geier et al. (2017), section 3.
 //
 // BC.collisionLimiter is used for lambda3 = lambda4 = lambda5.
-// The 2015 AllOne collision is selected when BC.collisionLimiter <= 0 or
-// BC.nuMultiplier > 1. In that branch all cumulants of order >= 3 are
+// The 2015 AllOne collision is selected when BC.collisionLimiter <= 0. 
+// In that branch all cumulants of order >= 3 are
 // relaxed to zero and A = B = 0.
 
 __host__ __device__ void applyCollision(float (&f)[27], const BCStruct& BC, const float& nu)
 {
-	/*
-	const float weights[27] = { 8.f/27.f, 
-		2.f/27.f, 2.f/27.f, 2.f/27.f, 2.f/27.f, 2.f/27.f, 2.f/27.f, 
-		1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 
-		1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f };
-	for ( int direction = 0; direction < 27; direction++ ) f[direction] -= weights[direction];
-	*/
     const float gx = BC.gx;
     const float gy = BC.gy;
     const float gz = BC.gz;
@@ -492,6 +485,4 @@ __host__ __device__ void applyCollision(float (&f)[27], const BCStruct& BC, cons
     f[PMP] = ((ks_ca0 + K_ca0) * (uz2 + uz) + ks_ca1 * (2.f * uz + 1.f) + ks_ca2) * 0.5f;
     f[POP]  = ((ks_cb0 + K_cb0) * (uz2 + uz) + ks_cb1 * (2.f * uz + 1.f) + ks_cb2) * 0.5f;
     f[PPP] = ((ks_cc0 + K_cc0) * (uz2 + uz) + ks_cc1 * (2.f * uz + 1.f) + ks_cc2) * 0.5f;
-    
-    //for ( int direction = 0; direction < 27; direction++ ) f[direction] += weights[direction];
 }

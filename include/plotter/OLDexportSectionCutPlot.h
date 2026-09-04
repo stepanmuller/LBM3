@@ -72,6 +72,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 		auto movingBouncebackMarkerArrayView = Grid.movingBouncebackMarkerArray.getConstView();
 		auto deepRefinementMarkerArrayView = Grid.deepRefinementMarkerArray.getConstView();
 		auto fineToCoarseMarkerArrayView = Grid.fineToCoarseMarkerArray.getConstView();
+		auto bitPackedMarkerView = Grid.bitPackedMarkerArray.getConstView();
 		
 		auto iView = Grid.IJK.iArray.getConstView();
 		auto jView = Grid.IJK.jArray.getConstView();
@@ -88,6 +89,10 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 			int iCell = iView[ cell ] * cellScale; 
 			int jCell = jView[ cell ] * cellScale;
 			int kCell = kView[ cell ] * cellScale;
+			
+			const int bitPackedMarkerInt = bitPackedMarkerView( cell );
+			bool bitPackedMarkerBits[32];
+			intToBools( bitPackedMarkerInt, bitPackedMarkerBits );
 			
 			NBRStruct NBR;
 			NBR.self = cell;
@@ -136,7 +141,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 			
 			if ( Marker.deepRefinement || Marker.fineToCoarse ) return; // there will be fine grid on top so we dont write this
 			
-			const float marker = Marker.bounceback + Marker.movingBounceback + Marker.deepRefinement;
+			const float marker = Marker.bounceback + Marker.movingBounceback + Marker.deepRefinement + bitPackedMarkerBits[29];
 			
 			// 3. Mapping coordinates to the scaled-down output array
 			int outYStart = indexVertical / targetScale;
@@ -301,6 +306,7 @@ void exportSectionCutPlotToiletPaperZ( std::vector<GridStruct> &grids, const flo
 		auto movingBouncebackMarkerArrayView = Grid.movingBouncebackMarkerArray.getConstView();
 		auto deepRefinementMarkerArrayView = Grid.deepRefinementMarkerArray.getConstView();
 		auto fineToCoarseMarkerArrayView = Grid.fineToCoarseMarkerArray.getConstView();
+		auto bitPackedMarkerView = Grid.bitPackedMarkerArray.getConstView();
 		
 		auto iView = Grid.IJK.iArray.getConstView();
 		auto jView = Grid.IJK.jArray.getConstView();
@@ -317,6 +323,10 @@ void exportSectionCutPlotToiletPaperZ( std::vector<GridStruct> &grids, const flo
 			int iCell = iView[ cell ] * cellScale; 
 			int jCell = jView[ cell ] * cellScale;
 			int kCell = kView[ cell ] * cellScale;
+			
+			const int bitPackedMarkerInt = bitPackedMarkerView( cell );
+			bool bitPackedMarkerBits[32];
+			intToBools( bitPackedMarkerInt, bitPackedMarkerBits );
 			
 			NBRStruct NBR;
 			NBR.self = cell;
@@ -360,7 +370,7 @@ void exportSectionCutPlotToiletPaperZ( std::vector<GridStruct> &grids, const flo
 			
 			if ( Marker.deepRefinement || Marker.fineToCoarse ) return; // there will be fine grid on top so we dont write this
 			
-			const float marker = Marker.bounceback + Marker.movingBounceback + Marker.deepRefinement;
+			const float marker = Marker.bounceback + Marker.movingBounceback + Marker.deepRefinement + bitPackedMarkerBits[29];
 			
 			// 3. Mapping coordinates to the scaled-down 2D unrolled array
 			int spanY = max(1, cellScale / targetScale);

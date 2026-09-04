@@ -130,9 +130,13 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
-struct rayMapStruct { int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; };
+struct rayMapStruct { IntArray3DType rayMapArray; IntArray2DType hitCounterArray; };
 
-struct VoxelizerStruct { InfoStruct Info; std::vector<rayMapStruct> rayMaps; rayMapStruct rayMapTotal; };
+struct VoxelizerStruct { 	InfoStruct Info; 
+							rayMapStruct rayMapBounceback;
+							rayMapStruct rayMapMovingBounceback;
+							rayMapStruct rayMapTotal; 
+							rayMapStruct rayMapForcedVelocity; };
 
 // NBR holds:
 // Connectivity for Esotwist: indexes of 2 neighbours in the positive direction jPlus, kPlus. 
@@ -213,12 +217,14 @@ struct STLStruct { 	static constexpr int threadsToTrianglesRatio = 4;
 				};
 
 struct FlowReportStruct { float uxPhys = 0.f; float uyPhys = 0.f; float uzPhys = 0.f; float pPhys = 0.f; float areamm2 = 0.f; 
-							float massFlowPhys = 0.f; float normalDirectionMomentumFlowPhys = 0.f; float normalDirectionKineticEnergyFlowPhys = 0.f; };
+							float massFlowZPhys = 0.f; float momentumFlowZPhys = 0.f; float kineticEnergyFlowZPhys = 0.f; };
 
 struct LocalDuStruct { float duxdx = 0.f; float duydy = 0.f; float duzdz = 0.f; float duxdyCross = 0.f; float duydzCross = 0.f; float duxdzCross = 0.f; };
 
 struct SectionCutStruct { 	FloatArray2DType rhoArray; FloatArray2DType uxArray; FloatArray2DType uyArray; FloatArray2DType uzArray; 
-							FloatArray2DType markerArray; IntArray2DType gridIDArray; };
+							FloatArray2DType markerArray; FloatArray2DType scalarTransportArray; IntArray2DType gridIDArray; };
 							
 struct SectionCutStructCPU { 	FloatArray2DTypeCPU rhoArray; FloatArray2DTypeCPU uxArray; FloatArray2DTypeCPU uyArray; FloatArray2DTypeCPU uzArray; 
-								FloatArray2DTypeCPU markerArray; IntArray2DTypeCPU gridIDArray; };
+								FloatArray2DTypeCPU markerArray; FloatArray2DTypeCPU scalarTransportArray; IntArray2DTypeCPU gridIDArray; };
+								
+struct MultiResultHolder { float rhoZSum = 0.f; float rhoImpSum = 0.f; };

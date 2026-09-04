@@ -11,17 +11,17 @@ static constexpr int GRID_REBUILD_PERIOD = INT_MAX; //24;
 static constexpr int GRID_LEVEL_COUNT = 1;
 
 int reportChunk = 31;
-int plotterChunk = 2000;
-constexpr int iterationCount = 80000;
+int plotterChunk = 1000;
+constexpr int iterationCount = 40000;
 
 constexpr float resGlobal = 0.08f; 														// mm
 
-constexpr float angularVelocity = 2000.f;												// rad/s
+constexpr float angularVelocity = 1500.f;												// rad/s
 constexpr float targetInletPower = 0.f;													// W
-constexpr float iRegulatorInletStrength = 0.003f;
+constexpr float iRegulatorInletStrength = 0.03f;
 constexpr float massFlowInitPhys = 2.5f;												// kg/s
-constexpr float RIn = 3.75f;															// mm
-constexpr float ROut = 16.5f;															// mm
+constexpr float RIn = 4.f;																// mm
+constexpr float ROut = 14.25f;															// mm
 const float boundaryLayerThickness = 0.2f;												// mm
 const float shaftRotationStartDistance = 10.f;											// mm
 
@@ -40,9 +40,9 @@ constexpr float soundspeedPhys = 0.577350269f * (resGlobal/1000) / dtPhysGlobal;
 #include "../../include/types.h"
 #include "../../include/cellFunctions.h"
 
-std::string STLPathStator = "M-Jet_35_pump_main.STL";
-std::string STLPathRotor = "M-Jet_35_impeller.STL";
-std::string STLPathShaft = "M-Jet_35_shaft.STL";
+std::string STLPathStator = "M-Jet_40_pump_main.STL";
+std::string STLPathRotor = "M-Jet_40_impeller.STL";
+std::string STLPathShaft = "M-Jet_40_shaft.STL";
 
 __cuda_callable__ void getMarkers( 	const int& iCell, const int& jCell, const int& kCell, 
 									MarkerStruct &Marker, const InfoStruct& Info )
@@ -135,6 +135,7 @@ __cuda_callable__ void getBC( 	BCStruct &BC,
 	}
 	if ( Marker.BCRho || Marker.nonReflectiveOutlet ) BC.rho = 1.f;
 	if ( z > 18.f ) BC.collisionLimiter = 0.f; //BC.nuMultiplier = ( 28.f - z ) * 0.1f * 100.f;
+	//if ( z < -55.f ) BC.collisionLimiter = 0.f;
 }
 
 #include "../../include/adaptiveGridFunctions.h"
@@ -146,6 +147,7 @@ __cuda_callable__ void getBC( 	BCStruct &BC,
 #include "../../include/updateForcedVelocity.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 #include "../../include/flowReportFunctions.h"
+#include "../../include/interpolatedBB.h"
 
 void applyGlobalUpdate( std::vector<GridStruct>& grids, int level, VoxelizerStruct &Voxelizer, STLStruct &STLRotorStationary, STLStruct &STLRotorMoving ) 
 {
@@ -238,7 +240,7 @@ int main(int argc, char **argv)
 	grids[ 0 ].Info.res = resGlobal;
 	BoundsStruct DomainBounds;
 	DomainBounds = STLStator.Bounds;
-	DomainBounds.zMin = -74.5f;
+	DomainBounds.zMin = -60.f;
 	initializeGrids( grids, DomainBounds, 0 );
 	
 	// Voxelizer 
@@ -253,6 +255,8 @@ int main(int argc, char **argv)
 	
 	// first rebuildGrids
 	rebuildGrids( grids, Voxelizer, 0 );
+	
+	buildLinkLengths( grids[0], STLStator );
 	
 	int totalCellCount = 0;
 	int usefulCellUpdatesPerIteration = 0;
@@ -291,7 +295,7 @@ int main(int argc, char **argv)
 			FlowReportStruct FlowReportOut;
 			int iTemp, jTemp;
 			float xTemp = 0.f; float yTemp = 0.f;
-			float z = 18.f;
+			float z = 15.41f;
 			getIJKCellIndexFromXYZ( iTemp, jTemp, kCut, xTemp, yTemp, z, grids[GRID_LEVEL_COUNT-1].Info);
 			getFlowReportXY( grids, kCut, Bounds, FlowReportOut );
 			float pOut = FlowReportOut.pPhys;
@@ -342,11 +346,11 @@ int main(int argc, char **argv)
 			
 			if ( iteration > 0 ) exportHistoryData( historyInletPower, historyThrust, historyTorque, iteration, 0 );
 			
-			float r = 14.0f;
+			float r = 12.0f;
 			exportSectionCutPlotToiletPaperZ( grids, r, iteration );
 			float rotatingFrameUy = - ( r / 1000.f ) * angularVelocity;
 			if (system(("python3 ../../include/plotter/plotterRotatingFrame.py " + std::to_string(rotatingFrameUy)).c_str()) != 0) {}
-			
+
 			const int iCut = grids[GRID_LEVEL_COUNT-1].Info.cellCountX/2;
 			exportSectionCutPlotZY( grids, iCut, iteration+1 );
 			if (system("python3 ../../include/plotter/plotter.py") != 0) {}

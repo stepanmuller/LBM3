@@ -14,6 +14,51 @@
 
 // Schlaffer disertation 2013 - non reflective impedance based inlet with fixed reference point
 
+__host__ __device__ void getNonReflectiveInletValue( float (&f)[27], 
+													const int (&cxArray)[27], const int (&cyArray)[27], const int (&czArray)[27], 
+													const int &outerNormalX, const int &outerNormalY, const int &outerNormalZ,
+													const BCStruct &BC, float &rhoZ, float &rhoImp )
+{
+	rhoZ = 1.f;
+	for (int direction = 0; direction < 27; direction++)
+	{
+		const int cx = cxArray[direction]; const int cy = cyArray[direction]; const int cz = czArray[direction];
+		if ( outerNormalX != 0 )
+		{
+			if ( cx == 0 ) rhoZ += f[direction];
+			else if ( cx * outerNormalX > 0 ) rhoZ += 2.f * f[direction];
+		}
+		else if ( outerNormalY != 0 )
+		{
+			if ( cy == 0 ) rhoZ += f[direction];
+			else if ( cy * outerNormalY > 0 ) rhoZ += 2.f * f[direction];
+		}
+		else
+		{
+			if ( cz == 0 ) rhoZ += f[direction];
+			else if ( cz * outerNormalZ > 0 ) rhoZ += 2.f * f[direction];
+		}
+	}
+	
+	const float rhoZInv = 1.f / rhoZ;
+	const float temp = 0.577350269f + 1.f/3.f * rhoZInv;
+	
+	float uImpAbs;
+	if ( outerNormalX != 0 )
+	{
+		uImpAbs = TNL::abs( BC.ux ) - temp + TNL::sqrt( temp*temp - 2.f/3.f * ( rhoZInv * ( TNL::abs( BC.ux ) - 1.f ) + 1.f ) );
+	}
+	else if ( outerNormalY != 0 )
+	{
+		uImpAbs = TNL::abs( BC.uy ) - temp + TNL::sqrt( temp*temp - 2.f/3.f * ( rhoZInv * ( TNL::abs( BC.uy ) - 1.f ) + 1.f ) );
+	}
+	else
+	{
+		uImpAbs = TNL::abs( BC.uz ) - temp + TNL::sqrt( temp*temp - 2.f/3.f * ( rhoZInv * ( TNL::abs( BC.uz ) - 1.f ) + 1.f ) );
+	}	
+	rhoImp = rhoZ / ( 1.f - uImpAbs );
+}
+
 void applyNonReflectiveInlet( GridStruct &Grid )
 {
 	InfoStruct &Info = Grid.Info;
@@ -49,6 +94,14 @@ void applyNonReflectiveInlet( GridStruct &Grid )
 		NBR.jkPlus = jPlusView( NBR.kPlus );
 		finishNBRPlus( NBR, Info );
 		
+		int cellPrevIndex[27];
+		int fPrevIndex[27];
+		getPreviousPostCollisionIndex( cellPrevIndex, fPrevIndex, NBR, esotwistFlipper, Info );
+		float fPrev[27];
+		for ( int direction = 0; direction < 27; direction++ )	fPrev[direction] = fView(fPrevIndex[direction], cellPrevIndex[direction]);
+		float rhoPrev, uxPrev, uyPrev, uzPrev;
+		getRhoUxUyUz( rhoPrev, uxPrev, uyPrev, uzPrev, fPrev );
+		
 		int cellReadIndex[27];
 		int fReadIndex[27];
 		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
@@ -63,6 +116,7 @@ void applyNonReflectiveInlet( GridStruct &Grid )
 		// pass the current state into the boundary condition function so that BC can also be a function of the current state 
 		// example: get forcing for rotating domain as a function of rho, U
 		getBC( BC, iCell, jCell, kCell, Info, Marker ); 
+		//BC.ux = uxPrev; BC.uy = uyPrev; BC.uz = uzPrev;
 		
 		float rhoZ = 1.f;
 		for (int direction = 0; direction < 27; direction++)
@@ -85,23 +139,13 @@ void applyNonReflectiveInlet( GridStruct &Grid )
 			}
 		}
 		
-		const float rhoZInv = 1.f / rhoZ; // rhoOld / rhoZ;
-		const float temp = 0.577350269f + 1.f/3.f * rhoZInv;
+		const float rhoZInv = 1.f / rhoZ; //rhoPrev / rhoZ; 
+		const float temp = 0.577350269f + (1.f/3.f) * rhoZInv;
 		
-		float uImpAbs;
-		if ( outerNormalX != 0 )
-		{
-			uImpAbs = TNL::abs( BC.ux ) - temp + TNL::sqrt( temp*temp - 2.f/3.f * ( rhoZInv * ( TNL::abs( BC.ux ) - 1.f ) + 1.f ) );
-		}
-		else if ( outerNormalY != 0 )
-		{
-			uImpAbs = TNL::abs( BC.uy ) - temp + TNL::sqrt( temp*temp - 2.f/3.f * ( rhoZInv * ( TNL::abs( BC.uy ) - 1.f ) + 1.f ) );
-		}
-		else
-		{
-			uImpAbs = TNL::abs( BC.uz ) - temp + TNL::sqrt( temp*temp - 2.f/3.f * ( rhoZInv * ( TNL::abs( BC.uz ) - 1.f ) + 1.f ) );
-		}	
-		float rhoImp = rhoZ / ( 1.f - uImpAbs );
+		float uNormalPrev = (uxPrev * outerNormalX) + (uyPrev * outerNormalY) + (uzPrev * outerNormalZ);
+		float uNormalImp = uNormalPrev + temp - TNL::sqrt( temp*temp + (2.f/3.f) * ( rhoZInv * ( uNormalPrev + 1.f ) - 1.f ) );
+		float rhoImp = rhoZ / ( 1.f + uNormalImp );
+		
 		return { rhoZ - 1.f, rhoImp - 1.f };
 		
 	};

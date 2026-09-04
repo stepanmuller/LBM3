@@ -23,7 +23,7 @@
 // Then apply a completely normal and reliable MBBC but use some interpolated
 // value between the non reflective average pressure and the target pressure
 
-void applyNonReflectiveOutlet( GridStruct &Grid )
+void applyNonReflectiveGeierOutlet( GridStruct &Grid )
 {
 	InfoStruct &Info = Grid.Info;
 	if ( Info.nonReflectiveOutletCount == 0 ) return;
@@ -140,5 +140,105 @@ void applyNonReflectiveOutlet( GridStruct &Grid )
 	
 	float rhoAvg = TNL::Algorithms::reduce<TNL::Devices::Cuda>( 0, Info.nonReflectiveOutletCount, fetch, reduction, 0.f );
 	rhoAvg /= (float)Info.nonReflectiveOutletCount;
+	// Info.nonReflectiveOutletRho = 1.f + rhoAvg;
+}
+
+
+void applyNonReflectiveOutlet( GridStruct &Grid )
+{
+	applyNonReflectiveGeierOutlet( Grid );
+	
+	InfoStruct &Info = Grid.Info;
+	if ( Info.nonReflectiveOutletCount == 0 ) return;
+	
+	auto nonReflectiveOutletIndexView = Grid.nonReflectiveOutletIndexArray.getConstView();
+	
+	const bool &esotwistFlipper = Grid.esotwistFlipper;
+	
+	auto fView  = Grid.fArray.getView();
+	
+	auto iView = Grid.IJK.iArray.getConstView();
+	auto jView = Grid.IJK.jArray.getConstView();
+	auto kView = Grid.IJK.kArray.getConstView();
+
+	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
+	
+	auto fetch = [=] __cuda_callable__ ( const int index )
+	{
+		const int cell = nonReflectiveOutletIndexView( index );
+		const int iCell = iView( cell );
+		const int jCell = jView( cell );
+		const int kCell = kView( cell );
+		
+		int outerNormalX, outerNormalY, outerNormalZ;
+		getOuterNormal( iCell, jCell, kCell, outerNormalX, outerNormalY, outerNormalZ, Info ); 
+		
+		NBRStruct NBR;
+		NBR.self = cell;
+		NBR.jPlus = jPlusView( cell );
+		NBR.kPlus = kPlusView( cell );
+		NBR.jkPlus = jPlusView( NBR.kPlus );
+		finishNBRPlus( NBR, Info );
+		
+		int cellPrevIndex[27];
+		int fPrevIndex[27];
+		getPreviousPostCollisionIndex( cellPrevIndex, fPrevIndex, NBR, esotwistFlipper, Info );
+		float fPrev[27];
+		for ( int direction = 0; direction < 27; direction++ )	fPrev[direction] = fView(fPrevIndex[direction], cellPrevIndex[direction]);
+		float rhoPrev, uxPrev, uyPrev, uzPrev;
+		getRhoUxUyUz( rhoPrev, uxPrev, uyPrev, uzPrev, fPrev );
+		
+		int cellReadIndex[27];
+		int fReadIndex[27];
+		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
+		
+		const int cxArray[27] = { 0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1,-1, 1, 0, 0,-1, 1, 0, 0,-1, 1,-1, 1, 1,-1,-1, 1 };
+		const int cyArray[27] = { 0, 0, 0, 0, 0,-1, 1, 0, 0, 0, 0,-1, 1, 1,-1, 1,-1, 1,-1, 1,-1,-1, 1,-1, 1,-1, 1 };
+		const int czArray[27] = { 0, 0, 0,-1, 1, 0, 0,-1, 1, 1,-1, 0, 0,-1, 1, 0, 0, 1,-1,-1, 1, 1,-1,-1, 1,-1, 1 };
+		
+		MarkerStruct Marker;
+		Marker.nonReflectiveInlet = 1;
+		BCStruct BC;
+		// pass the current state into the boundary condition function so that BC can also be a function of the current state 
+		// example: get forcing for rotating domain as a function of rho, U
+		getBC( BC, iCell, jCell, kCell, Info, Marker ); 
+		BC.ux = uxPrev; BC.uy = uyPrev; BC.uz = uzPrev;
+		
+		float rhoZ = 1.f;
+		for (int direction = 0; direction < 27; direction++)
+		{
+			const int cx = cxArray[direction]; const int cy = cyArray[direction]; const int cz = czArray[direction];
+			if ( outerNormalX != 0 )
+			{
+				if ( cx == 0 ) rhoZ += fView(fReadIndex[direction], cellReadIndex[direction]);
+				else if ( cx * outerNormalX > 0 ) rhoZ += 2.f * fView(fReadIndex[direction], cellReadIndex[direction]);
+			}
+			else if ( outerNormalY != 0 )
+			{
+				if ( cy == 0 ) rhoZ += fView(fReadIndex[direction], cellReadIndex[direction]);
+				else if ( cy * outerNormalY > 0 ) rhoZ += 2.f * fView(fReadIndex[direction], cellReadIndex[direction]);
+			}
+			else
+			{
+				if ( cz == 0 ) rhoZ += fView(fReadIndex[direction], cellReadIndex[direction]);
+				else if ( cz * outerNormalZ > 0 ) rhoZ += 2.f * fView(fReadIndex[direction], cellReadIndex[direction]);
+			}
+		}
+		
+		const float rhoZInv = rhoPrev / rhoZ; 
+		const float temp = 0.577350269f + (1.f/3.f) * rhoZInv;
+		
+		float uNormalPrev = (uxPrev * outerNormalX) + (uyPrev * outerNormalY) + (uzPrev * outerNormalZ);
+		float uNormalImp = uNormalPrev + temp - TNL::sqrt( temp*temp + (2.f/3.f) * ( rhoZInv * ( uNormalPrev + 1.f ) - 1.f ) );
+		float rhoImp = rhoZ / ( 1.f + uNormalImp );
+
+		return ( rhoImp - 1.f );		
+	};
+	auto reduction = [] __cuda_callable__( const float& a, const float& b ) { return a + b; };
+	
+	float rhoAvg = TNL::Algorithms::reduce<TNL::Devices::Cuda>( 0, Info.nonReflectiveOutletCount, fetch, reduction, 0.f );
+	rhoAvg /= (float)Info.nonReflectiveOutletCount;
 	Info.nonReflectiveOutletRho = 1.f + rhoAvg;
 }
+

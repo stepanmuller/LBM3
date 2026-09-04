@@ -2,25 +2,26 @@ static constexpr int RAY_MAP_DEPTH = 32;
 static constexpr int WALL_REFINEMENT_COUNT = 2; // min 2
 static constexpr int MEMORY_RESERVE_PERCENTAGE = 10;
 static constexpr int MEMORY_RESERVE_PERCENTAGE_INTERFACE = 10;
-static constexpr int MEMORY_MBB_UPDATE_PERCENTAGE = 10;
+static constexpr int MEMORY_MBB_UPDATE_PERCENTAGE = 1;
 
-static constexpr int MOVING_BOUNCEBACK_UPDATE_PERIOD = 8;
-static constexpr int GRID_REBUILD_PERIOD = 24;
+static constexpr int FORCED_VELOCITY_UPDATE_PERIOD = 8;
+static constexpr int MOVING_BOUNCEBACK_UPDATE_PERIOD = INT_MAX; //8;
+static constexpr int GRID_REBUILD_PERIOD = INT_MAX; //24;
 
 static constexpr int GRID_LEVEL_COUNT = 1;
 
 int reportChunk = 31;
-int plotterChunk = 2000;
-constexpr int iterationCount = 80000;
+int plotterChunk = 5000;
+constexpr int iterationCount = 5000;
 
 constexpr float resGlobal = 0.1f; 														// mm
 
 constexpr float angularVelocity = 2000.f;												// rad/s
 constexpr float targetInletPower = 0.f;													// W
-constexpr float iRegulatorInletStrength = 0.003f;
+constexpr float iRegulatorInletStrength = 0.f; //0.03f;
 constexpr float massFlowInitPhys = 2.5f;												// kg/s
-constexpr float RIn = 4.f;																// mm
-constexpr float ROut = 14.25f;															// mm
+constexpr float RIn = 3.75f;															// mm
+constexpr float ROut = 16.5f;															// mm
 const float boundaryLayerThickness = 0.2f;												// mm
 const float shaftRotationStartDistance = 10.f;											// mm
 
@@ -39,20 +40,22 @@ constexpr float soundspeedPhys = 0.577350269f * (resGlobal/1000) / dtPhysGlobal;
 #include "../../include/types.h"
 #include "../../include/cellFunctions.h"
 
-std::string STLPathMain = "M-Jet_40_pump_main.STL";
-std::string STLPathImpeller = "M-Jet_40_impeller.STL";
+std::string STLPathStator = "M-Jet_35_pump_main.STL";
+std::string STLPathRotor = "M-Jet_35_impeller.STL";
+std::string STLPathShaft = "M-Jet_35_shaft.STL";
 
 __cuda_callable__ void getMarkers( 	const int& iCell, const int& jCell, const int& kCell, 
 									MarkerStruct &Marker, const InfoStruct& Info )
 {
 	if ( Marker.bounceback ) return;
 	if ( Marker.movingBounceback ) return;
+	if ( Marker.forcedVelocity ) return;
 	
 	if ( kCell == 0 ) Marker.refinement = 1;
 	if ( kCell > Info.cellCountZ - 50 ) Marker.refinement = 1;
 	
-	if ( kCell == 0 ) Marker.nonReflectiveInlet = 1; // Marker.BCU = 1;
-	else if ( kCell == Info.cellCountZ-1 ) Marker.nonReflectiveOutlet = 1; //Marker.BCRho = 1;
+	if ( kCell == 0 ) Marker.nonReflectiveInlet = 1; //Marker.BCU = 1;
+	else if ( kCell == Info.cellCountZ-1 ) Marker.nonReflectiveOutlet = 1; // Marker.BCRho = 1; 
 	else Marker.fluid = 1;
 }
 
@@ -65,16 +68,22 @@ __cuda_callable__ void getInitialRhoUG( BCStruct &BC,
 	const float r = std::sqrt( x * x + y * y );
 	const float vtPhys = angularVelocity * (r / 1000.f);
 	const float vt = vtPhys * ( uzInletBase / uzInletPhys );
-	if ( Marker.movingBounceback )
+	if ( Marker.bounceback )
+	{
+		BC.ux = 0.f;
+		BC.uy = 0.f;
+		BC.uz = 0.f;
+	}
+	else if ( Marker.movingBounceback )
 	{
 		BC.ux = - vt * (y / r);
 		BC.uy = vt * (x / r);
 		BC.uz = 0.f;
 	}
-	else if ( Marker.bounceback )
+	else if ( Marker.forcedVelocity )
 	{
-		BC.ux = 0.f;
-		BC.uy = 0.f;
+		BC.ux = - vt * (y / r);
+		BC.uy = vt * (x / r);
 		BC.uz = 0.f;
 	}
 	else
@@ -109,6 +118,15 @@ __cuda_callable__ void getBC( 	BCStruct &BC,
 		BC.uy = vt * (x / r) * rotationMultiplier;
 		BC.uz = 0.f;
 	}
+	else if ( Marker.forcedVelocity )
+	{
+		const float uxTarget = - vt * (y / r) * rotationMultiplier;
+		const float uyTarget = vt * (x / r) * rotationMultiplier;
+		const float uzTarget = 0.f;
+		BC.gx = BC.rho * ( uxTarget - BC.ux );
+		BC.gy = BC.rho * ( uyTarget - BC.uy );
+		BC.gz = BC.rho * ( uzTarget - BC.uz );
+	}
 	else
 	{
 		BC.ux = 0.f;
@@ -116,7 +134,9 @@ __cuda_callable__ void getBC( 	BCStruct &BC,
 		BC.uz = ( uzInletBase + Info.iRegulatorInlet ) * velocityMultiplier; // uzInletBase * velocityMultiplier; // 
 	}
 	if ( Marker.BCRho || Marker.nonReflectiveOutlet ) BC.rho = 1.f;
-	if ( z > 15.41f ) BC.collisionLimiter = 0.f; //BC.nuMultiplier = ( 28.f - z ) * 0.1f * 100.f;
+	if ( z > 18.f ) BC.collisionLimiter = 0.f; //BC.nuMultiplier = ( 28.f - z ) * 0.1f * 100.f;
+	if ( z < -69.5f ) BC.collisionLimiter = 0.f;
+	//if ( z < -55.f ) BC.collisionLimiter = 0.f;
 }
 
 #include "../../include/adaptiveGridFunctions.h"
@@ -125,8 +145,10 @@ __cuda_callable__ void getBC( 	BCStruct &BC,
 #include "../../include/updateGrid.h"
 #include "../../include/updateInterface.h"
 #include "../../include/updateMovingBounceback.h"
+#include "../../include/updateForcedVelocity.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 #include "../../include/flowReportFunctions.h"
+#include "../../include/interpolatedBB.h"
 
 void applyGlobalUpdate( std::vector<GridStruct>& grids, int level, VoxelizerStruct &Voxelizer, STLStruct &STLRotorStationary, STLStruct &STLRotorMoving ) 
 {
@@ -140,6 +162,13 @@ void applyGlobalUpdate( std::vector<GridStruct>& grids, int level, VoxelizerStru
 			voxelizeSTL( Voxelizer.rayMapMovingBounceback, STLRotorMoving, Voxelizer );
 			sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMapMovingBounceback );
 			updateMovingBounceback( grids[level], Voxelizer );
+		}
+		if (grids[level].Info.updatesSinceForcedVelocityUpdate >= FORCED_VELOCITY_UPDATE_PERIOD )
+		{
+			const float radians = grids[level].Info.iterationsFinished * grids[level].Info.dtPhys * angularVelocity;
+			rotateSTLAlongZ( STLRotorMoving, STLRotorStationary, radians );
+			voxelizeSTL( Voxelizer.rayMapForcedVelocity, STLRotorMoving, Voxelizer );
+			updateForcedVelocity( grids[level], Voxelizer );
 		}
 	}
 	if ( grids[level].Info.updatesSinceRebuild >= GRID_REBUILD_PERIOD )
@@ -181,17 +210,29 @@ int main(int argc, char **argv)
 {
 	// STLs
 	STLStruct STLStator;
-	readSTL( STLStator, STLPathMain );
+	readSTL( STLStator, STLPathStator );
+	STLStruct STLShaft;
+	readSTL( STLShaft, STLPathShaft );
 	STLStruct STLRotorStationary;
-	readSTL( STLRotorStationary, STLPathImpeller );
+	readSTL( STLRotorStationary, STLPathRotor );
 	STLStruct STLRotorMoving;
 	STLRotorMoving = STLRotorStationary;
 	
+	/*
 	std::cout << "Cells travelled by MBB per iteration: " 
 		<< dtPhysGlobal * angularVelocity * STLRotorStationary.Bounds.rzMax / resGlobal << std::endl;
 	std::cout << "Cells travelled by MBB per MBB update: " 
 		<< (float)MOVING_BOUNCEBACK_UPDATE_PERIOD * dtPhysGlobal * angularVelocity * STLRotorStationary.Bounds.rzMax / resGlobal << std::endl;
 	std::cout << "Cells travelled by MBB per grid rebuild: " 
+		<< (float)GRID_REBUILD_PERIOD * dtPhysGlobal * angularVelocity * STLRotorStationary.Bounds.rzMax / resGlobal << std::endl;
+	std::cout << std::endl;
+	*/
+	
+	std::cout << "Cell distance travelled by forced velocity cells per iteration: " 
+		<< dtPhysGlobal * angularVelocity * STLRotorStationary.Bounds.rzMax / resGlobal << std::endl;
+	std::cout << "Cell distance travelled by forced velocity cells per forced velocity update: " 
+		<< (float)FORCED_VELOCITY_UPDATE_PERIOD * dtPhysGlobal * angularVelocity * STLRotorStationary.Bounds.rzMax / resGlobal << std::endl;
+	std::cout << "Cell distance travelled by forced velocity cells per grid rebuild: " 
 		<< (float)GRID_REBUILD_PERIOD * dtPhysGlobal * angularVelocity * STLRotorStationary.Bounds.rzMax / resGlobal << std::endl;
 	std::cout << std::endl;
 	
@@ -200,19 +241,23 @@ int main(int argc, char **argv)
 	grids[ 0 ].Info.res = resGlobal;
 	BoundsStruct DomainBounds;
 	DomainBounds = STLStator.Bounds;
-	DomainBounds.zMin = -60.f;
+	DomainBounds.zMin = -74.5f;
 	initializeGrids( grids, DomainBounds, 0 );
 	
 	// Voxelizer 
 	VoxelizerStruct Voxelizer;
 	Voxelizer.Info = grids[ GRID_LEVEL_COUNT-1 ].Info;
 	voxelizeSTL( Voxelizer.rayMapBounceback, STLStator, Voxelizer );
-	voxelizeSTL( Voxelizer.rayMapMovingBounceback, STLRotorMoving, Voxelizer );
+	//voxelizeSTL( Voxelizer.rayMapMovingBounceback, STLRotorMoving, Voxelizer );
+	voxelizeSTL( Voxelizer.rayMapMovingBounceback, STLShaft, Voxelizer );
 	Voxelizer.rayMapTotal = Voxelizer.rayMapBounceback;
 	sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMapMovingBounceback );
+	voxelizeSTL( Voxelizer.rayMapForcedVelocity, STLRotorMoving, Voxelizer );
 	
 	// first rebuildGrids
 	rebuildGrids( grids, Voxelizer, 0 );
+	
+	buildLinkLengths( grids[0], STLStator );
 	
 	int totalCellCount = 0;
 	int usefulCellUpdatesPerIteration = 0;
@@ -251,8 +296,9 @@ int main(int argc, char **argv)
 			FlowReportStruct FlowReportOut;
 			int iTemp, jTemp;
 			float xTemp = 0.f; float yTemp = 0.f;
-			float z = 15.41f;
+			float z = 18.f;
 			getIJKCellIndexFromXYZ( iTemp, jTemp, kCut, xTemp, yTemp, z, grids[GRID_LEVEL_COUNT-1].Info);
+			kCut = grids[GRID_LEVEL_COUNT-1].Info.cellCountZ-1; // THIS IS A DEBUG LINE
 			getFlowReportXY( grids, kCut, Bounds, FlowReportOut );
 			float pOut = FlowReportOut.pPhys;
 			
@@ -282,9 +328,9 @@ int main(int argc, char **argv)
 			{
 				if ( iteration+shifter < iterationCount )
 				{
-					historyInletPower[iteration+shifter] = inletPower;
-					historyThrust[iteration+shifter] = FlowReportOut.momentumFlowZPhys;
-					historyTorque[iteration+shifter] = torque;
+					historyInletPower[iteration+shifter] = FlowReportIn.uzPhys;
+					historyThrust[iteration+shifter] = FlowReportIn.pPhys;
+					historyTorque[iteration+shifter] = FlowReportOut.pPhys;
 				}
 			}
 		}
@@ -301,16 +347,26 @@ int main(int argc, char **argv)
 			if ( iteration > 0) std::cout << "GLUPS: " << glups << std::endl;
 			
 			if ( iteration > 0 ) exportHistoryData( historyInletPower, historyThrust, historyTorque, iteration, 0 );
-			
-			float r = 12.0f;
+			/*
+			float r = 14.0f;
 			exportSectionCutPlotToiletPaperZ( grids, r, iteration );
 			float rotatingFrameUy = - ( r / 1000.f ) * angularVelocity;
 			if (system(("python3 ../../include/plotter/plotterRotatingFrame.py " + std::to_string(rotatingFrameUy)).c_str()) != 0) {}
-
+			//if (system("python3 plotter_umag_only.py") != 0) {}
+			
 			const int iCut = grids[GRID_LEVEL_COUNT-1].Info.cellCountX/2;
 			exportSectionCutPlotZY( grids, iCut, iteration+1 );
 			if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+			//if (system("python3 plotter_umag_only.py") != 0) {}
 			
+			int kCut = 0;
+			exportSectionCutPlotXY( grids, kCut, iteration+2 );
+			if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+			
+			kCut = grids[GRID_LEVEL_COUNT-1].Info.cellCountZ-1;
+			exportSectionCutPlotXY( grids, kCut, iteration+3 );
+			if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+			*/
 			lapTimer.reset();
 			lapTimer.start();
 		}

@@ -40,11 +40,14 @@ void fillBitPackedMarkerArray( GridStruct &Grid, const int &upperBound )
 	
 	auto bouncebackMarkerView = Grid.bouncebackMarkerArray.getConstView();
 	auto movingBouncebackMarkerView = Grid.movingBouncebackMarkerArray.getConstView();
+	auto forcedVelocityMarkerView = Grid.forcedVelocityMarkerArray.getConstView();
 	auto deepRefinementMarkerView = Grid.deepRefinementMarkerArray.getConstView();
+	auto changedStateView = Grid.changedStateMarkerArray.getConstView();
 	auto bitPackedMarkerView = Grid.bitPackedMarkerArray.getView();
 	
 	bool useBouncebackMarkerArray = ( Grid.bouncebackMarkerArray.getSize() > 0 );
 	bool useMovingBouncebackMarkerArray = ( Grid.movingBouncebackMarkerArray.getSize() > 0 );
+	bool useForcedVelocityMarkerArray = ( Grid.forcedVelocityMarkerArray.getSize() > 0 );
 	bool useDeepRefinementMarkerArray = ( Grid.deepRefinementMarkerArray.getSize() > 0 );
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
@@ -53,7 +56,9 @@ void fillBitPackedMarkerArray( GridStruct &Grid, const int &upperBound )
 		
 		if ( useBouncebackMarkerArray ) bitPackedMarkerBits[27] = bouncebackMarkerView( cell );
 		if ( useMovingBouncebackMarkerArray ) bitPackedMarkerBits[28] = movingBouncebackMarkerView( cell );
-		if ( useDeepRefinementMarkerArray ) bitPackedMarkerBits[29] = deepRefinementMarkerView( cell );
+		if ( useForcedVelocityMarkerArray ) bitPackedMarkerBits[29] = forcedVelocityMarkerView( cell );
+		if ( useDeepRefinementMarkerArray ) bitPackedMarkerBits[30] = deepRefinementMarkerView( cell );
+		bitPackedMarkerBits[31] = changedStateView( cell );
 		
 		const int iCell = iView[ cell ];
 		const int jCell = jView[ cell ];
@@ -553,21 +558,6 @@ void markKeepCells( GridStruct &Grid, const VoxelizerStruct &Voxelizer, const in
 	markFinestFluid( Grid.keepCellMarkerArray, Voxelizer.rayMapTotal, Grid, upperBound );
 	Grid.keepCellMarkerArray.swap( Grid.markerBuffer );
 	spreadMarkers( Grid.keepCellMarkerArray, Grid.markerBuffer, Grid, upperBound );
-	// the moving bounceback geometry can travel distance up to 2 cells before the grid is fully rebuilt
-	// so we need to keep a 3-cell thick moving bounceback layer (2 layers may become fluid later)
-	// we do this by spreading the keepCell area by 2 more cells
-	// then find intersection of the spread with moving bounceback and add the intersection to original keepCell area
-	// right now the movingBouncebackMarkerArray is not needed -> we will use it as a second buffer to hold the spread
-	Grid.markerBuffer = Grid.keepCellMarkerArray;
-	for ( int spread = 0; spread < 2; spread++ )
-	{
-		Grid.movingBouncebackMarkerArray.swap( Grid.markerBuffer );
-		spreadMarkers( Grid.markerBuffer, Grid.movingBouncebackMarkerArray, Grid, upperBound );
-	}
-	// at this point result of the spread is in markerBuffer
-	// now we stop using the movingBouncebackMarkerArray as a buffer and write actual data into it
-	markFinestBounceback( Grid.movingBouncebackMarkerArray, Voxelizer.rayMapMovingBounceback, Grid, upperBound );
-	Grid.keepCellMarkerArray = Grid.keepCellMarkerArray + Grid.markerBuffer * Grid.movingBouncebackMarkerArray;
 }
 
 void markKeepCells( SkeletonGridStruct &SkeletonGrid, const VoxelizerStruct &Voxelizer )
@@ -576,14 +566,6 @@ void markKeepCells( SkeletonGridStruct &SkeletonGrid, const VoxelizerStruct &Vox
 	markFinestFluid( SkeletonGrid.keepCellMarkerArray, Voxelizer.rayMapTotal, SkeletonGrid );	
 	SkeletonGrid.keepCellMarkerArray.swap( SkeletonGrid.markerBuffer );
 	spreadMarkers( SkeletonGrid.keepCellMarkerArray, SkeletonGrid.markerBuffer, SkeletonGrid );
-	SkeletonGrid.markerBuffer = SkeletonGrid.keepCellMarkerArray;
-	for ( int spread = 0; spread < 2; spread++ )
-	{
-		SkeletonGrid.movingBouncebackMarkerArray.swap( SkeletonGrid.markerBuffer );
-		spreadMarkers( SkeletonGrid.markerBuffer, SkeletonGrid.movingBouncebackMarkerArray, SkeletonGrid );
-	}
-	markFinestBounceback( SkeletonGrid.movingBouncebackMarkerArray, Voxelizer.rayMapMovingBounceback, SkeletonGrid );
-	SkeletonGrid.keepCellMarkerArray = SkeletonGrid.keepCellMarkerArray + SkeletonGrid.markerBuffer * SkeletonGrid.movingBouncebackMarkerArray;
 }
 
 void markRefinementCells( GridStruct &Grid, const VoxelizerStruct &Voxelizer, const int &upperBound )
