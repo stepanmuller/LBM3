@@ -68,6 +68,8 @@ How to handle stationary walls or moving walls with axial symmetry (rotor hub) w
 	In fact, it may be better to use the very first "link" to store the body index because we need to access this first.
 	In addition, allocate 3 float arrays gx, gy, gz, these will store cummulative exerted forcing for each wall adjacent cell,
 	we will write this every timestep.
+	The last link should be used to notify if we are in the interface overlap (because we did not find this so far)
+	so last link = 0 means, dont write the force, we are in an interface overlap, last link=1 means, write force regularly
 
 How to handle rotating geometry
 	For cells that are covered by a rotor, we enforce the rotor velocity via a forcing term.
@@ -95,7 +97,9 @@ How to handle rotating geometry
 		2) if not within bounds, return 0
 		3) identify which large block we are in. Read blockMap[block], if -2 return 0, if -1 return 1. Else, read interpolationArray[64*blockMap[block] + orderWithinBlock]
 		This int is bit packed as discussed previously, unpack it and convert the values to floats, inside this cube do trilinear interpolation. Return result.
-	In addition to the interpolation array, I will allocate 3 more float arrays of the same length: gx, gy, gz. This will be used to store the exerted forcing,
+	In addition to the interpolation array, I will allocate 3 more float arrays: gx, gy, gz. However, to save memory these will be only 3x3x3 within the block. 
+	To ensure no race condition, it is required that the rotor only rotates around one cardinal axis aligned with the LBM grid. 
+	This will be used to store the exerted forcing,
 	but in frame of reference of the rotor. Storing this in the rotor frame is the simplest way I found to avoid having large forcing arrays for every cell. This way,
 	those arrays are as sparse as the rotor is. The forcing must be transformed into the rotor frame! This is because I not only later need to calculate sum
 	of gx, gy, gz but also torque, and so I need to keep correct orientation of the vector, as the arm will be calculated in the rotor frame. Note that this introduces
@@ -177,10 +181,6 @@ void updateGrid( std::vector<GridStruct>& grids, int level )
     }
 }
 
-To solve:
-Detailed description of how the grid levels are going to be generated. 
-I already have most of this in the previous codes I used but need to put it together with some improvements.
-
 What if rotor is not only in the finest level? Do I need a rotorMap for every grid level? -> I guess yes.
 For every level I need to store the rotor with resolution inherited from the particular grid.
 
@@ -209,6 +209,49 @@ How to store the force every step? This can be turned on / off, easy to do, but 
 	Only write any kind of force if the cell is NOT an interface overlap.
 	On coarse grid the interface overlap is the fineToCoarse part. On fine grid the interface overlap is the coarseToFine part. This way I will always write the force only once.
 
+To solve:
+Detailed description of how the grid levels are going to be generated. 
+I already have most of this in the previous codes I used but need to put it together with some improvements.
+
+Okay! Grid generation goes like this.
+Oh, it looks like a nice idea to divide it into multiple functions, all of which take the full list of grids as input and perform some simple operation on it.
+Then I can track how the grid list is looking like along the way and watch out for errors.
+1) launch initializeGrids. This is almost the same as previously. This function fills Info for all grid levels and sets up the skeleton grid.
+2) build voxelizers for every grid level. Each voxelizer must have rayMap for all bodies and one rayMapTotal
+3) launch buildIJKFull
+	If coarsest:
+		markuj skeletonGrid a použij skeletonGrid pro vygenerování IJKFull mé sítě.
+	Po generování IJK seřadit. Po seřazení vyplnit jPlus, kPlus a opravit chybějící periodickým wrapem, myslím že systém na tohle už mám, dá se to dělat tou 2D projekcí.
+	Vyplnit isGeometric. Po tomto kroku můžu začít markovat vše co potřebuju.
+	Zavést všechny různé bool markery co potřebuju typu refinement, deepRefinement, CF, FC, wall, etc.
+	Markovat keepArea, refinement area, etc. To možná ale dělám z pozice jemnější sítě. Použiju ten kód co už mám.
+	Pozor! Někdy při tomto kroku musím dělat enforce interface fluid. Enforce flagy potřebuju poslat zeshora už při tvorbě IJK full. Stejně tak bych měl 
+	poslat něco jako "enforce keep cell" pokud je součástí interfacu. To znamená, tam kde už je hrubší interface nemohu aplikovat další zjemnění.
+4) removeDeepRefinementCells
+	Po vygenerování všech levelů můžu odstranit hrubé deep refinement buňky. Označím ty co chci ponechat, pošlu na ně sken, zkopíruju všechny relevantní data do nových arrays.
+	Staré arrays zapomenu (resize na nulu). Po tomto kroku má každá síť finální IJK, indexy, řazení.
+5) repair jPlus, kPlus + mark geometric validity again
+	Předchozím krokem jsem smazal některé buňky, tedy teď chci vytvořit jPlus, kPlus znova, to můžu udělat tou stejnou funkcí co předtim
+6) build jMinus, kMinus (toto je dočasné, dělám to abych to mohl vyplnit v interfacu kde to potřebuju)
+7) build interface. Build interface index lists, find interface children -> prostě binary search
+	hoď error pokud není dítě nalezeno
+
+8) build wallMap + links
+	this includes identifying which body the wall belongs to and storing its index in the links,
+	so here we will need marking operations again
+	
+9) build list of boundary cells that are not a wall
+
+10) build compressed IJK
+
+11) forget all marker arrays
+	forget non compressed IJK -> need to think more about when exactly this should be done
+
+12) for every grid, generate the rotor struct
+
+13) allocate f and report full memory occupation
+14) fill wall cell fraction using the links into f[0]
+		
 SkeletonGrid
 	Volám jí jako virtuální hrubou strukturovanou síť nad nejhrubším levelem sítě.
 	Má nějaké osekané info
