@@ -66,6 +66,8 @@ How to handle stationary walls or moving walls with axial symmetry (rotor hub) w
 	the BC function knows if it should return the rotor velocity (moving wall) or just zero (stationary wall).
 	This also allows to calculate force on each body separately.
 	In fact, it may be better to use the very first "link" to store the body index because we need to access this first.
+	In addition, allocate 3 float arrays gx, gy, gz, these will store cummulative exerted forcing for each wall adjacent cell,
+	we will write this every timestep.
 
 How to handle rotating geometry
 	For cells that are covered by a rotor, we enforce the rotor velocity via a forcing term.
@@ -76,17 +78,16 @@ How to handle rotating geometry
 	and set 0 immediately)
 	The voxelization and interpolation goes like this:
 	I have the finest LBM grid. I set the bounds with a little overlap and define a voxelizer grid inside it that is 2x finer than the finest LBM grid.
-	This voxelizer grid is collocated (1/8 of points are shared with the LBM grid, this differs from grid refinement where no points are shared)
 	Binary values are assigned to this grid (but I dont allocate this, I just use an efficient raymap to store this information)
-	Next, define the actual interpolation grid. This grid also has 2x finer resolution than the finest LBM grid, but is no longer collocated.
-	Inside every LBM cell there are now 8 rotor interpolation cells. For every of those interpolation cells, I sum the binary values of the
+	Next, define the actual interpolation grid. Beware that this interpolation grid is now collocated 
+	(1/8 of points are shared with the LBM grid, this differs from grid refinement where no points are shared) 
+	This grid also has 2x finer resolution than the finest LBM grid. For every of those interpolation cells, I sum the binary values of the
 	voxelizer, note that the voxelizer points are in the corners of the interpolation cells. This gives a value from 0 to 8, which can be stored in 4 bits.
 	I will code this into an int but also use the remaining bits to store the same information about 7 neighbour cells in the positive directions.
 	This way, to get the interpolation values, all I need is to read a single int from the cell that is the closest to me in the negative directions.
 	Because the rotor is going to be block-like (large blocks of zeros or ones), I will use a larger block structure to greatly save memory. 
-	The large blocks will contain, lets say, 4x4x4 of those interpolation cells. If every single value there is zero, this block receives a -2. If every single value
-	there is one ( or 8, just the one corresponding to full rotor everywhere ), this block receives a -1. If the values are not all the same, this mixed block
-	will receive an integer which tells the order of this mixed block. Then we allocate a second array which contains sectors of 64 ints, those are the "in detail" values and
+	The large blocks will contain, lets say, 4x4x4 of those interpolation cells. If every single value there is zero, this block receives a -1. If at least one values is > 0, 
+	this positive block will receive an integer which tells the order of this positive block. Then we allocate a second array which contains sectors of 64 ints, those are the "in detail" values and
 	the only place where I actually start storing the interpolated values (I can get all the way here using just by browsing the rayMap).
 	They are ordered within the block just like everything else, k/z changes the slowest. Load the needed in detail int from here.
 	How to find volumetric fraction of a cell: 
@@ -94,12 +95,20 @@ How to handle rotating geometry
 		2) if not within bounds, return 0
 		3) identify which large block we are in. Read blockMap[block], if -2 return 0, if -1 return 1. Else, read interpolationArray[64*blockMap[block] + orderWithinBlock]
 		This int is bit packed as discussed previously, unpack it and convert the values to floats, inside this cube do trilinear interpolation. Return result.
+	In addition to the interpolation array, I will allocate 3 more float arrays of the same length: gx, gy, gz. This will be used to store the exerted forcing,
+	but in frame of reference of the rotor. Storing this in the rotor frame is the simplest way I found to avoid having large forcing arrays for every cell. This way,
+	those arrays are as sparse as the rotor is. The forcing must be transformed into the rotor frame! This is because I not only later need to calculate sum
+	of gx, gy, gz but also torque, and so I need to keep correct orientation of the vector, as the arm will be calculated in the rotor frame. Note that this introduces
+	tiny errors: we cannot remember position of the actual LBM cell where the forcing was imposed, and so the arm will be approximated as just the center of the interpolation
+	cell where the interpolation happened. In average, those errors should cancel out, and also they are very small 
+	(if cell is 1mm and rotor is 100mm thats only 1% and that would be very coarse)
+	Note that we are only writing the forcing if the cell doesnt belong to interface overlap! This prevents excessive forcing evaluation on the interfaces
 
 The core function that updates each grid level:
 updateGrid
 1) Loop through all cells
 	Read wallMap
-	if wallMap[cell] == -2 return (= this cell itself is a wall)
+	if wallMap[cell] == -3 return (= this cell itself is a wall)
 	
 	Read compressed IJK -> get iCell, jCell, kCell
 	Read jPlus, kPlus and finish esotwist connectivity as described above
@@ -116,7 +125,7 @@ updateGrid
 	get rotor fraction
 	multiply gx, gy, gz by rotor fraction
 	
-	if wallIndex == -1 (= plain fluid)
+	if wallIndex == -2 or -1 ( -2 is plain fluid BUT in the interface overlap region where force wont be calculated, -1 is plain fluid)
 		applyCollision(f)
 		write f
 		return
@@ -171,50 +180,34 @@ void updateGrid( std::vector<GridStruct>& grids, int level )
 To solve:
 Detailed description of how the grid levels are going to be generated. 
 I already have most of this in the previous codes I used but need to put it together with some improvements.
-Detailed descriptions of how I will track forces on the bodies.
-What if rotor is not only in the finest level? Do I need a rotorMap for every grid level?
+
+What if rotor is not only in the finest level? Do I need a rotorMap for every grid level? -> I guess yes.
+For every level I need to store the rotor with resolution inherited from the particular grid.
+
 I already have the voxelizer and rayMap system but I need to make the rayMap storage more efficient:
 	Instead of storing 32 possible intersections for each ray, I will only store intersection count for each ray,
 	some scan over that and then store not 32 but only the actual intersections that happen.
-			
 	
-
-Cíl:
-Umožnit simulaci celého proudového motoru najednou, samozřejmě i jeho vybraných částí. To vyžaduje:
-- Automatickou tvorbu všech úrovní sítě. 
-	Zjemnění se automaticky zapíná u stěn, poté marker zjemnění projde uživatelskou funkcí getRefinement, kde se dá nechat výchozí, vynutit nebo zablokovat zjemnění.
-	Hrubá síť se v oblasti deep refinementu maže, maximální úspora paměti.
-	Interface se může nacházet na hranici nebo procházet stěnou. Nutno vyřešit.
-	-> Aplikovat okrajové podmínky pro okrajové buňky hned po streamingu. Potom jsou ve všech fluid buňkách validní data a můžu udělat interface komunikaci
-- Přesný interpolovaný bounceback. 
-	Tvorba sítě zatím interpolaci nepotřebuje, buňky budeme markovat stejně jako předtím. 
-	Je nutno zavést voxelizer pro každou síť, ne jen pro tu nejjemnější. Voxelizery by měly být 3: BB, MBB, Total. 
-	-> Otázka dělení objektů - můžu každému objektu přiřadit jeden voxelizer a jednu raymap (pouze během inicializace) a potom mít prostě list wallListů, tím se zjednodušuje i výpočet sil / momentů na jediné těleso
-	Pohyblivou geometrii vyřeším zvlášť -> supersamplovaná mřížka ??
-	Ideální by bylo zmenšit paměťovou náročnost rayMap, vím jak to udělat. Je to jednoduché, protože je statická, vytvoří se to jenom jednou. Celý voxelizer pak můžu zapomenout. 
-	Po vytvoření sítě potřebuju najít list BB a MBB buněk (stačí mi dva listy indexů) a pro ně získat link ratios -> to už v podstatě umim teď
-- Pohyblivá geometrie pomocí supersamplovaného voxelizování?
-	Působení přesně takovým forcingem, aby se vynutila cílová rychlost.
+Detailed description of what to do if interface goes through a wall or an open boundary	
+	-> lets do this simple. 
+	1) all interface fine cells inherit wall/fluid state of their coarse parent. 
+	I will pass the enforce interface fluid / enforce interface solid marker from coarse to fine grid.
+	This still requires a proper definition of the link lengths in such case, but I can set them to 0.5 by default and
+	if a fine cell has "false" enforced state, the link will not get overwritten as in that direction there wont be the wall found at all.
+	Then, fine to coarse interpolation works straight away for both open boundaries and wall adjacent cells.
+	Coarse to fine interpolation: Count how many valid (=geometric fluid neighbour) coarse cell the stencil can find in each direction
+	If the count is not full, turn off quadratic interpolation. Do linear interpolation and use backward / forward differences where needed.
+	If for some direction no neighbour is available, set the derivative to zero in this direction.
 	
-Struktury
+Just an idea: as f[0] for the wall cells, store some representation of their volumetric fraction calculated from the surrounding link lengths. 
+This is just making use of this memory space and it will give more information when visualizing, also an useful check if the links are working.
 
-Grid
-	Pole o délce cellCount
-		27xfloat fArray
-		float reportArray
-		IJK: int iArray, jArray, kArray
-		NBR: int jPlusArray, kPlusArray, jMinusArray, kMinusArray.
-		bool BBMarkerArray
-		bool MBBMarkerArray
-		float16 forcedVelocityMarkerArray
-	Pole o délce rozhraní (+ rezerva v paměti):
-		fineToCoarseIndexArray, fineToCoarseChildArray
-		coarseToFineIndexArray, coarseToFineChildArray
-	Inty:
-		cellCount
-		cellCountX
-		cellCountY
-		cellCountZ
+How to store the force every step? This can be turned on / off, easy to do, but how to store it?
+1) force from interpolated bounceback -> allocate 3 more arrays gx, gy, gz of same length as the number of wall adjacent cells is. Very simple.
+2) force from rotor -> slightly more complicated but still completely doable! 
+	redo the block logic. Store the detailed ints also for fully rotor occupied areas. Then allocate 3 more arrays gx, gy, gz for the rotor! I think this works
+	Only write any kind of force if the cell is NOT an interface overlap.
+	On coarse grid the interface overlap is the fineToCoarse part. On fine grid the interface overlap is the coarseToFine part. This way I will always write the force only once.
 
 SkeletonGrid
 	Volám jí jako virtuální hrubou strukturovanou síť nad nejhrubším levelem sítě.
