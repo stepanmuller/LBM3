@@ -1,39 +1,37 @@
-constexpr float resGlobal = 0.08f; 														// mm
+constexpr float RES_GLOBAL = 3.0f; 	
+constexpr int GRID_LEVEL_COUNT = 2;
+
+const float dtPhysGlobal = 1.f;
+const float nuPhys = 1.f;
 
 #include "../../include/types.h"
 
-std::string STLPathStator = "M-Jet_35_pump_main.STL";
-std::string STLPathRotor = "M-Jet_35_impeller.STL";
-std::string STLPathShaft = "M-Jet_35_shaft.STL";
+std::string STLPathStator = "../../../../ns300/ns300_STATOR.STL";
+std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
+std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
 
 #include "../../include/STLFunctions.h"
+#include "../../include/gridGenerationFunctions.h"
 #include "../../include/voxelizerFunctions.h"
 
 int main(int argc, char **argv)
 {
 	// STLs
-	STLStruct STLStator;
-	readSTL( STLStator, STLPathStator );
-	STLStruct STLRotor;
-	readSTL( STLRotor, STLPathRotor );
-	STLStruct STLShaft;
-	readSTL( STLShaft, STLPathShaft );
-
-	// Voxelizer 
-	VoxelizerStruct Voxelizer;
-	Voxelizer.Info.res = resGlobal;
-	Voxelizer.Info.cellCountX = 370;
-	Voxelizer.Info.cellCountY = 370;
-	Voxelizer.Info.ox = -18.45f;
-	Voxelizer.Info.oy = -18.45f;
-	Voxelizer.Info.oz = -74.4f;
-	Voxelizer.rayMaps.resize( 3 );
-	voxelizeSTL( Voxelizer.rayMaps[0], STLStator, Voxelizer );
-	voxelizeSTL( Voxelizer.rayMaps[1], STLRotor, Voxelizer );
-	voxelizeSTL( Voxelizer.rayMaps[2], STLShaft, Voxelizer );
-	Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
-	sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMaps[1] );
-	sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMaps[2] );
+	std::vector<STLStruct> gridStaticSTLs( 2 );
+	readSTL( gridStaticSTLs[0], STLPathStator );
+	readSTL( gridStaticSTLs[1], STLPathRotorShaft );
+	
+	// grids
+	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
+	BoundsStruct DomainBounds;
+	DomainBounds = gridStaticSTLs[0].Bounds;
+	DomainBounds.zMax = 400.f;
+	DomainBounds.yMax = 1000.f;
+	initializeGridInfo( grids, DomainBounds, 0 );
+	
+	// Voxelizers
+	std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT );
+	initializeVoxelizers( voxelizers, grids, gridStaticSTLs, 0 );
 		
 	return EXIT_SUCCESS;
 }

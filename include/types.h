@@ -87,16 +87,9 @@ struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL; 
 					float res = 1.f; float ox = 0.f; float oy = 0.f; float oz = 0.f; 
 					float nu = 1.f; float dtPhys = 1.f; 
 					int cellCountX = 0; int cellCountY = 0; int cellCountZ = 0; 
-					int cellCount = 0; int cellCountFull = 0; int cellCountOld = 0;
-					int refinementCount = 0; int deepRefinementCount = 0; 
-					int fineToCoarseCount = 0; int coarseToFineCount = 0; int nonReflectiveOutletCount = 0; int nonReflectiveInletCount = 0;
-					int memoryCount = 0; int memoryCountFull = 0; 
-					int fineToCoarseMemoryCount = 0; int coarseToFineMemoryCount = 0; 
-					int nonReflectiveOutletMemoryCount = 0; int nonReflectiveInletMemoryCount = 0; int mbbUpdateMemoryCount = 0;
-					bool esotwistFlipper = 0; int updatesSinceRebuild = 0; int updatesSinceMovingBouncebackUpdate = 0; int updatesSinceForcedVelocityUpdate = 0;
-					float iRegulatorInlet = 0.f; float iRegulatorOutlet = 0.f; 
-					float nonReflectiveOutletRho = 1.f; float nonReflectiveInletRhoZ = 0.f; float nonReflectiveInletRhoImp = 0.f;
-					float torqueReportCumulative = 0.f; };
+					int cellCount = 0; 
+					bool esotwistFlipper = 0; 
+					float iRegulatorInlet = 0.f; float iRegulatorOutlet = 0.f; };
 
 struct MarkerStruct { 	bool fluid = 0; bool bounceback = 0; bool movingBounceback = 0; bool forcedVelocity = 0;
 						bool BCRho = 0; bool BCU = 0; bool nonReflectiveOutlet = 0; bool nonReflectiveInlet = 0;
@@ -151,10 +144,7 @@ struct NBRStruct { 	int self;
 					
 struct NBRHoleMapStruct { IntArray3DType holeStartArray; IntArray2DType startCounterArray; IntArray3DType holeEndArray; IntArray2DType endCounterArray; };
 
-struct SkeletonGridStruct { InfoStruct Info; 
-							IntArrayType intBuffer1; IntArrayType intBuffer2; IntArrayType intBuffer3;
-							NBRHoleMapStruct NBRHoleMap;
-							BoolArrayType keepCellMarkerArray; BoolArrayType movingBouncebackMarkerArray; BoolArrayType markerBuffer; };	
+struct SkeletonGridStruct { InfoStruct Info; };	
 
 struct GridStruct { InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
 					FloatArray2DType fArray; bool esotwistFlipper = false;

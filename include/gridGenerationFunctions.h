@@ -1,6 +1,60 @@
 #pragma once
 
 #include "./types.h"
+
+void initializeGridInfo( std::vector<GridStruct> &grids, const BoundsStruct &Bounds, const int level )
+{
+	const bool iAmCoarsest = ( level == 0 );
+	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
+	
+	GridStruct &Grid = grids[ level ];
+	InfoStruct &Info = Grid.Info;
+	
+	if ( iAmCoarsest )
+	{
+		Info.res = RES_GLOBAL;
+		
+		SkeletonGridStruct &SkeletonGrid = Grid.SkeletonGrid;
+		InfoStruct &SkeletonInfo = SkeletonGrid.Info;
+		SkeletonInfo.res = Info.res * 2.f;
+		SkeletonInfo.cellCountX = static_cast<int>((Bounds.xMax - Bounds.xMin) / SkeletonInfo.res);
+		SkeletonInfo.cellCountY = static_cast<int>((Bounds.yMax - Bounds.yMin) / SkeletonInfo.res);
+		SkeletonInfo.cellCountZ = static_cast<int>((Bounds.zMax - Bounds.zMin) / SkeletonInfo.res);
+		SkeletonInfo.cellCount = SkeletonInfo.cellCountX * SkeletonInfo.cellCountY * SkeletonInfo.cellCountZ;
+		SkeletonInfo.ox = Bounds.xMin + ((Bounds.xMax - Bounds.xMin) - (SkeletonInfo.cellCountX * SkeletonInfo.res) + SkeletonInfo.res) / 2.0f;
+		SkeletonInfo.oy = Bounds.yMin + ((Bounds.yMax - Bounds.yMin) - (SkeletonInfo.cellCountY * SkeletonInfo.res) + SkeletonInfo.res) / 2.0f;
+		SkeletonInfo.oz = Bounds.zMin + ((Bounds.zMax - Bounds.zMin) - (SkeletonInfo.cellCountZ * SkeletonInfo.res) + SkeletonInfo.res) / 2.0f;
+			
+		Info.cellCountX = SkeletonInfo.cellCountX * 2;
+		Info.cellCountY = SkeletonInfo.cellCountY * 2;
+		Info.cellCountZ = SkeletonInfo.cellCountZ * 2;
+		Info.ox = SkeletonInfo.ox - Info.res * 0.5f;
+		Info.oy = SkeletonInfo.oy - Info.res * 0.5f;
+		Info.oz = SkeletonInfo.oz - Info.res * 0.5f;
+		
+		Info.dtPhys = dtPhysGlobal;
+		Info.nu = (Info.dtPhys * nuPhys) / ((Info.res/1000.f) * (Info.res/1000.f));
+	}
+	
+	else
+	{
+		Info.gridID = level;
+		GridStruct &GridCoarse = grids[ level-1 ];
+		Info.res = GridCoarse.Info.res * 0.5f;
+		Info.cellCountX = GridCoarse.Info.cellCountX * 2;
+		Info.cellCountY = GridCoarse.Info.cellCountY * 2;
+		Info.cellCountZ = GridCoarse.Info.cellCountZ * 2;
+		Info.ox = GridCoarse.Info.ox - Info.res * 0.5f;
+		Info.oy = GridCoarse.Info.oy - Info.res * 0.5f;
+		Info.oz = GridCoarse.Info.oz - Info.res * 0.5f;
+		Info.dtPhys = GridCoarse.Info.dtPhys * 0.5f;
+		Info.nu = (Info.dtPhys * nuPhys) / ((Info.res/1000.f) * (Info.res/1000.f));
+	}
+	
+	if ( !iAmFinest ) initializeGridInfo( grids, Bounds, level+1 );
+}
+
+/*
 #include "./genericArrayFunctions.h"
 #include "./voxelizerFunctions.h"
 #include "./NBRFunctions.h"
@@ -546,13 +600,13 @@ void buildFinerGrid( SkeletonGridStruct &SkeletonGrid, GridStruct &GridFine )
 	auto cellLambda6 = [=] __cuda_callable__ ( const int cellFineOld ) mutable
 	{	
 		const int cellSkeleton = parentMapViewFine[ cellFineOld ];
-		/* commenting out: This will never happen for the skeleton grid
-		if ( cellSkeleton < 0 ) // this means the parent cell doesn't exist anymore
-		{
-			oldToFullViewFine[ cellFineOld ] = -1; // if the parent cell doesn't exist, the fine cell won't be created again
-			return;
-		}
-		*/
+		// commenting out: This will never happen for the skeleton grid
+		//if ( cellSkeleton < 0 ) // this means the parent cell doesn't exist anymore
+		//{
+		//	oldToFullViewFine[ cellFineOld ] = -1; // if the parent cell doesn't exist, the fine cell won't be created again
+		//	return;
+		//}
+		
 		bool refinementMarkerSkeleton = refinementMarkerViewSkeleton[ cellSkeleton ];
 		if ( !refinementMarkerSkeleton )
 		{
@@ -1259,74 +1313,4 @@ void rebuildGrids( std::vector<GridStruct> &grids, const VoxelizerStruct &Voxeli
 	}
 	
 }
-
-void initializeGrids( std::vector<GridStruct> &grids, const BoundsStruct &Bounds, const int level )
-{
-	const bool iAmCoarsest = ( level == 0 );
-	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
-	
-	GridStruct &Grid = grids[ level ];
-	InfoStruct &Info = Grid.Info;
-	
-	if ( iAmCoarsest )
-	{
-		SkeletonGridStruct &SkeletonGrid = Grid.SkeletonGrid;
-		InfoStruct &SkeletonInfo = SkeletonGrid.Info;
-		SkeletonInfo.res = Info.res * 2.f;
-		SkeletonInfo.cellCountX = static_cast<int>((Bounds.xMax - Bounds.xMin) / SkeletonInfo.res);
-		SkeletonInfo.cellCountY = static_cast<int>((Bounds.yMax - Bounds.yMin) / SkeletonInfo.res);
-		SkeletonInfo.cellCountZ = static_cast<int>((Bounds.zMax - Bounds.zMin) / SkeletonInfo.res);
-		SkeletonInfo.cellCount = SkeletonInfo.cellCountX * SkeletonInfo.cellCountY * SkeletonInfo.cellCountZ;
-		SkeletonInfo.ox = Bounds.xMin + ((Bounds.xMax - Bounds.xMin) - (SkeletonInfo.cellCountX * SkeletonInfo.res) + SkeletonInfo.res) / 2.0f;
-		SkeletonInfo.oy = Bounds.yMin + ((Bounds.yMax - Bounds.yMin) - (SkeletonInfo.cellCountY * SkeletonInfo.res) + SkeletonInfo.res) / 2.0f;
-		SkeletonInfo.oz = Bounds.zMin + ((Bounds.zMax - Bounds.zMin) - (SkeletonInfo.cellCountZ * SkeletonInfo.res) + SkeletonInfo.res) / 2.0f;
-		SkeletonGrid.intBuffer1.setSize( SkeletonInfo.cellCount );
-		SkeletonGrid.intBuffer2.setSize( SkeletonInfo.cellCount );
-		SkeletonGrid.intBuffer3.setSize( SkeletonInfo.cellCount );
-		SkeletonGrid.keepCellMarkerArray.setSize( SkeletonInfo.cellCount );
-		SkeletonGrid.movingBouncebackMarkerArray.setSize( SkeletonInfo.cellCount );
-		SkeletonGrid.markerBuffer.setSize( SkeletonInfo.cellCount );
-		
-		SkeletonGrid.NBRHoleMap.holeStartArray.setSizes( SkeletonInfo.cellCountX, TNL::max( SkeletonInfo.cellCountY, SkeletonInfo.cellCountZ ), RAY_MAP_DEPTH / 2 );
-		SkeletonGrid.NBRHoleMap.holeEndArray.setSizes( SkeletonInfo.cellCountX, TNL::max( SkeletonInfo.cellCountY, SkeletonInfo.cellCountZ ), RAY_MAP_DEPTH / 2 );
-		SkeletonGrid.NBRHoleMap.startCounterArray.setSizes( SkeletonInfo.cellCountX, TNL::max( SkeletonInfo.cellCountY, SkeletonInfo.cellCountZ ) );
-		SkeletonGrid.NBRHoleMap.endCounterArray.setSizes( SkeletonInfo.cellCountX, TNL::max( SkeletonInfo.cellCountY, SkeletonInfo.cellCountZ ) );
-		
-		Info.gridMemoryBytes += (long long)(3 * 4 + 3 * 1) * (long long)SkeletonInfo.cellCount; // 3 int buffers + 3 marker arrays
-		Info.gridMemoryBytes += (long long)(4) * (long long)(SkeletonInfo.cellCountX * TNL::max( SkeletonInfo.cellCountY, SkeletonInfo.cellCountZ ) * (RAY_MAP_DEPTH / 2 * 2 + 2)); // NBRHoleMap
-			
-		Info.cellCountX = SkeletonInfo.cellCountX * 2;
-		Info.cellCountY = SkeletonInfo.cellCountY * 2;
-		Info.cellCountZ = SkeletonInfo.cellCountZ * 2;
-		Info.ox = SkeletonInfo.ox - Info.res * 0.5f;
-		Info.oy = SkeletonInfo.oy - Info.res * 0.5f;
-		Info.oz = SkeletonInfo.oz - Info.res * 0.5f;
-		
-		Info.dtPhys = dtPhysGlobal;
-		Info.nu = (Info.dtPhys * nuPhys) / ((Info.res/1000.f) * (Info.res/1000.f));
-	}
-	
-	else
-	{
-		Info.gridID = level;
-		GridStruct &GridCoarse = grids[ level-1 ];
-		Info.res = GridCoarse.Info.res * 0.5f;
-		Info.cellCountX = GridCoarse.Info.cellCountX * 2;
-		Info.cellCountY = GridCoarse.Info.cellCountY * 2;
-		Info.cellCountZ = GridCoarse.Info.cellCountZ * 2;
-		Info.ox = GridCoarse.Info.ox - Info.res * 0.5f;
-		Info.oy = GridCoarse.Info.oy - Info.res * 0.5f;
-		Info.oz = GridCoarse.Info.oz - Info.res * 0.5f;
-		Info.dtPhys = GridCoarse.Info.dtPhys * 0.5f;
-		Info.nu = (Info.dtPhys * nuPhys) / ((Info.res/1000.f) * (Info.res/1000.f));
-	}
-	
-	Grid.NBRHoleMap.holeStartArray.setSizes( Info.cellCountX, TNL::max( Info.cellCountY, Info.cellCountZ ), RAY_MAP_DEPTH / 2 );
-	Grid.NBRHoleMap.holeEndArray.setSizes( Info.cellCountX, TNL::max( Info.cellCountY, Info.cellCountZ ), RAY_MAP_DEPTH / 2 );
-	Grid.NBRHoleMap.startCounterArray.setSizes( Info.cellCountX, TNL::max( Info.cellCountY, Info.cellCountZ ) );
-	Grid.NBRHoleMap.endCounterArray.setSizes( Info.cellCountX, TNL::max( Info.cellCountY, Info.cellCountZ ) );
-	
-	Info.gridMemoryBytes += (long long)(4) * (long long)(Info.cellCountX * TNL::max( Info.cellCountY, Info.cellCountZ ) * (RAY_MAP_DEPTH / 2 * 2 + 2)); // NBRHoleMap
-	
-	if ( !iAmFinest ) initializeGrids( grids, Bounds, level+1 );
-}
+*/

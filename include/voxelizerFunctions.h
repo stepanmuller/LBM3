@@ -683,3 +683,27 @@ void sumRayMaps( rayMapStruct &rayMapSum, rayMapStruct &rayMapBonus )
 	const int rayMapMemoryMB = (float)(rayMapElementCount * 4) / 1000000.f;
 	std::cout << "sumRayMaps finished, the resulting rayMap was resized on GPU and now takes " << rayMapMemoryMB << " MB" << std::endl;
 }
+
+void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, const int level )
+{
+	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
+	
+	VoxelizerStruct &Voxelizer = voxelizers[ level ];
+	Voxelizer.Info = grids[ level ].Info;
+	
+	const int rayMapCount = gridStaticSTLs.size();
+	Voxelizer.rayMaps.resize( rayMapCount );
+	
+	for ( int rayMapIndex = 0; rayMapIndex < rayMapCount; rayMapIndex++ ) 
+	{
+		voxelizeSTL( Voxelizer.rayMaps[rayMapIndex], gridStaticSTLs[rayMapIndex], Voxelizer );
+	}
+	
+	Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
+	for ( int bonusIndex = 1; bonusIndex < rayMapCount; bonusIndex++ )
+	{
+		sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMaps[bonusIndex] );
+	}
+	
+	if ( !iAmFinest ) initializeVoxelizers( voxelizers, grids, gridStaticSTLs, level + 1 );
+}
