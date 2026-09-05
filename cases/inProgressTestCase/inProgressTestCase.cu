@@ -1,4 +1,4 @@
-constexpr float RES_GLOBAL = 3.0f; 	
+constexpr float RES_GLOBAL = 1.0f; 	
 constexpr int GRID_LEVEL_COUNT = 2;
 
 const float dtPhysGlobal = 1.f;
@@ -8,7 +8,7 @@ const float nuPhys = 1.f;
 
 std::string STLPathStator = "../../../../ns300/ns300_STATOR.STL";
 std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
-std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
+// std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/gridGenerationFunctions.h"
@@ -32,10 +32,6 @@ int main(int argc, char **argv)
 	// Voxelizers
 	std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT );
 	initializeVoxelizers( voxelizers, grids, gridStaticSTLs, 0 );
-	
-	// Rotor
-	STLStruct STLRotorBlades;
-	readSTL( STLRotorBlades, STLPathRotorBlades );
 		
 	return EXIT_SUCCESS;
 }

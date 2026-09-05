@@ -504,10 +504,6 @@ void voxelizeSTL( rayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		}
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCountX * Info.cellCountY, rayLambda );	
-	
-	const int rayMapElementCount = Info.cellCountX * Info.cellCountY + 1 + totalHitCount;
-	const int rayMapMemoryMB = (float)(rayMapElementCount * 4) / 1000000.f;
-	std::cout << "New rayMap allocated on GPU, it takes " << rayMapMemoryMB << " MB" << std::endl;
 }
 
 void sumRayMaps( rayMapStruct &rayMapSum, rayMapStruct &rayMapBonus )
@@ -678,14 +674,11 @@ void sumRayMaps( rayMapStruct &rayMapSum, rayMapStruct &rayMapBonus )
 	rayMapSum.rayMapArray = resultRayMapArray;
 	rayMapSum.hitCounterScanArray = resultHitCounterScanArray;
 	rayMapSum.totalHitCount = resultTotalHitCount;
-	
-	const int rayMapElementCount = rayMapSum.rayMapArray.getSize() + rayMapSum.hitCounterScanArray.getSize();
-	const int rayMapMemoryMB = (float)(rayMapElementCount * 4) / 1000000.f;
-	std::cout << "sumRayMaps finished, the resulting rayMap was resized on GPU and now takes " << rayMapMemoryMB << " MB" << std::endl;
 }
 
 void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, const int level )
 {
+	std::cout << "Initializing voxelizer for grid level " << level << std::endl; 
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
 	
 	VoxelizerStruct &Voxelizer = voxelizers[ level ];
@@ -694,9 +687,11 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, std::vector
 	const int rayMapCount = gridStaticSTLs.size();
 	Voxelizer.rayMaps.resize( rayMapCount );
 	
+	unsigned long long totalElementCount = 0LL;
 	for ( int rayMapIndex = 0; rayMapIndex < rayMapCount; rayMapIndex++ ) 
 	{
 		voxelizeSTL( Voxelizer.rayMaps[rayMapIndex], gridStaticSTLs[rayMapIndex], Voxelizer );
+		totalElementCount += (long long)Voxelizer.rayMaps[rayMapIndex].rayMapArray.getSize() + (long long)Voxelizer.rayMaps[rayMapIndex].hitCounterScanArray.getSize();
 	}
 	
 	Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
@@ -704,6 +699,11 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, std::vector
 	{
 		sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMaps[bonusIndex] );
 	}
+	totalElementCount += (long long)Voxelizer.rayMapTotal.rayMapArray.getSize() + (long long)Voxelizer.rayMapTotal.hitCounterScanArray.getSize();
+	
+	unsigned long long memoryBytes = 4LL * totalElementCount; // 1 int has 4 Bytes
+	std::cout << "	Done, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
+	std::cout << std::endl;
 	
 	if ( !iAmFinest ) initializeVoxelizers( voxelizers, grids, gridStaticSTLs, level + 1 );
 }

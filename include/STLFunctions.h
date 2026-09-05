@@ -91,7 +91,9 @@ void checkSTLEdges( STLStruct &STL )
 			std::cout << "	Faulty edge on triangle " << triangleIndex << ", ABcount: " << ABcount << ", BCcount: " << BCcount << ", CAcount: " << CAcount << std::endl;
 		}
 	}    
-	std::cout<< "	Number of faulty edges: " << errorCounter << std::endl; 
+	if ( errorCounter == 0 ) std::cout<< "	Check finished, number of faulty edges: " << errorCounter << std::endl; 
+	else std::cout<< "	Check failed, number of faulty edges: " << errorCounter << std::endl; 
+	if ( errorCounter > 0 ) throw std::runtime_error("Check failed, the STL has some faulty edges which aren't shared between exactly two triangles. This means the STL is not closed. Please fix the STL file.");
 }
 
 void readSTL( STLStruct &STL, const std::string &filename )
@@ -226,7 +228,8 @@ void readSTL( STLStruct &STL, const std::string &filename )
 	STL.raysPerTriangleCounterArray.setValue( 0 );
 	STL.threadToTriangleMapArray.setSize( STL.triangleCount * STL.threadsToTrianglesRatio );
 	STL.threadToTriangleMapArray.setValue( 0 );
-	std::cout << "	Read and check finished" << std::endl;
+	unsigned long long memoryBytes = 4LL * 9LL * STL.triangleCount; // 1 float has 4 Bytes, 9 floats per triangle
+	std::cout << "	Done, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
 	std::cout << std::endl;
 }
 
