@@ -148,33 +148,10 @@ struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; 
 
 struct GridStruct { InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
 					FloatArray2DType fArray; bool esotwistFlipper = false;
-					IntArrayType parentMapArray; IntArrayType childMapArray; 
-					IntArrayType fineToCoarseIndexArray; IntArrayType coarseToFineIndexArray; 
-					IntArrayType nonReflectiveOutletIndexArray; IntArrayType nonReflectiveInletIndexArray; 
-					IntArrayType newlyFluidIndexArray; IntArrayType newlyMBBIndexArray; FloatArray2DType fBufferArray;
-					IntArrayType &intBuffer1; // This will point to NBR.jMinusArray which we temporarily use as a buffer and then refill it correctly
-					IntArrayType &intBuffer2; // This will point to NBR.kMinusArray which we temporarily use as a buffer and then refill it correctly
-					IntArrayType &intBuffer3; // This will point to bitPackedMarkerArray which we temporarily use as a buffer and then refill it correctly
-					NBRHoleMapStruct NBRHoleMap;
 					BoolArrayType keepCellMarkerArray; 
-					BoolArrayType bouncebackMarkerArray; BoolArrayType movingBouncebackMarkerArray; BoolArrayType forcedVelocityMarkerArray; BoolArrayType changedStateMarkerArray;
 					BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
 					BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
-					BoolArrayType markerBuffer;
-					IntArrayType bitPackedMarkerArray; 
-					IntArrayType interpolatedBBCellList;
-					FloatArray2DType interpolatedBBLinkLengths;
-					// bits 1-26 = isFluid? tells if the cell from which f[i] is streamed from is geometric fluid neighbour.
-					// bit 27 = bouncebackMarker
-					// bit 28 = movingBouncebackMarker
-					// bit 29 = deepRefinementMarker
-					SkeletonGridStruct SkeletonGrid;
-					GridStruct()
-						: intBuffer1(NBR.jMinusArray),
-						  intBuffer2(NBR.kMinusArray),
-						  intBuffer3(bitPackedMarkerArray)
-					{}
-					}; 		
+					SkeletonGridStruct SkeletonGrid; }; 		
 					
 struct STLStructCPU { 	int triangleCount;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 

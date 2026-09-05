@@ -79,61 +79,48 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 		markKeepCells( SkeletonGrid, voxelizers );
 		Info.cellCount = 8 * TNL::sum( SkeletonGrid.keepCellMarkerArray );
 	}
-	/*
 	else
 	{
-		markRefinementCells( GridCoarse, Voxelizer, GridCoarse.Info.cellCount );
-		InfoCoarse.deepRefinementCount = countOnesInBoolArray( GridCoarse.deepRefinementMarkerArray, InfoCoarse.cellCount );
-		InfoCoarse.refinementCount = countOnesInBoolArray( GridCoarse.refinementMarkerArray, InfoCoarse.cellCount );
-		InfoCoarse.fineToCoarseCount = countOnesInBoolArray( GridCoarse.fineToCoarseMarkerArray, InfoCoarse.cellCount );
-		InfoCoarse.coarseToFineCount = InfoCoarse.refinementCount - InfoCoarse.deepRefinementCount - InfoCoarse.fineToCoarseCount;
-		Info.cellCountFull = 8 * InfoCoarse.refinementCount;
+		markRefinementCells( GridCoarse, voxelizers );
+		Info.cellCount = 8 * TNL::sum( GridCoarse.refinementMarkerArray );
 	}
-	
-	if ( initPass )
+	Info.memoryCountFull = Info.cellCountFull + ( ( Info.cellCountFull * MEMORY_RESERVE_PERCENTAGE ) / 100 );
+	Grid.IJK.iArray.setSize( Info.memoryCountFull );
+	Grid.IJK.jArray.setSize( Info.memoryCountFull );
+	Grid.IJK.kArray.setSize( Info.memoryCountFull );
+	Grid.NBR.jPlusArray.setSize( Info.memoryCountFull );
+	Grid.NBR.kPlusArray.setSize( Info.memoryCountFull );
+	Grid.bitPackedMarkerArray.setSize( Info.memoryCountFull );
+	Grid.NBR.jMinusArray.setSize( Info.memoryCountFull );
+	Grid.NBR.kMinusArray.setSize( Info.memoryCountFull );
+	Grid.NBR.isGeometricBitPackedMarkerArray.setSize( Info.memoryCountFull );
+	Grid.parentMapArray.setSize( Info.memoryCountFull );
+	Grid.keepCellMarkerArray.setSize( Info.memoryCountFull );	
+	Grid.movingBouncebackMarkerArray.setSize( Info.memoryCountFull );
+	Grid.forcedVelocityMarkerArray.setSize( Info.memoryCountFull );
+	Grid.changedStateMarkerArray.setSize( Info.memoryCountFull ); Grid.changedStateMarkerArray.setValue( false );
+	Grid.markerBuffer.setSize( Info.memoryCountFull );
+	Info.mbbUpdateMemoryCount = ( ( Info.cellCountFull * MEMORY_MBB_UPDATE_PERCENTAGE ) / 100 );
+	Grid.newlyFluidIndexArray.setSize( Info.mbbUpdateMemoryCount );
+	Grid.newlyMBBIndexArray.setSize( Info.mbbUpdateMemoryCount );
+	Grid.fBufferArray.setSizes( 27, Info.mbbUpdateMemoryCount );
+	Info.gridMemoryBytes += (long long)(9 * 4 + 5 * 1 + 1 * 1) * (long long)(Info.memoryCountFull); // 9 int arrays, 5 bool arrays, 1 uint8_t
+	Info.gridMemoryBytes += (long long)(2 * 4 + 27 * 4) * (long long)(Info.mbbUpdateMemoryCount); // 2 int arrays, 27 float arrays
+	if ( iAmFinest )
 	{
-		Info.memoryCountFull = Info.cellCountFull + ( ( Info.cellCountFull * MEMORY_RESERVE_PERCENTAGE ) / 100 );
-		Grid.IJK.iArray.setSize( Info.memoryCountFull );
-		Grid.IJK.jArray.setSize( Info.memoryCountFull );
-		Grid.IJK.kArray.setSize( Info.memoryCountFull );
-		Grid.NBR.jPlusArray.setSize( Info.memoryCountFull );
-		Grid.NBR.kPlusArray.setSize( Info.memoryCountFull );
-		Grid.bitPackedMarkerArray.setSize( Info.memoryCountFull );
-		Grid.NBR.jMinusArray.setSize( Info.memoryCountFull );
-		Grid.NBR.kMinusArray.setSize( Info.memoryCountFull );
-		Grid.NBR.isGeometricBitPackedMarkerArray.setSize( Info.memoryCountFull );
-		Grid.parentMapArray.setSize( Info.memoryCountFull );
-		Grid.keepCellMarkerArray.setSize( Info.memoryCountFull );	
-		Grid.movingBouncebackMarkerArray.setSize( Info.memoryCountFull );
-		Grid.forcedVelocityMarkerArray.setSize( Info.memoryCountFull );
-		Grid.changedStateMarkerArray.setSize( Info.memoryCountFull ); Grid.changedStateMarkerArray.setValue( false );
-		Grid.markerBuffer.setSize( Info.memoryCountFull );
-		Info.mbbUpdateMemoryCount = ( ( Info.cellCountFull * MEMORY_MBB_UPDATE_PERCENTAGE ) / 100 );
-		Grid.newlyFluidIndexArray.setSize( Info.mbbUpdateMemoryCount );
-		Grid.newlyMBBIndexArray.setSize( Info.mbbUpdateMemoryCount );
-		Grid.fBufferArray.setSizes( 27, Info.mbbUpdateMemoryCount );
-		Info.gridMemoryBytes += (long long)(9 * 4 + 5 * 1 + 1 * 1) * (long long)(Info.memoryCountFull); // 9 int arrays, 5 bool arrays, 1 uint8_t
-		Info.gridMemoryBytes += (long long)(2 * 4 + 27 * 4) * (long long)(Info.mbbUpdateMemoryCount); // 2 int arrays, 27 float arrays
-		if ( iAmFinest )
-		{
-			Grid.bouncebackMarkerArray.setSize( Info.memoryCountFull );
-			Info.gridMemoryBytes += (1 * 1) * (Info.memoryCountFull); // 1 bool array
-		}
-		else
-		{
-			Grid.childMapArray.setSize( Info.memoryCountFull );
-			Grid.refinementMarkerArray.setSize( Info.memoryCountFull );
-			Grid.deepRefinementMarkerArray.setSize( Info.memoryCountFull );
-			Grid.fineToCoarseMarkerArray.setSize( Info.memoryCountFull );
-			Grid.coarseToFineMarkerArray.setSize( Info.memoryCountFull );
-			Info.gridMemoryBytes += (long long)(1 * 4 + 4 * 1) * (long long)(Info.memoryCountFull); // 1 int array, 4 bool arrays
-		}
+		Grid.bouncebackMarkerArray.setSize( Info.memoryCountFull );
+		Info.gridMemoryBytes += (1 * 1) * (Info.memoryCountFull); // 1 bool array
 	}
-	else if ( Info.cellCountFull > Info.memoryCountFull )
+	else
 	{
-		std::cout << "rebuildGrid failed on level " << level << ", memoryCountFull = " << Info.memoryCountFull << ", cellCountFull = " << Info.cellCountFull << std::endl;
-		throw std::runtime_error("rebuildGrid failed, cellCountFull exceeded allocated memory. Try increasing MEMORY_RESERVE_PERCENTAGE in your main file.");
+		Grid.childMapArray.setSize( Info.memoryCountFull );
+		Grid.refinementMarkerArray.setSize( Info.memoryCountFull );
+		Grid.deepRefinementMarkerArray.setSize( Info.memoryCountFull );
+		Grid.fineToCoarseMarkerArray.setSize( Info.memoryCountFull );
+		Grid.coarseToFineMarkerArray.setSize( Info.memoryCountFull );
+		Info.gridMemoryBytes += (long long)(1 * 4 + 4 * 1) * (long long)(Info.memoryCountFull); // 1 int array, 4 bool arrays
 	}
+	/*
 	// 3) Build our grid (we are the "finer grid" with respect to the grid we are taking spatial information from)
 	
 	if ( iAmCoarsest ) buildFinerGrid( SkeletonGrid, Grid );
