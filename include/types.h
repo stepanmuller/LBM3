@@ -123,7 +123,7 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
-struct rayMapStruct { int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; };
+struct rayMapStruct { int gridID = 0; int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; };
 
 struct VoxelizerStruct { InfoStruct Info; std::vector<rayMapStruct> rayMaps; rayMapStruct rayMapTotal; };
 
@@ -144,7 +144,7 @@ struct NBRStruct { 	int self;
 					
 struct NBRHoleMapStruct { IntArray3DType holeStartArray; IntArray2DType startCounterArray; IntArray3DType holeEndArray; IntArray2DType endCounterArray; };
 
-struct SkeletonGridStruct { InfoStruct Info; };	
+struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; };
 
 struct GridStruct { InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
 					FloatArray2DType fArray; bool esotwistFlipper = false;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./types.h"
+#include "./markerFunctions.h"
 
 void initializeGridInfo( std::vector<GridStruct> &grids, const BoundsStruct &Bounds, const int level )
 {
@@ -52,6 +53,413 @@ void initializeGridInfo( std::vector<GridStruct> &grids, const BoundsStruct &Bou
 	}
 	
 	if ( !iAmFinest ) initializeGridInfo( grids, Bounds, level+1 );
+}
+
+void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerStruct> &voxelizers, const int level )
+// Builds uncompressed full IJK for all grid levels recursively. 
+// "Full" IJK means that the area on coarse grid that has a finer grid on top does not get deleted (yet)
+{
+	const bool iAmCoarsest = ( level == 0 );
+	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
+	
+	GridStruct &Grid = grids[ level ];	
+	InfoStruct &Info = Grid.Info;	
+	
+	SkeletonGridStruct &SkeletonGrid = Grid.SkeletonGrid;
+	InfoStruct &SkeletonInfo = SkeletonGrid.Info;
+	
+	static GridStruct dummyGrid; // if I am the coarsest grid myself, here Im fooling C++ to think there is a coarser grid than me, muhehe
+    GridStruct &GridCoarse = iAmCoarsest ? dummyGrid : grids[ level - 1 ];
+	InfoStruct &InfoCoarse = GridCoarse.Info;
+	
+	// 1) Mark refinement area
+	if ( iAmCoarsest )
+	{
+		SkeletonGrid.keepCellMarkerArray.setSize( SkeletonInfo.cellCount );
+		markKeepCells( SkeletonGrid, voxelizers );
+		Info.cellCount = 8 * TNL::sum( SkeletonGrid.keepCellMarkerArray );
+	}
+	/*
+	else
+	{
+		markRefinementCells( GridCoarse, Voxelizer, GridCoarse.Info.cellCount );
+		InfoCoarse.deepRefinementCount = countOnesInBoolArray( GridCoarse.deepRefinementMarkerArray, InfoCoarse.cellCount );
+		InfoCoarse.refinementCount = countOnesInBoolArray( GridCoarse.refinementMarkerArray, InfoCoarse.cellCount );
+		InfoCoarse.fineToCoarseCount = countOnesInBoolArray( GridCoarse.fineToCoarseMarkerArray, InfoCoarse.cellCount );
+		InfoCoarse.coarseToFineCount = InfoCoarse.refinementCount - InfoCoarse.deepRefinementCount - InfoCoarse.fineToCoarseCount;
+		Info.cellCountFull = 8 * InfoCoarse.refinementCount;
+	}
+	
+	if ( initPass )
+	{
+		Info.memoryCountFull = Info.cellCountFull + ( ( Info.cellCountFull * MEMORY_RESERVE_PERCENTAGE ) / 100 );
+		Grid.IJK.iArray.setSize( Info.memoryCountFull );
+		Grid.IJK.jArray.setSize( Info.memoryCountFull );
+		Grid.IJK.kArray.setSize( Info.memoryCountFull );
+		Grid.NBR.jPlusArray.setSize( Info.memoryCountFull );
+		Grid.NBR.kPlusArray.setSize( Info.memoryCountFull );
+		Grid.bitPackedMarkerArray.setSize( Info.memoryCountFull );
+		Grid.NBR.jMinusArray.setSize( Info.memoryCountFull );
+		Grid.NBR.kMinusArray.setSize( Info.memoryCountFull );
+		Grid.NBR.isGeometricBitPackedMarkerArray.setSize( Info.memoryCountFull );
+		Grid.parentMapArray.setSize( Info.memoryCountFull );
+		Grid.keepCellMarkerArray.setSize( Info.memoryCountFull );	
+		Grid.movingBouncebackMarkerArray.setSize( Info.memoryCountFull );
+		Grid.forcedVelocityMarkerArray.setSize( Info.memoryCountFull );
+		Grid.changedStateMarkerArray.setSize( Info.memoryCountFull ); Grid.changedStateMarkerArray.setValue( false );
+		Grid.markerBuffer.setSize( Info.memoryCountFull );
+		Info.mbbUpdateMemoryCount = ( ( Info.cellCountFull * MEMORY_MBB_UPDATE_PERCENTAGE ) / 100 );
+		Grid.newlyFluidIndexArray.setSize( Info.mbbUpdateMemoryCount );
+		Grid.newlyMBBIndexArray.setSize( Info.mbbUpdateMemoryCount );
+		Grid.fBufferArray.setSizes( 27, Info.mbbUpdateMemoryCount );
+		Info.gridMemoryBytes += (long long)(9 * 4 + 5 * 1 + 1 * 1) * (long long)(Info.memoryCountFull); // 9 int arrays, 5 bool arrays, 1 uint8_t
+		Info.gridMemoryBytes += (long long)(2 * 4 + 27 * 4) * (long long)(Info.mbbUpdateMemoryCount); // 2 int arrays, 27 float arrays
+		if ( iAmFinest )
+		{
+			Grid.bouncebackMarkerArray.setSize( Info.memoryCountFull );
+			Info.gridMemoryBytes += (1 * 1) * (Info.memoryCountFull); // 1 bool array
+		}
+		else
+		{
+			Grid.childMapArray.setSize( Info.memoryCountFull );
+			Grid.refinementMarkerArray.setSize( Info.memoryCountFull );
+			Grid.deepRefinementMarkerArray.setSize( Info.memoryCountFull );
+			Grid.fineToCoarseMarkerArray.setSize( Info.memoryCountFull );
+			Grid.coarseToFineMarkerArray.setSize( Info.memoryCountFull );
+			Info.gridMemoryBytes += (long long)(1 * 4 + 4 * 1) * (long long)(Info.memoryCountFull); // 1 int array, 4 bool arrays
+		}
+	}
+	else if ( Info.cellCountFull > Info.memoryCountFull )
+	{
+		std::cout << "rebuildGrid failed on level " << level << ", memoryCountFull = " << Info.memoryCountFull << ", cellCountFull = " << Info.cellCountFull << std::endl;
+		throw std::runtime_error("rebuildGrid failed, cellCountFull exceeded allocated memory. Try increasing MEMORY_RESERVE_PERCENTAGE in your main file.");
+	}
+	// 3) Build our grid (we are the "finer grid" with respect to the grid we are taking spatial information from)
+	
+	if ( iAmCoarsest ) buildFinerGrid( SkeletonGrid, Grid );
+	else buildFinerGrid( GridCoarse, Grid );
+	IntArrayType &oldToFullArray = Grid.intBuffer1; // We cannot touch intBuffer1 now!
+	// 4) Get rid of the cells that are deep inside solid. Only keep the necessary ones, mark them in keepCellMarkerArray
+	markKeepCells( Grid, Voxelizer, Info.cellCountFull );
+	Info.cellCount = countOnesInBoolArray( Grid.keepCellMarkerArray, Info.cellCountFull );
+	
+	if ( initPass )
+	{
+		Info.memoryCount = Info.cellCount + ( ( Info.cellCount * MEMORY_RESERVE_PERCENTAGE ) / 100 );
+		Grid.fArray.setSizes( 28, Info.memoryCount );
+		Info.gridMemoryBytes += (long long)(4 * 28) * (long long)(Info.memoryCount); // 28 float arrays
+	}
+	else if ( Info.cellCount > Info.memoryCount )
+	{
+		std::cout << "rebuildGrid failed on level " << level << ", memoryCount = " << Info.memoryCount << ", cellCount = " << Info.cellCount << std::endl;
+		throw std::runtime_error("rebuildGrid failed, cellCount exceeded allocated memory. Try increasing MEMORY_RESERVE_PERCENTAGE in your main file.");
+	}
+	
+	// 5) Now we know which cells to keep, skip the unmarked ones in main NBR arrays
+	int jPlus, kPlus;
+	jPlus = 1; kPlus = 0;
+	skipUnmarkedNBRArray( Grid.NBR.jPlusArray, Grid.keepCellMarkerArray, jPlus, kPlus, Grid, Info.cellCountFull ); 
+	jPlus = 0; kPlus = 1;
+	skipUnmarkedNBRArray( Grid.NBR.kPlusArray, Grid.keepCellMarkerArray, jPlus, kPlus, Grid, Info.cellCountFull ); 
+	
+	// 6) We already have oldToFullArray from step 3, now let's build fullToKeepArray map
+	IntArrayType &fullToKeepArray = Grid.intBuffer2;
+	intArrayFromBoolArray( fullToKeepArray, Grid.keepCellMarkerArray, Info.cellCountFull );
+	TNL::Algorithms::inplaceExclusiveScan( fullToKeepArray, 0, Info.cellCountFull, TNL::Plus{} );
+
+	// 7) IJK, NBR full to keep transformation
+	fullToKeepTransform( Grid.IJK.iArray, Grid.keepCellMarkerArray, fullToKeepArray, Grid.intBuffer3, Info.cellCountFull );
+	fullToKeepTransform( Grid.IJK.jArray, Grid.keepCellMarkerArray, fullToKeepArray, Grid.intBuffer3, Info.cellCountFull );
+	fullToKeepTransform( Grid.IJK.kArray, Grid.keepCellMarkerArray, fullToKeepArray, Grid.intBuffer3, Info.cellCountFull );
+	fullToKeepTransformWithIndexRepair( Grid.NBR.jPlusArray, Grid.keepCellMarkerArray, fullToKeepArray, Grid.intBuffer3, Info.cellCountFull );
+	fullToKeepTransformWithIndexRepair( Grid.NBR.kPlusArray, Grid.keepCellMarkerArray, fullToKeepArray, Grid.intBuffer3, Info.cellCountFull );
+	fullToKeepTransform( Grid.parentMapArray, Grid.keepCellMarkerArray, fullToKeepArray, Grid.intBuffer3, Info.cellCountFull );
+
+	// 8) transform childMapArray of the coarser grid
+	if ( !iAmCoarsest )
+	{
+		auto childMapView = GridCoarse.childMapArray.getView();
+		auto keepCellMarkerView = Grid.keepCellMarkerArray.getConstView();
+		auto fullToKeepView = fullToKeepArray.getConstView();
+		auto cellLambda = [=] __cuda_callable__ ( const int cellCoarse ) mutable
+		{	
+			const int cellFine = childMapView[ cellCoarse ];
+			if ( cellFine < 0 ) return;
+			if ( keepCellMarkerView[ cellFine ] )
+			{
+				const int newIndex = fullToKeepView[ cellFine ];
+				childMapView[ cellCoarse ] = newIndex;
+			}
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.Info.cellCount, cellLambda );
+	}
+	
+	if ( !initPass )
+	{
+		// 9) build oldToKeepArray map
+		IntArrayType &oldToKeepArray = Grid.intBuffer3;
+		auto oldToFullView = oldToFullArray.getConstView(); // we have been holding this since step 3
+		auto fullToKeepView = fullToKeepArray.getConstView();
+		auto oldToKeepView = oldToKeepArray.getView();
+		auto cellLambda = [=] __cuda_callable__ ( const int cellOld ) mutable
+		{	
+			const int oldToFullIndex = oldToFullView[ cellOld ];
+			if ( oldToFullIndex > 0 ) oldToKeepView[ cellOld ] = fullToKeepView[ oldToFullIndex ];
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCountOld, cellLambda );
+
+		// 10) fArray old to keep transformation
+		oldToKeepTransform( Grid );
+		
+		// 11) we changed our indexes, so we want to repair parentMapArray of the next finer grid
+		if ( !iAmFinest )
+		{
+			auto parentMapView = grids[level+1].parentMapArray.getView();
+			auto oldToKeepView = oldToKeepArray.getView();
+			auto cellLambda = [=] __cuda_callable__ ( const int cellFine ) mutable
+			{	
+				const int cellCoarseOld = parentMapView[ cellFine ];
+				const int cellCoarseNew = oldToKeepView[ cellCoarseOld ];
+				parentMapView[ cellFine ] = cellCoarseNew;
+			};
+			TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, grids[level+1].Info.cellCount, cellLambda );
+		}
+	}
+	// 12) build interface lists of the coarse grid
+	if ( !iAmCoarsest )
+	{
+		// fine to coarse
+		GridCoarse.Info.fineToCoarseCount = countOnesInBoolArray( GridCoarse.fineToCoarseMarkerArray, GridCoarse.Info.cellCount );
+		if ( initPass )
+		{
+			InfoCoarse.fineToCoarseMemoryCount = GridCoarse.Info.fineToCoarseCount + ( ( GridCoarse.Info.fineToCoarseCount * MEMORY_RESERVE_PERCENTAGE_INTERFACE ) / 100 );
+			GridCoarse.fineToCoarseIndexArray.setSize( InfoCoarse.fineToCoarseMemoryCount );
+			InfoCoarse.gridMemoryBytes += (long long)(4) * (long long)(InfoCoarse.fineToCoarseMemoryCount); // 1 int array
+		}
+		else if ( GridCoarse.Info.fineToCoarseCount > GridCoarse.Info.fineToCoarseMemoryCount )
+		{
+			std::cout 	<< "rebuildGrid failed on level " << level << ", fineToCoarseMemoryCount = " << GridCoarse.Info.fineToCoarseMemoryCount 
+						<< ", fineToCoarseCount = " << GridCoarse.Info.fineToCoarseCount << std::endl;
+			throw std::runtime_error("rebuildGrid failed, fineToCoarseCount exceeded allocated memory. Try increasing MEMORY_RESERVE_PERCENTAGE_INTERFACE in your main file.");
+		}
+		intArrayFromBoolArray( GridCoarse.intBuffer1, GridCoarse.fineToCoarseMarkerArray, GridCoarse.Info.cellCount );
+		TNL::Algorithms::inplaceExclusiveScan( GridCoarse.intBuffer1, 0, GridCoarse.Info.cellCount, TNL::Plus{} );
+		auto fineToCoarseMarkerView = GridCoarse.fineToCoarseMarkerArray.getConstView();
+		auto intBuffer1View = GridCoarse.intBuffer1.getView();
+		auto fineToCoarseIndexView = GridCoarse.fineToCoarseIndexArray.getView();
+		auto cellLambdaFineToCoarse = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			if ( fineToCoarseMarkerView[ cell ] )
+			{
+				const int index = intBuffer1View[ cell ];
+				fineToCoarseIndexView[ index ] = cell;
+			}
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.Info.cellCount, cellLambdaFineToCoarse );
+		
+		// coarse to fine
+		GridCoarse.Info.coarseToFineCount = countOnesInBoolArray( GridCoarse.coarseToFineMarkerArray, GridCoarse.Info.cellCount );
+		if ( initPass )
+		{
+			InfoCoarse.coarseToFineMemoryCount = GridCoarse.Info.coarseToFineCount + ( ( GridCoarse.Info.coarseToFineCount * MEMORY_RESERVE_PERCENTAGE_INTERFACE ) / 100 );
+			GridCoarse.coarseToFineIndexArray.setSize( InfoCoarse.coarseToFineMemoryCount );
+			InfoCoarse.gridMemoryBytes += (long long)(4) * (long long)(InfoCoarse.coarseToFineMemoryCount); // 1 int array
+		}
+		else if ( GridCoarse.Info.coarseToFineCount > GridCoarse.Info.coarseToFineMemoryCount )
+		{
+			std::cout 	<< "rebuildGrid failed on level " << level << ", coarseToFineMemoryCount = " << GridCoarse.Info.coarseToFineMemoryCount 
+						<< ", coarseToFineCount = " << GridCoarse.Info.coarseToFineCount << std::endl;
+			throw std::runtime_error("rebuildGrid failed, coarseToFineCount exceeded allocated memory. Try increasing MEMORY_RESERVE_PERCENTAGE_INTERFACE in your main file.");
+		}
+		intArrayFromBoolArray( GridCoarse.intBuffer1, GridCoarse.coarseToFineMarkerArray, GridCoarse.Info.cellCount );
+		TNL::Algorithms::inplaceExclusiveScan( GridCoarse.intBuffer1, 0, GridCoarse.Info.cellCount, TNL::Plus{} );
+		auto coarseToFineMarkerView = GridCoarse.coarseToFineMarkerArray.getConstView();
+		// auto intBuffer1View = GridCoarse.intBuffer1.getView(); // already declared
+		auto coarseToFineIndexView = GridCoarse.coarseToFineIndexArray.getView();
+		auto cellLambdaCoarseToFine = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			if ( coarseToFineMarkerView[ cell ] )
+			{
+				const int index = intBuffer1View[ cell ];
+				coarseToFineIndexView[ index ] = cell;
+			}
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.Info.cellCount, cellLambdaCoarseToFine );
+	}
+	
+	// 13) build non reflective outlet cell list for the finest grid
+	if ( iAmFinest )
+	{
+		applyNonReflectiveOutletMarker( Grid.markerBuffer, Grid, Info.cellCount );
+		Info.nonReflectiveOutletCount = countOnesInBoolArray( Grid.markerBuffer, Info.cellCount );
+		if ( initPass )
+		{
+			Info.nonReflectiveOutletMemoryCount = Info.nonReflectiveOutletCount + ( ( Info.nonReflectiveOutletCount * MEMORY_RESERVE_PERCENTAGE_INTERFACE ) / 100 );
+			Grid.nonReflectiveOutletIndexArray.setSize( Info.nonReflectiveOutletMemoryCount );
+			Info.gridMemoryBytes += (long long)(4) * (long long)(Info.nonReflectiveOutletMemoryCount); // 1 int array
+		}
+		else if ( Info.nonReflectiveOutletCount > Info.nonReflectiveOutletMemoryCount )
+		{
+			std::cout 	<< "rebuildGrid failed on level " << level << ", nonReflectiveOutletMemoryCount = " << Info.nonReflectiveOutletMemoryCount 
+						<< ", nonReflectiveOutletCount = " << GridCoarse.Info.nonReflectiveOutletCount << std::endl;
+			throw std::runtime_error("rebuildGrid failed, nonReflectiveOutletCount exceeded allocated memory. Try increasing MEMORY_RESERVE_PERCENTAGE_INTERFACE in your main file.");
+		}
+		intArrayFromBoolArray( Grid.intBuffer1, Grid.markerBuffer, Grid.Info.cellCount );
+		TNL::Algorithms::inplaceExclusiveScan( Grid.intBuffer1, 0, Grid.Info.cellCount, TNL::Plus{} );
+		auto nonReflectiveOutletMarkerView = Grid.markerBuffer.getConstView();
+		auto intBuffer1View = Grid.intBuffer1.getConstView();
+		auto nonReflectiveOutletIndexView = Grid.nonReflectiveOutletIndexArray.getView();
+		auto cellLambdaNonReflectiveOutlet = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			if ( nonReflectiveOutletMarkerView[ cell ] )
+			{
+				const int index = intBuffer1View[ cell ];
+				nonReflectiveOutletIndexView[ index ] = cell;
+			}
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, cellLambdaNonReflectiveOutlet );
+	}
+	
+	// 13) build non reflective inlet cell list for the finest grid
+	if ( iAmFinest )
+	{
+		applyNonReflectiveInletMarker( Grid.markerBuffer, Grid, Info.cellCount );
+		Info.nonReflectiveInletCount = countOnesInBoolArray( Grid.markerBuffer, Info.cellCount );
+		if ( initPass )
+		{
+			Info.nonReflectiveInletMemoryCount = Info.nonReflectiveInletCount + ( ( Info.nonReflectiveInletCount * MEMORY_RESERVE_PERCENTAGE_INTERFACE ) / 100 );
+			Grid.nonReflectiveInletIndexArray.setSize( Info.nonReflectiveInletMemoryCount );
+			Info.gridMemoryBytes += (long long)(4) * (long long)(Info.nonReflectiveInletMemoryCount); // 1 int array
+		}
+		else if ( Info.nonReflectiveInletCount > Info.nonReflectiveInletMemoryCount )
+		{
+			std::cout 	<< "rebuildGrid failed on level " << level << ", nonReflectiveInletMemoryCount = " << Info.nonReflectiveInletMemoryCount 
+						<< ", nonReflectiveInletCount = " << GridCoarse.Info.nonReflectiveInletCount << std::endl;
+			throw std::runtime_error("rebuildGrid failed, nonReflectiveInletCount exceeded allocated memory. Try increasing MEMORY_RESERVE_PERCENTAGE_INTERFACE in your main file.");
+		}
+		intArrayFromBoolArray( Grid.intBuffer1, Grid.markerBuffer, Grid.Info.cellCount );
+		TNL::Algorithms::inplaceExclusiveScan( Grid.intBuffer1, 0, Grid.Info.cellCount, TNL::Plus{} );
+		auto nonReflectiveInletMarkerView = Grid.markerBuffer.getConstView();
+		auto intBuffer1View = Grid.intBuffer1.getConstView();
+		auto nonReflectiveInletIndexView = Grid.nonReflectiveInletIndexArray.getView();
+		auto cellLambdaNonReflectiveInlet = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			if ( nonReflectiveInletMarkerView[ cell ] )
+			{
+				const int index = intBuffer1View[ cell ];
+				nonReflectiveInletIndexView[ index ] = cell;
+			}
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, cellLambdaNonReflectiveInlet );
+	}
+	
+	// 13) fill jkPlus and NBR minus
+	
+	//auto jkPlusView = Grid.NBR.jkPlusArray.getView();
+	//auto NBRPlusFinishLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	//{	
+	//	jkPlusView[ cell ] = jPlusView[ kPlusView[ cell ] ];
+	//};
+	//TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRPlusFinishLambda );
+	
+	// 14) mark NBR geometric validity
+	markGeometricNBRPlus( Grid, Info.cellCount );
+	
+	// 15) if we are the finest grid, mark moving bounceback and bounceback
+	if ( iAmFinest )
+	{
+		applyMarkersFromRayMap( Grid.bouncebackMarkerArray, Voxelizer.rayMapBounceback, Grid, Grid.Info.cellCount );
+		applyMarkersFromRayMap( Grid.movingBouncebackMarkerArray, Voxelizer.rayMapMovingBounceback, Grid, Grid.Info.cellCount );
+	}
+	
+	// 20) build list of interpolated BB cells
+	int interpolatedBBCount = countOnesInBoolArray( Grid.bouncebackMarkerArray, Info.cellCount );
+	interpolatedBBCount += countOnesInBoolArray( Grid.movingBouncebackMarkerArray, Info.cellCount );
+	Grid.interpolatedBBCellList.setSize( interpolatedBBCount );
+	Grid.interpolatedBBLinkLengths.setSizes( 27, interpolatedBBCount );
+	Grid.interpolatedBBLinkLengths.setValue( 0.5f );
+	Info.gridMemoryBytes += (long long)(4 * 1 + 26 * 4 * 1 ) * (long long)(interpolatedBBCount); // 1 int array, 26 float arrays
+	
+	Grid.markerBuffer.setValue( false );
+	spreadMarkers( Grid.markerBuffer, Grid.bouncebackMarkerArray, Grid, Info.cellCount );
+	Grid.markerBuffer = Grid.markerBuffer - Grid.bouncebackMarkerArray;
+	intArrayFromBoolArray( Grid.intBuffer3, Grid.markerBuffer, Info.cellCount );
+	TNL::Algorithms::inplaceExclusiveScan( Grid.intBuffer3, 0, Info.cellCount, TNL::Plus{} );
+	auto someMarkerView = Grid.markerBuffer.getConstView();
+	auto indexBBlistView = Grid.interpolatedBBCellList.getView();
+	auto intBuffer3View = Grid.intBuffer3.getConstView();
+	auto cellLambdaBleble = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( someMarkerView( cell ) )
+		{
+			indexBBlistView( intBuffer3View( cell ) ) = cell;
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambdaBleble );
+	
+	
+	// 15) we apply initial condition for fArray on the coarser grid, because only now we have marked it correctly
+	// if we are finest we can apply initial condition on ourselves too
+	// at the same time, report memory size
+	if ( initPass ) 
+	{
+		if ( !iAmCoarsest ) 
+		{
+			applyInitialCondition( grids[ level-1 ] );
+			std::cout << "Grid level " << level-1 << " allocated on GPU, it takes " << grids[level-1].Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
+		}
+		if ( iAmFinest ) 
+		{
+			applyInitialCondition( Grid );
+			std::cout << "Grid level " << level << " allocated on GPU, it takes " << Grid.Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
+		}
+	}
+	
+	// 16) recursion
+	if ( !iAmFinest ) rebuildGrids( grids, Voxelizer, level+1 );
+		
+	// 17) Repair NBR minus of the coarser grid and fill its bitPackedMarker
+	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
+	if ( !iAmCoarsest ) // && grids[level - 1].Info.updatesSinceRebuild != 0 )
+	{
+		auto jPlusViewCoarse = grids[level - 1].NBR.jPlusArray.getConstView();
+		auto kPlusViewCoarse = grids[level - 1].NBR.kPlusArray.getConstView();
+		auto jMinusViewCoarse = grids[level - 1].NBR.jMinusArray.getView();
+		auto kMinusViewCoarse = grids[level - 1].NBR.kMinusArray.getView();
+		auto NBRCoarseRepairLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			jMinusViewCoarse[ jPlusViewCoarse[ cell ] ] = cell;
+			kMinusViewCoarse[ kPlusViewCoarse[ cell ] ] = cell;
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, grids[level - 1].Info.cellCount, NBRCoarseRepairLambda );
+		updateForcedVelocity( grids[level - 1], Voxelizer );
+		// fill bit packed marker
+		fillBitPackedMarkerArray( grids[level - 1], grids[level - 1].Info.cellCount );
+	}
+	
+	// 18) if we are the finest, we need to fill NBR minus ourselves and fill our bitPackedMarker
+	if ( iAmFinest )
+	{
+		auto jMinusView = Grid.NBR.jMinusArray.getView();
+		auto kMinusView = Grid.NBR.kMinusArray.getView();
+		auto NBRMinusFinishLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			jMinusView[ jPlusView[ cell ] ] = cell;
+			kMinusView[ kPlusView[ cell ] ] = cell;
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusFinishLambda );
+		updateForcedVelocity( Grid, Voxelizer );
+		// fill bit packed marker
+		fillBitPackedMarkerArray( Grid, Grid.Info.cellCount );
+	}
+	
+	// 19) update interface with the coarser grid
+	if ( !iAmCoarsest && !initPass )
+	{
+		updateInterface( grids[level - 1], Grid );
+	}
+	*/
 }
 
 /*

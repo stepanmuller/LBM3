@@ -231,9 +231,9 @@ So: Initialize grids, build voxelizers
 Okay! Grid generation goes like this.
 Oh, it looks like a nice idea to divide it into multiple functions, all of which take the full list of grids as input and perform some simple operation on it.
 Then I can track how the grid list is looking like along the way and watch out for errors.
-1) launch initializeGrids. This is almost the same as previously. This function fills Info for all grid levels and sets up the skeleton grid.
-2) Read stators, initialize their STLs and voxelizers
-2) build voxelizers for every grid level. Each voxelizer must have rayMap for all bodies and one rayMapTotal
+1) launch initializeGrids. This is almost the same as previously. This function fills Info for all grid levels and sets up the skeleton grid. -> done!
+2) Read stators, initialize their STLs and voxelizers -> done!
+2) build voxelizers for every grid level. Each voxelizer must have rayMap for all bodies and one rayMapTotal -> done!
 3) launch buildIJKFull
 	If coarsest:
 		markuj skeletonGrid a použij skeletonGrid pro vygenerování IJKFull mé sítě.

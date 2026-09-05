@@ -32,6 +32,8 @@ int main(int argc, char **argv)
 	// Voxelizers
 	std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT );
 	initializeVoxelizers( voxelizers, grids, gridStaticSTLs, 0 );
+	
+	buildIJKFull( grids, voxelizers, 0 );
 		
 	return EXIT_SUCCESS;
 }

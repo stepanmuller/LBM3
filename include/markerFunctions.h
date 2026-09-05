@@ -1,148 +1,138 @@
 #pragma once
 
 #include "./types.h"
-#include "./genericArrayFunctions.h"
-#include "./voxelizerFunctions.h"
-#include "./NBRFunctions.h"
+//#include "./genericArrayFunctions.h"
+//#include "./voxelizerFunctions.h"
+//#include "./NBRFunctions.h"
 
-// this is used to bit unpack the information from Grid.bitPackedMarkerArray (int array)
-__host__ __device__ inline void intToBools( const int &value, bool (&bools)[32] )
+void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, const SkeletonGridStruct &SkeletonGrid )
 {
-    for (int i = 0; i < 32; ++i)
-    {
-        bools[i] = ((value >> i) & 1) != 0;
-    }
-}
+	// marks the skeleton grid based on a finer rayMapArray, result is 1 if at least one fine cell is 0 (fluid)
+	const int cellCountX = SkeletonGrid.Info.cellCountX;
+	const int cellCountY = SkeletonGrid.Info.cellCountY;
+	// const int cellCountZ = SkeletonGrid.Info.cellCountZ; // this is not needed
+	const int cellCount = SkeletonGrid.Info.cellCount;
+	const IntArrayType &rayMapArray = rayMap.rayMapArray;
+	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
+	auto markerView = markerArray.getView();
+	auto rayMapView = rayMapArray.getConstView();
+	auto hitCounterScanView = hitCounterScanArray.getConstView();
+	
+	const int levelDifference = rayMap.gridID - (-1); // skeleton grid would have gridID = -1
+	const int downsample = 1 << levelDifference;
+	
+	markerArray.setValue( true );
 
-// this is used to bit pack the information into Grid.bitPackedMarkerArray (int array)
-__host__ __device__ inline void boolsToInt( int& value, const bool (&bools)[32] )
-{
-    value = 0;
-    for (int i = 0; i < 32; i++ )
-    {
-        if (bools[i])
-        {
-            value |= static_cast<int>(1U << i); 
-        }
-    }
-}
-
-void fillBitPackedMarkerArray( GridStruct &Grid, const int &upperBound )
-{
-	const InfoStruct &Info = Grid.Info;
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
-	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
-	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
-	auto jMinusView = Grid.NBR.jMinusArray.getConstView();
-	auto kMinusView = Grid.NBR.kMinusArray.getConstView();
-	
-	auto bouncebackMarkerView = Grid.bouncebackMarkerArray.getConstView();
-	auto movingBouncebackMarkerView = Grid.movingBouncebackMarkerArray.getConstView();
-	auto forcedVelocityMarkerView = Grid.forcedVelocityMarkerArray.getConstView();
-	auto deepRefinementMarkerView = Grid.deepRefinementMarkerArray.getConstView();
-	auto changedStateView = Grid.changedStateMarkerArray.getConstView();
-	auto bitPackedMarkerView = Grid.bitPackedMarkerArray.getView();
-	
-	bool useBouncebackMarkerArray = ( Grid.bouncebackMarkerArray.getSize() > 0 );
-	bool useMovingBouncebackMarkerArray = ( Grid.movingBouncebackMarkerArray.getSize() > 0 );
-	bool useForcedVelocityMarkerArray = ( Grid.forcedVelocityMarkerArray.getSize() > 0 );
-	bool useDeepRefinementMarkerArray = ( Grid.deepRefinementMarkerArray.getSize() > 0 );
-	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
-		bool bitPackedMarkerBits[32] = {false};
-		
-		if ( useBouncebackMarkerArray ) bitPackedMarkerBits[27] = bouncebackMarkerView( cell );
-		if ( useMovingBouncebackMarkerArray ) bitPackedMarkerBits[28] = movingBouncebackMarkerView( cell );
-		if ( useForcedVelocityMarkerArray ) bitPackedMarkerBits[29] = forcedVelocityMarkerView( cell );
-		if ( useDeepRefinementMarkerArray ) bitPackedMarkerBits[30] = deepRefinementMarkerView( cell );
-		bitPackedMarkerBits[31] = changedStateView( cell );
-		
-		const int iCell = iView[ cell ];
-		const int jCell = jView[ cell ];
-		const int kCell = kView[ cell ];
-		
-		NBRStruct NBR;
-		NBR.self = cell;
-		NBR.jPlus = jPlusView( cell );
-		NBR.kPlus = kPlusView( cell );
-		NBR.jkPlus = jPlusView( kPlusView( cell ) );
-		NBR.jMinus = jMinusView( cell );
-		NBR.kMinus = kMinusView( cell );
-		finishNBRAll( NBR, Info );
-	
-		const int cxArray[27] = { 0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1,-1, 1, 0, 0,-1, 1, 0, 0,-1, 1,-1, 1, 1,-1,-1, 1 };
-		const int cyArray[27] = { 0, 0, 0, 0, 0,-1, 1, 0, 0, 0, 0,-1, 1, 1,-1, 1,-1, 1,-1, 1,-1,-1, 1,-1, 1,-1, 1 };
-		const int czArray[27] = { 0, 0, 0,-1, 1, 0, 0,-1, 1, 1,-1, 0, 0,-1, 1, 0, 0, 1,-1,-1, 1, 1,-1,-1, 1,-1, 1 };
-		
-		int fullNBRList[27];
-		// for each direction this holds the neighbour where f[i] will be pulled from in the next iteration
-		// 0: Center
-		fullNBRList[0]  = cell;
-		// 1-6: Straight directions (Faces)
-		fullNBRList[1]  = NBR.iMinus; 			// cxArray=1  -> nx=-1
-		fullNBRList[2]  = NBR.iPlus;  			// cxArray=-1 -> nx=1
-		fullNBRList[3]  = NBR.kPlus;  			// czArray=-1 -> nz=1
-		fullNBRList[4]  = NBR.kMinus; 			// czArray=1  -> nz=-1
-		fullNBRList[5]  = NBR.jPlus;  			// cyArray=-1 -> ny=1
-		fullNBRList[6]  = NBR.jMinus; 			// cyArray=1  -> ny=-1
-		// 7-18: Diagonal directions (Edges)
-		fullNBRList[7]  = kPlusView( NBR.iMinus );	// cxArray=1,  czArray=-1 -> nx=-1, nz=1
-		fullNBRList[8]  = kMinusView( NBR.iPlus );	// cxArray=-1, czArray=1  -> nx=1,  nz=-1
-		fullNBRList[9]  = kMinusView( NBR.iMinus );	// cxArray=1,  czArray=1  -> nx=-1, nz=-1
-		fullNBRList[10] = kPlusView( NBR.iPlus ); 	// cxArray=-1, czArray=-1 -> nx=1,  nz=1
-		fullNBRList[11] = jPlusView( NBR.iPlus ); 	// cxArray=-1, cyArray=-1 -> nx=1,  ny=1
-		fullNBRList[12] = jMinusView( NBR.iMinus );	// cxArray=1,  cyArray=1  -> nx=-1, ny=-1
-		fullNBRList[13] = kPlusView( NBR.jMinus );	// cyArray=1,  czArray=-1 -> ny=-1, nz=1
-		fullNBRList[14] = kMinusView( NBR.jPlus );	// cyArray=-1, czArray=1  -> ny=1,  nz=-1
-		fullNBRList[15] = jMinusView( NBR.iPlus );	// cxArray=-1, cyArray=1  -> nx=1,  ny=-1
-		fullNBRList[16] = jPlusView( NBR.iMinus );	// cxArray=1,  cyArray=-1 -> nx=-1, ny=1
-		fullNBRList[17] = kMinusView( NBR.jMinus );	// cyArray=1,  czArray=1  -> ny=-1, nz=-1
-		fullNBRList[18] = kPlusView( NBR.jPlus ); 	// cyArray=-1, czArray=-1 -> ny=1,  nz=1
-		// 19-26: Corner directions (Vertices)
-		fullNBRList[19] = kPlusView( jMinusView( NBR.iPlus ) ); 	// cxArray=-1, cyArray=1,  czArray=-1 -> nx=1,  ny=-1, nz=1
-		fullNBRList[20] = kMinusView( jPlusView( NBR.iMinus ) ); 	// cxArray=1,  cyArray=-1, czArray=1  -> nx=-1, ny=1,  nz=-1
-		fullNBRList[21] = kMinusView( jPlusView( NBR.iPlus ) ); 	// cxArray=-1, cyArray=-1, czArray=1  -> nx=1,  ny=1,  nz=-1
-		fullNBRList[22] = kPlusView( jMinusView( NBR.iMinus ) ); 	// cxArray=1,  cyArray=1,  czArray=-1 -> nx=-1, ny=-1, nz=1
-		fullNBRList[23] = kPlusView( jPlusView( NBR.iMinus ) ); 	// cxArray=1,  cyArray=-1, czArray=-1 -> nx=-1, ny=1,  nz=1
-		fullNBRList[24] = kMinusView( jMinusView( NBR.iPlus ) ); 	// cxArray=-1, cyArray=1,  czArray=1  -> nx=1,  ny=-1, nz=-1
-		fullNBRList[25] = kPlusView( jPlusView( NBR.iPlus ) );  	// cxArray=-1, cyArray=-1, czArray=-1 -> nx=1,  ny=1,  nz=1
-		fullNBRList[26] = kMinusView( jMinusView( NBR.iMinus ) );	// cxArray=1,  cyArray=1,  czArray=1  -> nx=-1, ny=-1, nz=-1
-		
-		// now look at each neighbour if they are geometric fluid neighbour
-		
-		for ( int direction = 1; direction < 27; direction++ )
+		const int kCoarse = cell / (cellCountX * cellCountY);
+		const int remainder = cell % (cellCountX * cellCountY);
+		const int jCoarse = remainder / cellCountX;
+		const int iCoarse = remainder % cellCountX;
+		const int iFineFirst = iCoarse * downsample;
+		const int jFineFirst = jCoarse * downsample;
+		const int kFineFirst = kCoarse * downsample;
+		const int kFineLast = kFineFirst + downsample - 1;
+		int iFine, jFine, kStart, kEnd;
+		for ( int jAdd = 0; jAdd < downsample; jAdd++ )
 		{
-			MarkerStruct Marker;
-			if ( useBouncebackMarkerArray ) Marker.bounceback = bouncebackMarkerView( fullNBRList[direction] );
-			if ( useMovingBouncebackMarkerArray ) Marker.movingBounceback = movingBouncebackMarkerView( fullNBRList[direction] );
-			if ( useDeepRefinementMarkerArray ) Marker.deepRefinement = deepRefinementMarkerView( fullNBRList[direction] );
-			getMarkers( iCell, jCell, kCell, Marker, Info );
-			if ( !Marker.bounceback && !Marker.movingBounceback )
+			jFine = jFineFirst + jAdd; 
+			for ( int iAdd = 0; iAdd < downsample; iAdd++ )
 			{
-				// check position
-				const int nx = -cxArray[direction]; const int ny = -cyArray[direction]; const int nz = -czArray[direction];
-				const int iExpected = iCell + nx; const int jExpected = jCell + ny; const int kExpected = kCell + nz;
-				const int iActual = iView( fullNBRList[direction] ); 
-				const int jActual = jView( fullNBRList[direction] ); 
-				const int kActual = kView( fullNBRList[direction] );
-				if ( iActual == iExpected && jActual == jExpected && kActual == kExpected ) 
+				iFine = iFineFirst + iAdd;
+				const int rayIndex = ( cellCountX * downsample ) * jFine + iFine;
+				const int startingPoint = hitCounterScanView( rayIndex );
+				const int endingPoint = hitCounterScanView( rayIndex + 1 );
+				for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
 				{
-					// the cell is neither bounceback, nor moving bounceback AND is geometrically correct -> mark it
-					bitPackedMarkerBits[direction] = true;
+					kEnd = rayMapView( startIndex + 1 );
+					if ( kEnd < kFineFirst ) continue;
+					else if ( kEnd >= kFineFirst && kEnd <= kFineLast ) return;
+					kStart = rayMapView( startIndex );
+					if ( kStart <= kFineFirst ) break;
+					else return;
 				}
 			}
 		}
-		
-		int bitPackedMarker;
-		boolsToInt( bitPackedMarker, bitPackedMarkerBits );
-		bitPackedMarkerView( cell ) = bitPackedMarker;
+		markerView[ cell ] = false;
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, upperBound, cellLambda );	
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
+void markAllFinerFluids( BoolArrayType &resultArray, const std::vector<VoxelizerStruct> &voxelizers, const SkeletonGridStruct &SkeletonGrid )
+{
+	resultArray.setValue( false );
+	BoolArrayType markerArray( resultArray.getSize() );
+	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ )
+	{
+		markSingleFinerFluid( markerArray, voxelizers[level].rayMapTotal, SkeletonGrid );
+		resultArray += markerArray;
+	}
+}
+
+void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourceMarkerArray, SkeletonGridStruct &SkeletonGrid )
+{
+	auto targetMarkerView = targetMarkerArray.getView();
+	auto sourceMarkerView = sourceMarkerArray.getConstView();
+	const int cellCountX = SkeletonGrid.Info.cellCountX;
+	const int cellCountY = SkeletonGrid.Info.cellCountY;
+	const int cellCountZ = SkeletonGrid.Info.cellCountZ;
+	const int cellCount = SkeletonGrid.Info.cellCount;
+
+	targetMarkerArray = sourceMarkerArray; // initialize as source
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		bool marker = sourceMarkerView[ cell ];
+		if ( marker ) return; // only continue if the marker is not already 1
+		const int kCell = cell / (cellCountX * cellCountY);
+		const int remainder = cell % (cellCountX * cellCountY);
+		const int jCell = remainder / cellCountX;
+		const int iCell = remainder % cellCountX;
+		int nbr, iNbr, jNbr, kNbr;
+		for ( int kAdd = -1; kAdd <= 1; kAdd++ )
+		{
+			kNbr = kCell + kAdd;
+			if ( kNbr >= 0 && kNbr < cellCountZ )
+			{
+				for ( int jAdd = -1; jAdd <= 1; jAdd++ )
+				{
+					jNbr = jCell + jAdd;
+					if ( jNbr >= 0 && jNbr < cellCountY )
+					{
+						for ( int iAdd = -1; iAdd <= 1; iAdd++ )
+						{
+							if ( kAdd!=0 || jAdd!=0 || iAdd!=0 )
+							{
+								iNbr = iCell + iAdd;
+								if ( iNbr >= 0 && iNbr < cellCountX )
+								{
+									nbr = kNbr * (cellCountX * cellCountY) + jNbr * cellCountX + iNbr;
+									if ( sourceMarkerView[ nbr ] )
+									{
+										targetMarkerView[ cell ] = true;
+										return;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
+}
+
+void markKeepCells( SkeletonGridStruct &SkeletonGrid, const std::vector<VoxelizerStruct> &voxelizers )
+{
+	markAllFinerFluids( SkeletonGrid.keepCellMarkerArray, voxelizers, SkeletonGrid );
+	BoolArrayType markerSource;
+	markerSource = SkeletonGrid.keepCellMarkerArray;
+	spreadMarkers( SkeletonGrid.keepCellMarkerArray, markerSource, SkeletonGrid );
+}
+
+/*
 void applyMarkersFromRayMap( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid, const int &upperBound )
 {
 	auto iView = Grid.IJK.iArray.getConstView();
@@ -219,54 +209,6 @@ void markFinestFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, co
 		markerView[ cell ] = false;
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, upperBound, cellLambda );	
-}
-
-void markFinestFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, const SkeletonGridStruct &SkeletonGrid )
-{
-	// marks the top master grid based on a fine rayMapArray, result is 1 if at least one fine cell is 0 (fluid)
-	const int cellCountX = SkeletonGrid.Info.cellCountX;
-	const int cellCountY = SkeletonGrid.Info.cellCountY;
-	// const int cellCountZ = SkeletonGrid.Info.cellCountZ; // this is not needed
-	const int cellCount = SkeletonGrid.Info.cellCount;
-	const IntArray3DType &rayMapArray = rayMap.rayMapArray;
-	auto markerView = markerArray.getView();
-	auto rayMapView = rayMapArray.getConstView();
-	
-	const int downsample = rayMapArray.getSizes()[0] / cellCountX;
-	
-	markerArray.setValue( true );
-
-	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
-	{
-		const int kCoarse = cell / (cellCountX * cellCountY);
-		const int remainder = cell % (cellCountX * cellCountY);
-		const int jCoarse = remainder / cellCountX;
-		const int iCoarse = remainder % cellCountX;
-		const int iFineFirst = iCoarse * downsample;
-		const int jFineFirst = jCoarse * downsample;
-		const int kFineFirst = kCoarse * downsample;
-		const int kFineLast = kFineFirst + downsample - 1;
-		int iFine, jFine, kStart, kEnd;
-		for ( int jAdd = 0; jAdd < downsample; jAdd++ )
-		{
-			jFine = jFineFirst + jAdd; 
-			for ( int iAdd = 0; iAdd < downsample; iAdd++ )
-			{
-				iFine = iFineFirst + iAdd;
-				for ( int startIndex = 0; startIndex < RAY_MAP_DEPTH; startIndex = startIndex + 2 )
-				{
-					kEnd = rayMapView( iFine, jFine, startIndex + 1 );
-					if ( kEnd < kFineFirst ) continue;
-					else if ( kEnd >= kFineFirst && kEnd <= kFineLast ) return;
-					kStart = rayMapView( iFine, jFine, startIndex );
-					if ( kStart <= kFineFirst ) break;
-					else return;
-				}
-			}
-		}
-		markerView[ cell ] = false;
-	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
 void markFinestBounceback( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid, const int &upperBound )
@@ -560,14 +502,6 @@ void markKeepCells( GridStruct &Grid, const VoxelizerStruct &Voxelizer, const in
 	spreadMarkers( Grid.keepCellMarkerArray, Grid.markerBuffer, Grid, upperBound );
 }
 
-void markKeepCells( SkeletonGridStruct &SkeletonGrid, const VoxelizerStruct &Voxelizer )
-{
-	// version for SkeletonGrid, comments for this function are above in version for Grid
-	markFinestFluid( SkeletonGrid.keepCellMarkerArray, Voxelizer.rayMapTotal, SkeletonGrid );	
-	SkeletonGrid.keepCellMarkerArray.swap( SkeletonGrid.markerBuffer );
-	spreadMarkers( SkeletonGrid.keepCellMarkerArray, SkeletonGrid.markerBuffer, SkeletonGrid );
-}
-
 void markRefinementCells( GridStruct &Grid, const VoxelizerStruct &Voxelizer, const int &upperBound )
 {
 	markKeepCells( Grid, Voxelizer, upperBound );
@@ -593,3 +527,4 @@ void markRefinementCells( GridStruct &Grid, const VoxelizerStruct &Voxelizer, co
 	// mark refinement all together
 	Grid.refinementMarkerArray = Grid.deepRefinementMarkerArray + Grid.fineToCoarseMarkerArray + Grid.coarseToFineMarkerArray;
 }
+*/

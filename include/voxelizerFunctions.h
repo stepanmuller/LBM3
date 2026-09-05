@@ -676,7 +676,7 @@ void sumRayMaps( rayMapStruct &rayMapSum, rayMapStruct &rayMapBonus )
 	rayMapSum.totalHitCount = resultTotalHitCount;
 }
 
-void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, const int level )
+void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, const int level )
 {
 	std::cout << "Initializing voxelizer for grid level " << level << std::endl; 
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
@@ -690,10 +690,12 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, std::vector
 	unsigned long long totalElementCount = 0LL;
 	for ( int rayMapIndex = 0; rayMapIndex < rayMapCount; rayMapIndex++ ) 
 	{
+		Voxelizer.rayMaps[rayMapIndex].gridID = Voxelizer.Info.gridID;
 		voxelizeSTL( Voxelizer.rayMaps[rayMapIndex], gridStaticSTLs[rayMapIndex], Voxelizer );
 		totalElementCount += (long long)Voxelizer.rayMaps[rayMapIndex].rayMapArray.getSize() + (long long)Voxelizer.rayMaps[rayMapIndex].hitCounterScanArray.getSize();
 	}
 	
+	Voxelizer.rayMapTotal.gridID = Voxelizer.Info.gridID;
 	Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
 	for ( int bonusIndex = 1; bonusIndex < rayMapCount; bonusIndex++ )
 	{
