@@ -213,10 +213,26 @@ To solve:
 Detailed description of how the grid levels are going to be generated. 
 I already have most of this in the previous codes I used but need to put it together with some improvements.
 
+Rotor should be assigned to each grid too
+It would be the best to have multiple rotors. I want to see the torque for both of them separately, would be so cool
+The logical way, I guess, is to have a Rotor struct similar to the Voxelizer struct, but the Rotor would have a list of rotors?
+Měl bych rozlišovat mezi tím, co potřebuju jen během sestavení gridů, a tím co potřebuju pro běh simulace
+-> assign rotors to the grids and fill them during one of the last steps
+-> but, keep voxelizers in a list and pass the list to the grid building functions
+that way its a bit more clear that the voxelizers get forgotten later
+
+Thing is, rotors are completely independent of the grid building process. So maybe lets leave them out completely for now?
+Lets firstly build the grids and solve everything around that, only then proceed with anything rotor related
+
+So: Initialize grids, build voxelizers
+	buildVoxelizers -> receives grids, voxelizers and a list of stationary STLs, should I call that stators?
+	I can do this already, I think!
+
 Okay! Grid generation goes like this.
 Oh, it looks like a nice idea to divide it into multiple functions, all of which take the full list of grids as input and perform some simple operation on it.
 Then I can track how the grid list is looking like along the way and watch out for errors.
 1) launch initializeGrids. This is almost the same as previously. This function fills Info for all grid levels and sets up the skeleton grid.
+2) Read stators, initialize their STLs and voxelizers
 2) build voxelizers for every grid level. Each voxelizer must have rayMap for all bodies and one rayMapTotal
 3) launch buildIJKFull
 	If coarsest:
