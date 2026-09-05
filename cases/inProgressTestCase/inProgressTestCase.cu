@@ -1,5 +1,5 @@
-constexpr float RES_GLOBAL = 1.0f; 	
-constexpr int GRID_LEVEL_COUNT = 2;
+constexpr float RES_GLOBAL = 2.0f; 	
+constexpr int GRID_LEVEL_COUNT = 1;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
 const float dtPhysGlobal = 1.f;
@@ -12,7 +12,6 @@ std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
 // std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
 
 #include "../../include/STLFunctions.h"
-#include "../../include/gridGenerationFunctions.h"
 #include "../../include/voxelizerFunctions.h"
 
 
@@ -22,6 +21,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	return; // this just keeps the automatic default refinement setting
 }
 
+#include "../../include/gridGenerationFunctions.h"
 
 int main(int argc, char **argv)
 {

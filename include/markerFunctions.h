@@ -1,9 +1,7 @@
 #pragma once
 
 #include "./types.h"
-//#include "./genericArrayFunctions.h"
-//#include "./voxelizerFunctions.h"
-//#include "./NBRFunctions.h"
+#include "./NBRFunctions.h"
 
 void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, const SkeletonGridStruct &SkeletonGrid )
 {
@@ -59,13 +57,14 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMa
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void markSingleFinestFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid )
+void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid )
 {
 	// marks a coarse grid based on a finer rayMapArray, result is 1 if at least one fine cell is 0 (fluid)
 	const int cellCountX = Grid.Info.cellCountX;
-	const int cellCountY = Grid.Info.cellCountY;
-	// const int cellCountZ = Grid.Info.cellCountZ; // this is not needed
 	const int cellCount = Grid.Info.cellCount;
+	auto iView = Grid.IJK.iArray.getConstView();
+	auto jView = Grid.IJK.jArray.getConstView();
+	auto kView = Grid.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
 	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
@@ -112,13 +111,14 @@ void markSingleFinestFluid( BoolArrayType &markerArray, const rayMapStruct &rayM
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void markSingleFinestBounceback( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid )
+void markSingleFinerBounceback( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid )
 {
 	// marks a coarse grid based on a fine rayMapArray, result is 1 if at least one fine cell is 1 (bounceback)
 	const int cellCountX = Grid.Info.cellCountX;
-	const int cellCountY = Grid.Info.cellCountY;
-	// const int cellCountZ = Grid.Info.cellCountZ; // this is not needed
 	const int cellCount = Grid.Info.cellCount;
+	auto iView = Grid.IJK.iArray.getConstView();
+	auto jView = Grid.IJK.jArray.getConstView();
+	auto kView = Grid.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
 	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
@@ -283,6 +283,7 @@ void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourc
 void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourceMarkerArray, GridStruct &Grid )
 {
 	// The way this is written creates a race condition, one that is harmless because all threads write the same 1
+	const int &cellCount = Grid.Info.cellCount;
 	auto targetMarkerView = targetMarkerArray.getView();
 	auto sourceMarkerView = sourceMarkerArray.getConstView();
 	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
@@ -294,13 +295,13 @@ void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourc
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
 		int nbrPlus[7];
-		nbrPlus[0] = (cell + 1 < upperBound) ? cell + 1 : 0; 					// iPlus
+		nbrPlus[0] = (cell + 1 < cellCount) ? cell + 1 : 0; 					// iPlus
 		nbrPlus[1] = jPlusView[ cell ];											// jPlus
-		nbrPlus[2] = (nbrPlus[1] + 1 < upperBound) ? nbrPlus[1] + 1 : 0;		// ijPlus
+		nbrPlus[2] = (nbrPlus[1] + 1 < cellCount) ? nbrPlus[1] + 1 : 0;		// ijPlus
 		nbrPlus[3] = kPlusView[ cell ];											// kPlus
-		nbrPlus[4] = (nbrPlus[3] + 1 < upperBound) ? nbrPlus[3] + 1 : 0;		// ikPlus
+		nbrPlus[4] = (nbrPlus[3] + 1 < cellCount) ? nbrPlus[3] + 1 : 0;		// ikPlus
 		nbrPlus[5] = jPlusView[ nbrPlus[3] ];									// jkPlus
-		nbrPlus[6] = (nbrPlus[5] + 1 < upperBound) ? nbrPlus[5] + 1 : 0;		// ijkPlus
+		nbrPlus[6] = (nbrPlus[5] + 1 < cellCount) ? nbrPlus[5] + 1 : 0;		// ijkPlus
 		
 		bool isGeometricMarker[8] = {false};
 		const uint8_t isGeometricBitPack = isGeometricBitPackedMarkerView( cell );
@@ -352,7 +353,7 @@ void markKeepCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &voxeli
 	spreadMarkers( Grid.keepCellMarkerArray, markerSource, Grid );
 }
 
-void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &voxelizers, const int &upperBound )
+void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &voxelizers )
 {
 	markKeepCells( Grid, voxelizers );
 	// search deep refinement area
@@ -362,7 +363,7 @@ void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &
 	for ( int spread = 0; spread < WALL_REFINEMENT_COUNT; spread++ )
 	{
 		Grid.deepRefinementMarkerArray.swap( markerBuffer );
-		spreadMarkers( Grid.deepRefinementMarkerArray, Grid.markerBuffer, Grid, upperBound );
+		spreadMarkers( Grid.deepRefinementMarkerArray, markerBuffer, Grid );
 	}
 	applyUserRefinementModification( Grid.deepRefinementMarkerArray, Grid );
 	Grid.deepRefinementMarkerArray = Grid.deepRefinementMarkerArray * Grid.keepCellMarkerArray;

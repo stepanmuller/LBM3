@@ -17,6 +17,7 @@
 #include <TNL/Algorithms/AtomicOperations.h>
 #include <TNL/Algorithms/reduce.h>
 #include <TNL/Algorithms/scan.h>
+#include <TNL/Algorithms/sort.h>
 #include <TNL/Containers/Array.h>
 #include <TNL/Containers/Vector.h>
 #include <TNL/Containers/NDArray.h>

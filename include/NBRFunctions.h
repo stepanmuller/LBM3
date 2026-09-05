@@ -1,7 +1,7 @@
 #pragma once
 
 #include "./types.h"
-#include "./genericArrayFunctions.h"
+//#include "./genericArrayFunctions.h"
 
 __host__ __device__ void finishNBRPlus( NBRStruct &NBR, const InfoStruct &Info )
 {
@@ -42,31 +42,7 @@ __host__ __device__ inline void boolsToByte( uint8_t& value, const bool (&bools)
     }
 }
 
-void getNBRArrayForSkeleton( IntArrayType &nbrArray, const int jPlus, const int kPlus, const SkeletonGridStruct &SkeletonGrid )
-{
-	const int cellCount = SkeletonGrid.Info.cellCount;
-	const int cellCountX = SkeletonGrid.Info.cellCountX;
-	const int cellCountY = SkeletonGrid.Info.cellCountY;
-	const int cellCountZ = SkeletonGrid.Info.cellCountZ;
-	const int cellCountXY = cellCountX * cellCountY;
-	auto nbrView = nbrArray.getView();
-	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
-	{
-		const int kCell = cell / cellCountXY;
-		const int remainder = cell % cellCountXY;
-		const int jCell = remainder / cellCountX;
-		const int iCell = remainder % cellCountX;
-		const int iNbr = iCell;
-		int jNbr = jCell + jPlus;
-		int kNbr = kCell + kPlus;
-		if ( jNbr >= cellCountY ) jNbr = 0;
-		if ( kNbr >= cellCountZ ) kNbr = 0;
-		const int nbr = kNbr * cellCountXY + jNbr * cellCountX + iNbr;
-		nbrView[ cell ] = nbr;
-	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );
-}
-
+/*
 void markGeometricNBRPlus( GridStruct &Grid, const int &upperBound )
 {
 	auto iView = Grid.IJK.iArray.getConstView();
@@ -319,3 +295,4 @@ void skipUnmarkedNBRArray( IntArrayType &nbrArray, const BoolArrayType &markerAr
 	if ( jPlus == 1 && kPlus == 0 )	connectNBRHoles( nbrArray, SkeletonGrid.NBRHoleMap, cellCountX, cellCountZ );
 	else if ( jPlus == 0 && kPlus == 1 ) connectNBRHoles( nbrArray, SkeletonGrid.NBRHoleMap, cellCountX, cellCountY );
 }
+*/
