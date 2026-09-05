@@ -32,6 +32,10 @@ int main(int argc, char **argv)
 	// Voxelizers
 	std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT );
 	initializeVoxelizers( voxelizers, grids, gridStaticSTLs, 0 );
+	
+	// Rotor
+	STLStruct STLRotorBlades;
+	readSTL( STLRotorBlades, STLPathRotorBlades );
 		
 	return EXIT_SUCCESS;
 }

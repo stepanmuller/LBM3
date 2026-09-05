@@ -5,7 +5,7 @@
 void checkSTLEdges( STLStruct &STL )
 // For every edge, counts number of triangles that share it. Must be always 2 for a closed STL.
 {
-	std::cout << "	Starting STL check for shared edges" << std::endl;
+	std::cout << "	Starting STL check for faulty edges" << std::endl;
 	auto axArrayView = STL.axArray.getConstView();
 	auto ayArrayView = STL.ayArray.getConstView();
 	auto azArrayView = STL.azArray.getConstView();
@@ -88,10 +88,10 @@ void checkSTLEdges( STLStruct &STL )
 		if (ABcount != 2 || BCcount != 2 || CAcount != 2)
 		{
 			errorCounter++;
-			std::cout << "	Edge problem on triangle " << triangleIndex << ", ABcount: " << ABcount << ", BCcount: " << BCcount << ", CAcount: " << CAcount << std::endl;
+			std::cout << "	Faulty edge on triangle " << triangleIndex << ", ABcount: " << ABcount << ", BCcount: " << BCcount << ", CAcount: " << CAcount << std::endl;
 		}
 	}    
-	std::cout<< "	Total shared edge problems: " << errorCounter << std::endl; 
+	std::cout<< "	Number of faulty edges: " << errorCounter << std::endl; 
 }
 
 void readSTL( STLStruct &STL, const std::string &filename )
@@ -108,22 +108,23 @@ void readSTL( STLStruct &STL, const std::string &filename )
 
     uint32_t triangleCount32;
 	file.read( reinterpret_cast<char*>(&triangleCount32), sizeof(uint32_t) );
-	int triangleCount = static_cast<int>( triangleCount32 );
-	STLCPU.triangleCount = triangleCount;
-    
-    std::cout<<"	triangleCount: "<< triangleCount << std::endl;
+	
+	int initialTriangleCount = static_cast<int>( triangleCount32 );
+	std::cout<<"	Initial triangle count: " << initialTriangleCount << std::endl;
+	// Track excluded triangles (exclude triangles whose at least 2 points are identical)
+	int excludedTriangleCount = 0;
+	
+    STLCPU.axArray = FloatArrayTypeCPU( initialTriangleCount );
+    STLCPU.ayArray = FloatArrayTypeCPU( initialTriangleCount );
+    STLCPU.azArray = FloatArrayTypeCPU( initialTriangleCount );
 
-    STLCPU.axArray = FloatArrayTypeCPU( triangleCount );
-    STLCPU.ayArray = FloatArrayTypeCPU( triangleCount );
-    STLCPU.azArray = FloatArrayTypeCPU( triangleCount );
+    STLCPU.bxArray = FloatArrayTypeCPU( initialTriangleCount );
+    STLCPU.byArray = FloatArrayTypeCPU( initialTriangleCount );
+    STLCPU.bzArray = FloatArrayTypeCPU( initialTriangleCount );
 
-    STLCPU.bxArray = FloatArrayTypeCPU( triangleCount );
-    STLCPU.byArray = FloatArrayTypeCPU( triangleCount );
-    STLCPU.bzArray = FloatArrayTypeCPU( triangleCount );
-
-    STLCPU.cxArray = FloatArrayTypeCPU( triangleCount );
-    STLCPU.cyArray = FloatArrayTypeCPU( triangleCount );
-    STLCPU.czArray = FloatArrayTypeCPU( triangleCount );
+    STLCPU.cxArray = FloatArrayTypeCPU( initialTriangleCount );
+    STLCPU.cyArray = FloatArrayTypeCPU( initialTriangleCount );
+    STLCPU.czArray = FloatArrayTypeCPU( initialTriangleCount );
     
     // Initialize minmax
     STLCPU.Bounds.xMin = std::numeric_limits<float>::max();
@@ -137,8 +138,10 @@ void readSTL( STLStruct &STL, const std::string &filename )
 	STLCPU.Bounds.rxMax = std::numeric_limits<float>::lowest();
 	STLCPU.Bounds.ryMax = std::numeric_limits<float>::lowest();
 	STLCPU.Bounds.rzMax = std::numeric_limits<float>::lowest();
+	
+	int writeIndex = 0;
 
-    for ( int triangle = 0; triangle < triangleCount; triangle++ )
+    for ( int triangle = 0; triangle < initialTriangleCount; triangle++ )
     {
         float ax, ay, az;
         float bx, by, bz;
@@ -161,18 +164,26 @@ void readSTL( STLStruct &STL, const std::string &filename )
         file.read( reinterpret_cast<char*>(&cz), 4 );
 
         file.read( reinterpret_cast<char*>(&attr), 2 );
+		
+		if ( (ax==bx && ay==by && az==bz) || (cx==bx && cy==by && cz==bz) || (cx==ax && cy==ay && cz==az) )
+        {
+			excludedTriangleCount++;
+			continue;
+		}
+		
+        STLCPU.axArray[writeIndex] = ax;
+        STLCPU.ayArray[writeIndex] = ay;
+        STLCPU.azArray[writeIndex] = az;
 
-        STLCPU.axArray[triangle] = ax;
-        STLCPU.ayArray[triangle] = ay;
-        STLCPU.azArray[triangle] = az;
+        STLCPU.bxArray[writeIndex] = bx;
+        STLCPU.byArray[writeIndex] = by;
+        STLCPU.bzArray[writeIndex] = bz;
 
-        STLCPU.bxArray[triangle] = bx;
-        STLCPU.byArray[triangle] = by;
-        STLCPU.bzArray[triangle] = bz;
-
-        STLCPU.cxArray[triangle] = cx;
-        STLCPU.cyArray[triangle] = cy;
-        STLCPU.czArray[triangle] = cz;
+        STLCPU.cxArray[writeIndex] = cx;
+        STLCPU.cyArray[writeIndex] = cy;
+        STLCPU.czArray[writeIndex] = cz;
+        
+        writeIndex++;
         
          // Update bounding box (vertices only)
         STLCPU.Bounds.xMin = std::min(STLCPU.Bounds.xMin, std::min({ax, bx, cx}));
@@ -190,6 +201,20 @@ void readSTL( STLStruct &STL, const std::string &filename )
         STLCPU.Bounds.ryMax = std::max(STLCPU.Bounds.ryMax, ry);
         STLCPU.Bounds.rzMax = std::max(STLCPU.Bounds.rzMax, rz);
     }
+    int triangleCount = initialTriangleCount - excludedTriangleCount;
+    STLCPU.triangleCount = triangleCount;
+    STLCPU.axArray.resize(triangleCount);
+    STLCPU.ayArray.resize(triangleCount);
+    STLCPU.azArray.resize(triangleCount);
+    STLCPU.bxArray.resize(triangleCount);
+    STLCPU.byArray.resize(triangleCount);
+    STLCPU.bzArray.resize(triangleCount);
+    STLCPU.cxArray.resize(triangleCount);
+    STLCPU.cyArray.resize(triangleCount);
+    STLCPU.czArray.resize(triangleCount);
+    
+    std::cout<<"	Excluded triangles with zero area: " << excludedTriangleCount << std::endl;    
+    std::cout<<"	Final triangle count: " << triangleCount << std::endl;
     std::cout << "	xMin xMax: " << STLCPU.Bounds.xMin << " " << STLCPU.Bounds.xMax << "\n";
     std::cout << "	yMin yMax: " << STLCPU.Bounds.yMin << " " << STLCPU.Bounds.yMax << "\n";
     std::cout << "	zMin zMax: " << STLCPU.Bounds.zMin << " " << STLCPU.Bounds.zMax << "\n";
