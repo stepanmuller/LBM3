@@ -254,8 +254,6 @@ void binarySearchIJK( IJKArrayStruct &Wanted, IJKArrayStruct &Source, IntArrayTy
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int cellWanted ) mutable
 	{
-		if ( resultView[ cellWanted ] >= 0 ) return; // Do not overwrite the cell if its already valid from before
-		
 		const int iWanted = iWantedView[ cellWanted ];
 		const int jWanted = jWantedView[ cellWanted ];
 		const int kWanted = kWantedView[ cellWanted ];
@@ -363,13 +361,16 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 	else buildFinerGrid( GridCoarse, Grid );
 	
 	// 4) Sort our IJK so that k changes the slowest
+	std::cout << "	Sorting IJK" << std::endl;
 	sortIJK( Grid.IJK );
 	
 	// 5) Build our NBR Plus and mark geometric validity
+	std::cout << "	Building NBR Plus" << std::endl;
 	buildNBRPlus( Grid );
 	markGeometricNBRPlus( Grid );
 	
 	// 6) Build parentMapArray
+	std::cout << "	Building parentMapArray" << std::endl;
 	if ( !iAmCoarsest )
 	{
 		IJKArrayStruct IJKWanted;
@@ -378,10 +379,26 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 		IJKWanted.kArray = Grid.IJK.kArray / 2;
 		binarySearchIJK( IJKWanted, GridCoarse.IJK, Grid.parentMapArray );
 	}
-	// 7) Mark parent interface. A fine cell located at the parent interface:
+	
+	// 7) Mark our cells that are part of the parent interface. A fine cell located at the parent interface:
 	//    - is blocked from getting deleted later
-	//	  - is blocked from getting refined any further
+	//	  - is blocked from getting deeply refined (interface with finer grid is still allowed)
 	//	  - inherits fluid / wall state from the parent, even if the voxelizer says otherwise
+	std::cout << "	Marking parent interface" << std::endl;
+	if ( !iAmCoarsest )
+	{
+		auto parentInterfaceMarkerView = Grid.parentInterfaceMarkerArray.getView();
+		auto parentMapView = Grid.parentMapArray.getConstView();
+		auto parentCoarseToFineMarkerView = GridCoarse.coarseToFineMarkerArray.getConstView();
+		auto parentFineToCoarseMarkerView = GridCoarse.fineToCoarseMarkerArray.getConstView();
+		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{
+			const int parentCell = parentMapView( cell );
+			const bool parentInterfaceMarker = (parentCoarseToFineMarkerView( parentCell ) + parentFineToCoarseMarkerView( parentCell ));
+			parentInterfaceMarkerView( cell ) = parentInterfaceMarker;
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
+	}
 	
 	// 7) Recursion
 	if ( !iAmFinest ) buildIJKFull( grids, voxelizers, level + 1 );

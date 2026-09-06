@@ -156,14 +156,14 @@ struct GridStruct { InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR;
 					BoolArrayType parentInterfaceMarkerArray;
 					SkeletonGridStruct SkeletonGrid; }; 		
 					
-struct STLStructCPU { 	int triangleCount;
+struct STLStructCPU { 	int triangleCount = 0;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 
 						FloatArrayTypeCPU bxArray; FloatArrayTypeCPU byArray; FloatArrayTypeCPU bzArray; 
 						FloatArrayTypeCPU cxArray; FloatArrayTypeCPU cyArray; FloatArrayTypeCPU czArray; 
 						BoundsStruct Bounds; }; 
 
 struct STLStruct { 	static constexpr int threadsToTrianglesRatio = 4;
-					int triangleCount;
+					int triangleCount = 0;
 					FloatArrayType axArray; FloatArrayType ayArray; FloatArrayType azArray; 
 					FloatArrayType bxArray; FloatArrayType byArray; FloatArrayType bzArray; 
 					FloatArrayType cxArray; FloatArrayType cyArray; FloatArrayType czArray; 

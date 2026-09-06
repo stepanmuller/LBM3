@@ -359,6 +359,8 @@ void markKeepCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &voxeli
 	BoolArrayType markerSource;
 	markerSource = Grid.keepCellMarkerArray;
 	spreadMarkers( Grid.keepCellMarkerArray, markerSource, Grid );
+	// A fine cell located at the parent interface is blocked from getting deleted later
+	if ( Grid.Info.gridID > 0 )	Grid.keepCellMarkerArray += Grid.parentInterfaceMarkerArray; 
 }
 
 void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &voxelizers )
@@ -374,6 +376,8 @@ void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &
 		spreadMarkers( Grid.deepRefinementMarkerArray, markerBuffer, Grid );
 	}
 	applyUserRefinementModification( Grid.deepRefinementMarkerArray, Grid );
+	// A fine cell located at the parent interface is blocked from getting deeply refined (interface with finer grid is still allowed)
+	if ( Grid.Info.gridID > 0 )	Grid.deepRefinementMarkerArray *= !Grid.parentInterfaceMarkerArray;
 	Grid.deepRefinementMarkerArray = Grid.deepRefinementMarkerArray * Grid.keepCellMarkerArray;
 	// search fine to coarse interface
 	Grid.fineToCoarseMarkerArray = Grid.deepRefinementMarkerArray;

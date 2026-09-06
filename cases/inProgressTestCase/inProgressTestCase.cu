@@ -1,4 +1,4 @@
-constexpr float RES_GLOBAL = 2.0f; 	
+constexpr float RES_GLOBAL = 1.5f; 	
 constexpr int GRID_LEVEL_COUNT = 2;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
@@ -13,27 +13,35 @@ std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
+#include "../../include/cellFunctions.h"
 
 __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCell, const int& kCell, 
 												bool & refinementMarker, const InfoStruct& Info )
 {
+	float x, y, z;
+	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+	if ( Info.gridID == 0 )
+	{
+		if ( y > 400.f ) refinementMarker = false;
+		if ( z > 200.f ) refinementMarker = false;
+		if ( y <= 400.f && z <= 200.f ) refinementMarker = true;
+	}
+	if ( Info.gridID == 1 )
+	{
+		refinementMarker = false;
+		if ( y > 350.f && y < 410.f ) refinementMarker = true;
+	}
+	if ( Info.gridID > 1 ) refinementMarker = true;
 	return; // this just keeps the automatic default refinement setting
 }
 
 #include "../../include/gridGenerationFunctions.h"
 #include "../../include/TEMPexportSectionCutPlot.h"
 
-__host__ __device__ void getIJKCellIndexFromXYZ( int& iCell, int& jCell, int& kCell, const float &x, const float &y, const float &z, const InfoStruct &Info)
-{
-    iCell = (int)(( x - Info.ox ) / Info.res + 0.5f);
-    jCell = (int)(( y - Info.oy ) / Info.res + 0.5f);
-    kCell = (int)(( z - Info.oz ) / Info.res + 0.5f);
-}
-
 int main(int argc, char **argv)
 {
 	// STLs
-	std::vector<STLStruct> gridStaticSTLs( 3 );
+	std::vector<STLStruct> gridStaticSTLs( 2 );
 	readSTL( gridStaticSTLs[0], STLPathStator );
 	readSTL( gridStaticSTLs[1], STLPathRotorShaft );
 	

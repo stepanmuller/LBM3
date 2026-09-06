@@ -66,6 +66,7 @@ __host__ __device__ bool getRayHitYesNo( 	const int &i, const int &j,
 
 void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxelizer )
 {
+	if ( STL.triangleCount == 0 ) throw std::runtime_error("voxelizeSTL failed: the passed STL has 0 triangles.");
 	InfoStruct &Info = Voxelizer.Info;
 	IntArrayType &rayMapArray = rayMap.rayMapArray;
 	IntArrayType hitCounterTempArray;
@@ -686,7 +687,7 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::
 	
 	const int rayMapCount = gridStaticSTLs.size();
 	Voxelizer.rayMaps.resize( rayMapCount );
-	
+
 	unsigned long long totalElementCount = 0LL;
 	for ( int rayMapIndex = 0; rayMapIndex < rayMapCount; rayMapIndex++ ) 
 	{
@@ -694,7 +695,7 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::
 		voxelizeSTL( Voxelizer.rayMaps[rayMapIndex], gridStaticSTLs[rayMapIndex], Voxelizer );
 		totalElementCount += (long long)Voxelizer.rayMaps[rayMapIndex].rayMapArray.getSize() + (long long)Voxelizer.rayMaps[rayMapIndex].hitCounterScanArray.getSize();
 	}
-	
+
 	Voxelizer.rayMapTotal.gridID = Voxelizer.Info.gridID;
 	Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
 	for ( int bonusIndex = 1; bonusIndex < rayMapCount; bonusIndex++ )
