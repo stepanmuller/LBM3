@@ -253,7 +253,6 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 	
 	static GridStruct dummyGrid; // if I am the coarsest grid myself, here Im fooling C++ to think there is a coarser grid than me, muhehe
     GridStruct &GridCoarse = iAmCoarsest ? dummyGrid : grids[ level - 1 ];
-	InfoStruct &InfoCoarse = GridCoarse.Info;
 	
 	// 1) On coarser grid, mark refinement area where our level will be built, from that calculate our cellCount
 	if ( iAmCoarsest )
@@ -297,9 +296,10 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 	
 	// 5) Build our NBR Plus and mark geometric validity
 	buildNBRPlus( Grid );
+	markGeometricNBRPlus( Grid );
 	
 	// 6) Recursion
-	// if ( !iAmFinest ) buildIJKFull( grids, voxelizers, level + 1 );
+	if ( !iAmFinest ) buildIJKFull( grids, voxelizers, level + 1 );
 }
 
 /*

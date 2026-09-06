@@ -42,9 +42,119 @@ __host__ __device__ inline void boolsToByte( uint8_t& value, const bool (&bools)
     }
 }
 
-/*
-void markGeometricNBRPlus( GridStruct &Grid, const int &upperBound )
+void connectNBRInRows( IntArrayType &NBRArray, IntArrayType &rowMapArray, const IntArrayType &rowCounterScanArray )
 {
+	const int totalRows = rowCounterScanArray.getSize() - 1;
+	auto NBRView = NBRArray.getView();
+	auto rowMapView = rowMapArray.getView();
+	auto rowCounterScanView = rowCounterScanArray.getConstView();
+	auto rowLambda = [=] __cuda_callable__ ( const int rowIndex ) mutable
+	{
+		const int startingPoint = rowCounterScanView( rowIndex );
+		const int rowCount = rowCounterScanView( rowIndex + 1 ) - startingPoint;
+		if (rowCount == 0) return;
+		// sort the row in ascending order
+		for ( int layer = 1; layer < rowCount; layer++ ) 
+		{
+			int key = rowMapView[startingPoint + layer];
+			int slider = layer - 1;
+			while ( slider >= 0 && rowMapView[startingPoint + slider] > key ) 
+			{
+				rowMapView[startingPoint + slider + 1] = rowMapView[startingPoint + slider];
+				slider = slider - 1;
+			}
+			rowMapView[startingPoint + slider + 1] = key;
+		}
+		// connect the neighbours
+		for ( int layer = 0; layer < rowCount - 1; layer++ ) 
+		{
+			const int owner = rowMapView[startingPoint + layer];
+			const int neighbour = rowMapView[startingPoint + layer + 1];
+			NBRView( owner ) = neighbour;
+		}
+		// to the last owner, assign the first neighbour (periodic wrap)
+		const int lastOwner = rowMapView[startingPoint + rowCount - 1];
+		const int firstNeighbour = rowMapView[startingPoint];
+		NBRView( lastOwner ) = firstNeighbour;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, totalRows, rowLambda );	
+}
+
+void buildNBRPlus( GridStruct &Grid )
+{
+	InfoStruct &Info = Grid.Info;
+	NBRArrayStruct &NBR = Grid.NBR;
+	auto iView = Grid.IJK.iArray.getConstView();
+	auto jView = Grid.IJK.jArray.getConstView();
+	auto kView = Grid.IJK.kArray.getConstView();
+	
+	IntArrayType rowMapArray( Info.cellCount );
+	auto rowMapView = rowMapArray.getView();
+	IntArrayType rowCounterScanArray;
+	IntArrayType rowCounterTempArray;
+	
+	// build map of IK rows
+	rowCounterScanArray.setSize( Info.cellCountX * Info.cellCountZ + 1 );
+	rowCounterTempArray.setSize( Info.cellCountX * Info.cellCountZ + 1 );
+	rowCounterScanArray.setValue( 0 );
+	rowCounterTempArray.setValue( 0 );
+	auto ikRowCounterScanView = rowCounterScanArray.getView();
+	auto ikRowCounterTempView = rowCounterTempArray.getView();
+	auto ikCounterLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int iCell = iView( cell );
+		const int kCell = kView( cell );
+		const int rowIndex = kCell * Info.cellCountX + iCell;
+		TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(ikRowCounterScanView( rowIndex ), 1);
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, ikCounterLambda );	
+	TNL::Algorithms::inplaceExclusiveScan( rowCounterScanArray, 0, Info.cellCountX * Info.cellCountZ + 1, TNL::Plus{} );
+	auto ikWriteLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int iCell = iView( cell );
+		const int kCell = kView( cell );
+		const int rowIndex = kCell * Info.cellCountX + iCell;
+		int writeIndex = ikRowCounterScanView( rowIndex );
+		writeIndex += TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(ikRowCounterTempView( rowIndex ), 1);
+		rowMapView( writeIndex ) = cell;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, ikWriteLambda );
+	// build jPlus
+	connectNBRInRows( NBR.jPlusArray, rowMapArray, rowCounterScanArray );
+	
+	// build map of IJ rows
+	rowCounterScanArray.setSize( Info.cellCountX * Info.cellCountY + 1 );
+	rowCounterTempArray.setSize( Info.cellCountX * Info.cellCountY + 1 );
+	rowCounterScanArray.setValue( 0 );
+	rowCounterTempArray.setValue( 0 );
+	auto ijRowCounterScanView = rowCounterScanArray.getView();
+	auto ijRowCounterTempView = rowCounterTempArray.getView();
+	auto ijCounterLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int iCell = iView( cell );
+		const int jCell = jView( cell );
+		const int rowIndex = jCell * Info.cellCountX + iCell;
+		TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(ijRowCounterScanView( rowIndex ), 1);
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, ijCounterLambda );	
+	TNL::Algorithms::inplaceExclusiveScan( rowCounterScanArray, 0, Info.cellCountX * Info.cellCountY + 1, TNL::Plus{} );
+	auto ijWriteLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int iCell = iView( cell );
+		const int jCell = jView( cell );
+		const int rowIndex = jCell * Info.cellCountX + iCell;
+		int writeIndex = ijRowCounterScanView( rowIndex );
+		writeIndex += TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(ijRowCounterTempView( rowIndex ), 1);
+		rowMapView( writeIndex ) = cell;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, ijWriteLambda );
+	// build kPlus
+	connectNBRInRows( NBR.kPlusArray, rowMapArray, rowCounterScanArray );
+}
+
+void markGeometricNBRPlus( GridStruct &Grid )
+{
+	const int &cellCount = Grid.Info.cellCount;
 	auto iView = Grid.IJK.iArray.getConstView();
 	auto jView = Grid.IJK.jArray.getConstView();
 	auto kView = Grid.IJK.kArray.getConstView();
@@ -58,13 +168,13 @@ void markGeometricNBRPlus( GridStruct &Grid, const int &upperBound )
 		const int jCell = jView[ cell ];
 		const int kCell = kView[ cell ];
 		
-		const int iPlus = (cell + 1 < upperBound) ? cell + 1 : 0;
+		const int iPlus = (cell + 1 < cellCount) ? cell + 1 : 0;
 		const int jPlus = jPlusView[ cell ];
-		const int ijPlus = (jPlus + 1 < upperBound) ? jPlus + 1 : 0;
+		const int ijPlus = (jPlus + 1 < cellCount) ? jPlus + 1 : 0;
 		const int kPlus = kPlusView[ cell ];
-		const int ikPlus = (kPlus + 1 < upperBound) ? kPlus + 1 : 0;
+		const int ikPlus = (kPlus + 1 < cellCount) ? kPlus + 1 : 0;
 		const int jkPlus = jPlusView[ kPlus ];		
-		const int ijkPlus = (jkPlus + 1 < upperBound) ? jkPlus + 1 : 0;
+		const int ijkPlus = (jkPlus + 1 < cellCount) ? jkPlus + 1 : 0;
 		
 		bool isGeometricMarker[8] = {false};
 		
@@ -81,8 +191,10 @@ void markGeometricNBRPlus( GridStruct &Grid, const int &upperBound )
 		
 		isGeometricBitPackedMarkerView( cell ) = isGeometricBitPack;
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, upperBound, cellLambda );	
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
+
+/*
 
 void connectNBRHoles( IntArrayType &nbrArray, const NBRHoleMapStruct &NBRHoleMap, const int &firstBound, const int &secondBound )
 {
