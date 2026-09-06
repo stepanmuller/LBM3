@@ -1,5 +1,5 @@
-constexpr float RES_GLOBAL = 1.5f; 	
-constexpr int GRID_LEVEL_COUNT = 2;
+constexpr float RES_GLOBAL = 8.f; 	
+constexpr int GRID_LEVEL_COUNT = 4;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
 const float dtPhysGlobal = 1.f;
@@ -58,6 +58,8 @@ int main(int argc, char **argv)
 	initializeVoxelizers( voxelizers, grids, gridStaticSTLs, 0 );
 	
 	buildIJKFull( grids, voxelizers, 0 );
+	
+	deleteExcessCells( grids, voxelizers, 0 );
 	
 	int iCut, jCut, kCut;
 	const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;

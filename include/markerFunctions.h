@@ -3,6 +3,45 @@
 #include "./types.h"
 #include "./NBRFunctions.h"
 
+void markWallCells( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
+{
+	const int &cellCount = Grid.Info.cellCount;
+	const int &cellCountX = Grid.Info.cellCountX;
+	auto iView = Grid.IJK.iArray.getConstView();
+	auto jView = Grid.IJK.jArray.getConstView();
+	auto kView = Grid.IJK.kArray.getConstView();
+	const IntArrayType &rayMapArray = rayMap.rayMapArray;
+	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
+	auto markerView = markerArray.getView();
+	auto rayMapView = rayMapArray.getConstView();
+	auto hitCounterScanView = hitCounterScanArray.getConstView();
+	
+	markerArray.setValue( false );
+
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		const int iCell = iView[ cell ];
+		const int jCell = jView[ cell ];
+		const int kCell = kView[ cell ];
+		int kStart, kEnd;
+		const int rayIndex = cellCountX * jCell + iCell;
+		const int startingPoint = hitCounterScanView( rayIndex );
+		const int endingPoint = hitCounterScanView( rayIndex + 1 );
+		for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
+		{
+			kStart = rayMapView( startIndex );
+			if ( kStart > kCell ) break;
+			kEnd = rayMapView( startIndex + 1 );
+			if ( kEnd > kCell )
+			{
+				markerView[ cell ] = true;
+				return;
+			}
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
+}
+
 void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMap, const SkeletonGridStruct &SkeletonGrid )
 {
 	// marks the skeleton grid based on a finer rayMapArray, result is 1 if at least one fine cell is 0 (fluid)
@@ -119,9 +158,9 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void markSingleFinerBounceback( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
+void markSingleFinerWall( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
 {
-	// marks a coarse grid based on a fine rayMapArray, result is 1 if at least one fine cell is 1 (bounceback)
+	// marks a coarse grid based on a fine rayMapArray, result is 1 if at least one fine cell is 1 (wall)
 	const int cellCountX = Grid.Info.cellCountX;
 	const int cellCount = Grid.Info.cellCount;
 	auto iView = Grid.IJK.iArray.getConstView();
@@ -223,13 +262,13 @@ void applyUserRefinementModification( BoolArrayType &markerArray, const GridStru
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 }
 
-void markAllFinerBouncebacks( BoolArrayType &resultArray, const std::vector<VoxelizerStruct> &voxelizers, const GridStruct &Grid )
+void markAllFinerWalls( BoolArrayType &resultArray, const std::vector<VoxelizerStruct> &voxelizers, const GridStruct &Grid )
 {
 	resultArray.setValue( false );
 	BoolArrayType markerArray( resultArray.getSize() );
 	for ( int level = Grid.Info.gridID; level < GRID_LEVEL_COUNT; level++ )
 	{
-		markSingleFinerBounceback( markerArray, voxelizers[level].rayMapTotal, Grid );
+		markSingleFinerWall( markerArray, voxelizers[level].rayMapTotal, Grid );
 		resultArray += markerArray;
 	}
 }
@@ -367,7 +406,7 @@ void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &
 {
 	markKeepCells( Grid, voxelizers );
 	// search deep refinement area
-	markAllFinerBouncebacks( Grid.deepRefinementMarkerArray, voxelizers, Grid );
+	markAllFinerWalls( Grid.deepRefinementMarkerArray, voxelizers, Grid );
 	
 	BoolArrayType markerBuffer( Grid.deepRefinementMarkerArray.getSize() );
 	for ( int spread = 0; spread < WALL_REFINEMENT_COUNT; spread++ )
@@ -392,37 +431,3 @@ void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &
 	// mark refinement all together
 	Grid.refinementMarkerArray = Grid.deepRefinementMarkerArray + Grid.fineToCoarseMarkerArray + Grid.coarseToFineMarkerArray;
 }
-
-/*
-void applyMarkersFromRayMap( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid, const int &upperBound )
-{
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
-	const IntArray3DType &rayMapArray = rayMap.rayMapArray;
-	auto markerView = markerArray.getView();
-	auto rayMapView = rayMapArray.getConstView();
-	
-	markerArray.setValue( false );
-
-	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
-	{
-		const int iCell = iView[ cell ];
-		const int jCell = jView[ cell ];
-		const int kCell = kView[ cell ];
-		int kStart, kEnd;
-		for ( int startIndex = 0; startIndex < RAY_MAP_DEPTH; startIndex = startIndex + 2 )
-		{
-			kStart = rayMapView( iCell, jCell, startIndex );
-			if ( kStart > kCell ) break;
-			kEnd = rayMapView( iCell, jCell, startIndex + 1 );
-			if ( kEnd > kCell )
-			{
-				markerView[ cell ] = true;
-				return;
-			}
-		}
-	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, upperBound, cellLambda );	
-}
-*/

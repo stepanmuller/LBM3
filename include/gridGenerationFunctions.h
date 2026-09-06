@@ -370,9 +370,9 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 	markGeometricNBRPlus( Grid );
 	
 	// 6) Build parentMapArray
-	std::cout << "	Building parentMapArray" << std::endl;
 	if ( !iAmCoarsest )
 	{
+		std::cout << "	Building parentMapArray" << std::endl;
 		IJKArrayStruct IJKWanted;
 		IJKWanted.iArray = Grid.IJK.iArray / 2;
 		IJKWanted.jArray = Grid.IJK.jArray / 2;
@@ -384,9 +384,9 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 	//    - is blocked from getting deleted later
 	//	  - is blocked from getting deeply refined (interface with finer grid is still allowed)
 	//	  - inherits fluid / wall state from the parent, even if the voxelizer says otherwise
-	std::cout << "	Marking parent interface" << std::endl;
 	if ( !iAmCoarsest )
 	{
+		std::cout << "	Marking parent interface" << std::endl;
 		auto parentInterfaceMarkerView = Grid.parentInterfaceMarkerArray.getView();
 		auto parentMapView = Grid.parentMapArray.getConstView();
 		auto parentCoarseToFineMarkerView = GridCoarse.coarseToFineMarkerArray.getConstView();
@@ -400,8 +400,196 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 	}
 	
-	// 7) Recursion
+	// 8) Recursion
 	if ( !iAmFinest ) buildIJKFull( grids, voxelizers, level + 1 );
+}
+
+void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<VoxelizerStruct> &voxelizers, const int level )
+// Delete cells from each level that are deep inside a wall or deeply refined
+// Enforce keep cells that are part of the parent interface
+{
+	std::cout << "Deleting excess cells for grid level " << level << std::endl;
+	const bool iAmCoarsest = ( level == 0 );
+	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
+	
+	GridStruct &Grid = grids[ level ];	
+	InfoStruct &Info = Grid.Info;	
+	const VoxelizerStruct &Voxelizer = voxelizers[ level ];
+	
+	static GridStruct dummyGrid; // if I am the coarsest grid myself, here Im fooling C++ to think there is a coarser grid than me, muhehe
+    GridStruct &GridCoarse = iAmCoarsest ? dummyGrid : grids[ level - 1 ];
+	
+	// 1) Mark fluid cells and add one layer of walls
+	markWallCells( Grid.keepCellMarkerArray, Voxelizer.rayMapTotal, Grid );
+	Grid.keepCellMarkerArray = !Grid.keepCellMarkerArray; // now keepCellMarkerArray marks fluid cells only
+	BoolArrayType markerSource;
+	markerSource = Grid.keepCellMarkerArray;
+	spreadMarkers( Grid.keepCellMarkerArray, markerSource, Grid ); // added one layer of walls
+	
+	// 2) Remove deeply refined cells
+	if ( !iAmFinest ) Grid.keepCellMarkerArray = Grid.keepCellMarkerArray * !Grid.deepRefinementMarkerArray; 
+	
+	// 3) Because we changed the coarser grid, we must rebuild the parentMapArray and parentInterfaceMarkerArray
+	if ( !iAmCoarsest )
+	{
+		std::cout << "	Rebuilding parentMapArray" << std::endl;
+		IJKArrayStruct IJKWanted;
+		IJKWanted.iArray = Grid.IJK.iArray / 2;
+		IJKWanted.jArray = Grid.IJK.jArray / 2;
+		IJKWanted.kArray = Grid.IJK.kArray / 2;
+		binarySearchIJK( IJKWanted, GridCoarse.IJK, Grid.parentMapArray );
+	}
+	if ( !iAmCoarsest )
+	{
+		std::cout << "	Rebuilding parentInterfaceMarkerArray" << std::endl;
+		auto parentInterfaceMarkerView = Grid.parentInterfaceMarkerArray.getView();
+		auto parentMapView = Grid.parentMapArray.getConstView();
+		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{
+			const int parentCell = parentMapView( cell );
+			if ( parentCell < 0 ) parentInterfaceMarkerView( cell ) = false; // parent cell does not exist here so there is certainly no interface
+			else parentInterfaceMarkerView( cell ) = true; // because we deleted deep refinement cells from the parent, this must only be the interface
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
+	}
+	
+	// 4) Enforce keep cells that are part of the parent interface. 
+	if ( !iAmCoarsest ) Grid.keepCellMarkerArray += Grid.parentInterfaceMarkerArray; 
+	
+	// 5) Build fullToKeep map
+	IntArrayType fullToKeepMapArray( Info.cellCount );
+	intArrayFromBoolArray( fullToKeepMapArray, Grid.keepCellMarkerArray );
+	TNL::Algorithms::inplaceExclusiveScan( fullToKeepMapArray, 0, Info.cellCount, TNL::Plus{} );
+	
+	// 6) Transform necessary information from full grid to the keep grid
+	// We need IJK, parentMapArray, fineToCoarseInterfaceMarkerArray, coarseToFineInterfaceMarkerArray	
+	// starting a scope so that temporary arrays then go out of scope
+	{ 	
+		IJKArrayStruct IJKFull = Grid.IJK;
+		IntArrayType parentMapArrayFull;
+		parentMapArrayFull = Grid.parentMapArray;
+		BoolArrayType fineToCoarseMarkerArrayFull;
+		fineToCoarseMarkerArrayFull = Grid.fineToCoarseMarkerArray;
+		BoolArrayType coarseToFineMarkerArrayFull;
+		coarseToFineMarkerArrayFull = Grid.coarseToFineMarkerArray;
+		
+		auto keepCellMarkerView = Grid.keepCellMarkerArray.getConstView();
+		auto fullToKeepMapView = fullToKeepMapArray.getConstView();
+		
+		auto iFullView = IJKFull.iArray.getConstView();
+		auto jFullView = IJKFull.jArray.getConstView();
+		auto kFullView = IJKFull.kArray.getConstView();
+		auto parentMapFullView = parentMapArrayFull.getConstView();
+		auto fineToCoarseMarkerFullView = fineToCoarseMarkerArrayFull.getConstView();
+		auto coarseToFineMarkerFullView = coarseToFineMarkerArrayFull.getConstView();
+		auto iView = Grid.IJK.iArray.getView();
+		auto jView = Grid.IJK.jArray.getView();
+		auto kView = Grid.IJK.kArray.getView();
+		auto parentMapView = Grid.parentMapArray.getView();
+		auto fineToCoarseMarkerView = Grid.fineToCoarseMarkerArray.getView();
+		auto coarseToFineMarkerView = Grid.coarseToFineMarkerArray.getView();
+		
+		auto fullToKeepLambda = [=] __cuda_callable__ ( const int cellFull ) mutable
+		{
+			if ( !keepCellMarkerView( cellFull ) ) return;
+			const int cell = fullToKeepMapView( cellFull );
+			iView( cell ) = iFullView( cellFull );
+			jView( cell ) = jFullView( cellFull );
+			kView( cell ) = kFullView( cellFull );
+			if (!iAmCoarsest) parentMapView( cell ) = parentMapFullView( cellFull );
+			if (!iAmFinest) fineToCoarseMarkerView( cell ) = fineToCoarseMarkerFullView( cellFull );
+			if (!iAmFinest) coarseToFineMarkerView( cell ) = coarseToFineMarkerFullView( cellFull );
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, fullToKeepLambda );	
+	}
+	
+	// 7) set new cellCount
+	Info.cellCount = TNL::sum( Grid.keepCellMarkerArray );
+	std::cout << "	Final cellCount set to " << Info.cellCount << std::endl;
+	
+	// 8) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
+	Grid.IJK.iArray.resize( Info.cellCount );
+	Grid.IJK.jArray.resize( Info.cellCount );
+	Grid.IJK.kArray.resize( Info.cellCount );
+	Grid.NBR.jPlusArray.resize( Info.cellCount );
+	Grid.NBR.kPlusArray.resize( Info.cellCount );
+	Grid.NBR.jMinusArray.resize( Info.cellCount );
+	Grid.NBR.kMinusArray.resize( Info.cellCount );
+	Grid.wallMarkerArray.resize( Info.cellCount );
+	if (!iAmCoarsest) Grid.parentMapArray.resize( Info.cellCount );
+	if (!iAmFinest) Grid.fineToCoarseMarkerArray.resize( Info.cellCount );
+	if (!iAmFinest) Grid.coarseToFineMarkerArray.resize( Info.cellCount );
+	
+	// 9) Forget the no longer necessary arrays
+	Grid.SkeletonGrid.keepCellMarkerArray.resize( 0 );
+	Grid.NBR.isGeometricBitPackedMarkerArray.resize( 0 );
+	Grid.deepRefinementMarkerArray.resize( 0 );
+	Grid.refinementMarkerArray.resize( 0 );
+	
+	// 10) Rebuild our NBR Plus
+	std::cout << "	Rebuilding NBR Plus" << std::endl;
+	buildNBRPlus( Grid );
+	
+	// 11) Build our NBR Minus
+	if ( !iAmCoarsest )
+	{
+		std::cout << "	Building NBR Minus" << std::endl;
+		auto jPlusView = Grid.NBR.jPlusArray.getConstView();
+		auto kPlusView = Grid.NBR.kPlusArray.getConstView();
+		auto jMinusView = Grid.NBR.jMinusArray.getView();
+		auto kMinusView = Grid.NBR.kMinusArray.getView();
+		auto NBRMinusLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			jMinusView[ jPlusView[ cell ] ] = cell;
+			kMinusView[ kPlusView[ cell ] ] = cell;
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
+	}
+	
+	// 12) Final marking of the wall
+	std::cout << "	Final wall marking" << std::endl;
+	markWallCells( Grid.wallMarkerArray, Voxelizer.rayMapTotal, Grid );
+	if ( !iAmCoarsest ) // if we are not coarsest, inherit wall state at parent interface from the parent
+	{
+		auto parentMapView = Grid.parentMapArray.getConstView();
+		auto parentWallMarkerView = GridCoarse.wallMarkerArray.getConstView();
+		auto wallMarkerView = Grid.wallMarkerArray.getView();
+		auto parentWallLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			const int parentCell = parentMapView( cell );
+			if ( parentCell < 0 ) return; 
+			wallMarkerView( cell ) = parentWallMarkerView( parentCell );
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, parentWallLambda );
+	}
+	
+	// 13) For all fluid cells adjacent to a wall, mark which voxelized body they belong to
+	// The last body has the highest priority
+	
+	// how to do this:
+	// setup two marker buffers, "bodyWall" and "markerSource", track the body number in a new IntArray wallIDArray -> initialize as -1
+	// loop over rayMaps
+	//		mark the raymap into bodyWall
+	//		use bodyWall as source and spread markers once -> bodyWall now has one fluid layer
+	// 		loop over cells
+	//		if cell is global wall, return
+	//		if cell is marked in bodyWall: wallIDArray( cell ) = wallID
+	// at the end run a check: as markerSource use global wall, check if all wall adjacent cells have a valid wallID >= 0
+	
+	// 13) Report memory consumption again
+	Info.gridMemoryBytes = (long long)(7 * 4 + 1 * 1) * (long long)(Info.cellCount); // 5 int arrays, 1 bool array
+	if ( !iAmFinest )
+	{
+		Info.gridMemoryBytes += (long long)(2 * 1) * (long long)(Info.cellCount); // 2 bool arrays
+	}
+	if ( !iAmCoarsest )
+	{
+		Info.gridMemoryBytes += (long long)(1 * 4) * (long long)(Info.cellCount); // 1 int array
+	}
+	std::cout << "	Finished deleting excess cells, this level now takes " << Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
+	
+	// 14) Recursion
+	if ( !iAmFinest ) deleteExcessCells( grids, voxelizers, level + 1 );
 }
 
 /*

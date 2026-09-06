@@ -40,7 +40,7 @@ def setup_plot(ax, data_array, label):
     # Calculate 5th and 95th percentiles (removes 2% smallest and 2% largest)
     vmin = np.nanpercentile(fluid_data, 1)
     vmax = np.nanpercentile(fluid_data, 99)
-    
+    vmin = vmax
     # If the range is zero (constant field), default to data min/max
     if (vmin == vmax) or label == "Grid ID [1]":
         vmin, vmax = np.min(fluid_data), np.max(fluid_data)
