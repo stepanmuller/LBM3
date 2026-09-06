@@ -64,7 +64,7 @@ __host__ __device__ bool getRayHitYesNo( 	const int &i, const int &j,
     return false; 
 }
 
-void voxelizeSTL( rayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxelizer )
+void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxelizer )
 {
 	InfoStruct &Info = Voxelizer.Info;
 	IntArrayType &rayMapArray = rayMap.rayMapArray;
@@ -506,7 +506,7 @@ void voxelizeSTL( rayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCountX * Info.cellCountY, rayLambda );	
 }
 
-void sumRayMaps( rayMapStruct &rayMapSum, rayMapStruct &rayMapBonus )
+void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 {
 	// add rayMapBonus into rayMapSum as unification of all their solid intervals
 	const int rayCountSum =	rayMapSum.hitCounterScanArray.getSize() - 1;

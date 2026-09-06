@@ -124,9 +124,9 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
-struct rayMapStruct { int gridID = 0; int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; };
+struct RayMapStruct { int gridID = 0; int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; };
 
-struct VoxelizerStruct { InfoStruct Info; std::vector<rayMapStruct> rayMaps; rayMapStruct rayMapTotal; };
+struct VoxelizerStruct { InfoStruct Info; std::vector<RayMapStruct> rayMaps; RayMapStruct rayMapTotal; };
 
 // NBR holds:
 // Connectivity for Esotwist: indexes of 2 neighbours in the positive direction jPlus, kPlus. 
@@ -149,9 +149,11 @@ struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; 
 
 struct GridStruct { InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
 					FloatArray2DType fArray; bool esotwistFlipper = false;
+					IntArrayType parentMapArray;
 					BoolArrayType keepCellMarkerArray; 
 					BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
 					BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
+					BoolArrayType parentInterfaceMarkerArray;
 					SkeletonGridStruct SkeletonGrid; }; 		
 					
 struct STLStructCPU { 	int triangleCount;

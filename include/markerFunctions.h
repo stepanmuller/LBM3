@@ -3,7 +3,7 @@
 #include "./types.h"
 #include "./NBRFunctions.h"
 
-void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, const SkeletonGridStruct &SkeletonGrid )
+void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMap, const SkeletonGridStruct &SkeletonGrid )
 {
 	// marks the skeleton grid based on a finer rayMapArray, result is 1 if at least one fine cell is 0 (fluid)
 	const int cellCountX = SkeletonGrid.Info.cellCountX;
@@ -44,7 +44,11 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMa
 				for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
 				{
 					kEnd = rayMapView( startIndex + 1 );
-					if ( kEnd < kFineFirst ) continue;
+					if ( kEnd < kFineFirst )
+					{
+						if ( startIndex + 2 < endingPoint ) continue; // continue browsing the next interval if there still is one
+						else return; // if this was the last interval, return to mark this as fluid
+					}
 					else if ( kEnd >= kFineFirst && kEnd <= kFineLast ) return;
 					kStart = rayMapView( startIndex );
 					if ( kStart <= kFineFirst ) break;
@@ -57,7 +61,7 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMa
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid )
+void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
 {
 	// marks a coarse grid based on a finer rayMapArray, result is 1 if at least one fine cell is 0 (fluid)
 	const int cellCountX = Grid.Info.cellCountX;
@@ -98,7 +102,11 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMa
 				for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
 				{
 					kEnd = rayMapView( startIndex + 1 );
-					if ( kEnd < kFineFirst ) continue;
+					if ( kEnd < kFineFirst ) 
+					{
+						if ( startIndex + 2 < endingPoint ) continue; // continue browsing the next interval if there still is one
+						else return; // if this was the last interval, return to mark this as fluid
+					}
 					else if ( kEnd >= kFineFirst && kEnd <= kFineLast ) return;
 					kStart = rayMapView( startIndex );
 					if ( kStart <= kFineFirst ) break;
@@ -111,7 +119,7 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const rayMapStruct &rayMa
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void markSingleFinerBounceback( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid )
+void markSingleFinerBounceback( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
 {
 	// marks a coarse grid based on a fine rayMapArray, result is 1 if at least one fine cell is 1 (bounceback)
 	const int cellCountX = Grid.Info.cellCountX;
@@ -382,7 +390,7 @@ void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &
 }
 
 /*
-void applyMarkersFromRayMap( BoolArrayType &markerArray, const rayMapStruct &rayMap, const GridStruct &Grid, const int &upperBound )
+void applyMarkersFromRayMap( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid, const int &upperBound )
 {
 	auto iView = Grid.IJK.iArray.getConstView();
 	auto jView = Grid.IJK.jArray.getConstView();

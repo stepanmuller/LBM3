@@ -1,5 +1,7 @@
 #pragma once
 
+#include "./D3Q27Directions.h"
+
 // Esotwist streaming step: Just flip the EsotwistFlipper to alter between odd / even iterations
 void applyStreaming( GridStruct& Grid )
 {
