@@ -515,6 +515,7 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 	Grid.NBR.kPlusArray.resize( Info.cellCount );
 	Grid.NBR.jMinusArray.resize( Info.cellCount );
 	Grid.NBR.kMinusArray.resize( Info.cellCount );
+	Grid.NBR.isGeometricBitPackedMarkerArray.resize( Info.cellCount );
 	Grid.wallMarkerArray.resize( Info.cellCount );
 	if (!iAmCoarsest) Grid.parentMapArray.resize( Info.cellCount );
 	if (!iAmFinest) Grid.fineToCoarseMarkerArray.resize( Info.cellCount );
@@ -522,13 +523,13 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 	
 	// 9) Forget the no longer necessary arrays
 	Grid.SkeletonGrid.keepCellMarkerArray.resize( 0 );
-	Grid.NBR.isGeometricBitPackedMarkerArray.resize( 0 );
 	Grid.deepRefinementMarkerArray.resize( 0 );
 	Grid.refinementMarkerArray.resize( 0 );
 	
 	// 10) Rebuild our NBR Plus
 	std::cout << "	Rebuilding NBR Plus" << std::endl;
 	buildNBRPlus( Grid );
+	markGeometricNBRPlus( Grid );
 	
 	// 11) Build our NBR Minus
 	if ( !iAmCoarsest )
@@ -546,7 +547,26 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
 	}
 	
-	// 12) Final marking of the wall
+	// 12) Recursion
+	if ( !iAmFinest ) deleteExcessCells( grids, voxelizers, level + 1 );
+}
+
+void buildWallMarkers( std::vector<GridStruct> &grids, const std::vector<VoxelizerStruct> &voxelizers, const int level )
+// Delete cells from each level that are deep inside a wall or deeply refined
+// Enforce keep cells that are part of the parent interface
+{
+	std::cout << "Building wall markers for grid level " << level << std::endl;
+	const bool iAmCoarsest = ( level == 0 );
+	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
+	
+	GridStruct &Grid = grids[ level ];	
+	InfoStruct &Info = Grid.Info;	
+	const VoxelizerStruct &Voxelizer = voxelizers[ level ];
+	
+	static GridStruct dummyGrid; // if I am the coarsest grid myself, here Im fooling C++ to think there is a coarser grid than me, muhehe
+    GridStruct &GridCoarse = iAmCoarsest ? dummyGrid : grids[ level - 1 ];
+	
+	// 1) Final marking of the wall
 	std::cout << "	Final wall marking" << std::endl;
 	markWallCells( Grid.wallMarkerArray, Voxelizer.rayMapTotal, Grid );
 	if ( !iAmCoarsest ) // if we are not coarsest, inherit wall state at parent interface from the parent
@@ -563,33 +583,56 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, parentWallLambda );
 	}
 	
-	// 13) For all fluid cells adjacent to a wall, mark which voxelized body they belong to
-	// The last body has the highest priority
+	// 2) For all fluid cells adjacent to a wall, mark which voxelized body they belong to
+	// The last body has higher priority
+	// At the parent interface, inherit bodyID from the parent, this has the highest priority
+	Grid.wallIDArray.setSize( Info.cellCount );
+	Grid.wallIDArray.setValue( -1 );
 	
-	// how to do this:
-	// setup two marker buffers, "bodyWall" and "markerSource", track the body number in a new IntArray wallIDArray -> initialize as -1
-	// loop over rayMaps
-	//		mark the raymap into bodyWall
-	//		use bodyWall as source and spread markers once -> bodyWall now has one fluid layer
-	// 		loop over cells
-	//		if cell is global wall, return
-	//		if cell is marked in bodyWall: wallIDArray( cell ) = wallID
-	// at the end run a check: as markerSource use global wall, check if all wall adjacent cells have a valid wallID >= 0
+	BoolArrayType wallAdjacentMarkerArray( Info.cellCount );
+	BoolArrayType markerSourceArray( Info.cellCount );
+	markerSourceArray = Grid.wallMarkerArray;
+	spreadMarkers( wallAdjacentMarkerArray, markerSourceArray, Grid );
+	wallAdjacentMarkerArray = wallAdjacentMarkerArray * !Grid.wallMarkerArray;
 	
-	// 13) Report memory consumption again
-	Info.gridMemoryBytes = (long long)(7 * 4 + 1 * 1) * (long long)(Info.cellCount); // 5 int arrays, 1 bool array
-	if ( !iAmFinest )
+	BoolArrayType bodyWallMarkerArray( Info.cellCount );
+	
+	for ( int wallID = 0; wallID < (int)Voxelizer.rayMaps.size(); wallID++ )
 	{
-		Info.gridMemoryBytes += (long long)(2 * 1) * (long long)(Info.cellCount); // 2 bool arrays
+		const RayMapStruct &RayMap = Voxelizer.rayMaps[ wallID ];
+		markWallCells( bodyWallMarkerArray, RayMap, Grid );
+		// At the interface, we must overwrite marker for this wall by the parent cells
+		// Generate temporary parent wall marker
+		BoolArrayType parentBodyWallMarkerArray( GridCoarse.Info.cellCount );
+		if (!iAmCoarsest) 
+		{
+			markWallCells( parentBodyWallMarkerArray, voxelizers[level-1].rayMaps[ wallID ], GridCoarse );
+			auto bodyWallMarkerView = bodyWallMarkerArray.getView();
+			auto parentMapView = Grid.parentMapArray.getConstView();
+			auto parentBodyWallMarkerView = parentBodyWallMarkerArray.getConstView();
+			auto wallIDLambda = [=] __cuda_callable__ ( const int cell ) mutable
+			{	
+				const int parentCell = parentMapView( cell );
+				if ( parentCell >= 0 ) bodyWallMarkerView( cell ) = parentBodyWallMarkerView( parentCell );
+			};
+			TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallIDLambda );
+		}
+		markerSourceArray = bodyWallMarkerArray;
+		spreadMarkers( bodyWallMarkerArray, markerSourceArray, Grid );
+		auto bodyWallMarkerView = bodyWallMarkerArray.getConstView();
+		auto wallAdjacentMarkerView = wallAdjacentMarkerArray.getConstView();
+		auto wallIDView = Grid.wallIDArray.getView();
+		auto wallIDLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			if ( !wallAdjacentMarkerView( cell ) ) return;
+			if ( bodyWallMarkerView( cell ) ) wallIDView( cell ) = wallID;	
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallIDLambda );
 	}
-	if ( !iAmCoarsest )
-	{
-		Info.gridMemoryBytes += (long long)(1 * 4) * (long long)(Info.cellCount); // 1 int array
-	}
-	std::cout << "	Finished deleting excess cells, this level now takes " << Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
+	// here I could add a check: as markerSource use global wall, check if all wall adjacent cells have a valid wallID >= 0
 	
-	// 14) Recursion
-	if ( !iAmFinest ) deleteExcessCells( grids, voxelizers, level + 1 );
+	// 3) Recursion
+	if ( !iAmFinest ) buildWallMarkers( grids, voxelizers, level + 1 );
 }
 
 /*

@@ -71,6 +71,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 		auto coarseToFineMarkerView = Grid.coarseToFineMarkerArray.getConstView();
 		auto parentMapView = Grid.parentMapArray.getConstView();
 		auto wallMarkerView = Grid.wallMarkerArray.getConstView();
+		auto wallIDView = Grid.wallIDArray.getConstView();
 		
 		auto jPlusView = Grid.NBR.jPlusArray.getConstView();
 		auto kPlusView = Grid.NBR.kPlusArray.getConstView();
@@ -126,11 +127,14 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 			//	ux = (float)( coarseToFineMarkerView(cell) || fineToCoarseMarkerView(cell));
 			//}
 
-			if ( Info.gridID > 0 )
-			{
-				if ( parentMapView(cell) >= 0 ) ux = (float)Info.gridID;
-			}
+			//if ( Info.gridID > 0 )
+			//{
+			//	if ( parentMapView(cell) >= 0 ) ux = (float)Info.gridID;
+			//}
 		
+			const int wallID  = wallIDView( cell );
+			if ( wallID >= 0 ) ux = 1.f + (float)wallID;
+			
 			const float marker = (float)wallMarkerView(cell);
 			
 			// 3. Mapping coordinates to the scaled-down output array

@@ -150,7 +150,7 @@ struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; 
 struct GridStruct { InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
 					FloatArray2DType fArray; bool esotwistFlipper = false;
 					IntArrayType parentMapArray;
-					BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray;
+					BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray; IntArrayType wallIDArray;
 					BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
 					BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
 					BoolArrayType parentInterfaceMarkerArray;
