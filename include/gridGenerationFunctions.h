@@ -338,20 +338,17 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 	Grid.NBR.kPlusArray.setSize( Info.cellCount );
 	Grid.NBR.isGeometricBitPackedMarkerArray.setSize( Info.cellCount );
 	Grid.keepCellMarkerArray.setSize( Info.cellCount );	
-	Info.gridMemoryBytes += (long long)(5 * 4 + 1 * 1) * (long long)(Info.cellCount); // 5 int arrays, 1 uint8_t
 	if ( !iAmFinest )
 	{
 		Grid.refinementMarkerArray.setSize( Info.cellCount );
 		Grid.deepRefinementMarkerArray.setSize( Info.cellCount );
 		Grid.fineToCoarseMarkerArray.setSize( Info.cellCount );
 		Grid.coarseToFineMarkerArray.setSize( Info.cellCount );
-		Info.gridMemoryBytes += (long long)(4 * 1) * (long long)(Info.cellCount); // 4 bool arrays
 	}
 	if ( !iAmCoarsest )
 	{
 		Grid.parentMapArray.setSize( Info.cellCount );
 		Grid.parentInterfaceMarkerArray.setSize( Info.cellCount );
-		Info.gridMemoryBytes += (long long)(1 * 4 + 1 * 1) * (long long)(Info.cellCount); // 1 int array, 1 bool array
 	}
 	
 	// 3) Build our grid = fill our IJK (we are the "finer grid" with respect to the grid we are taking spatial information from)
@@ -394,18 +391,18 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 	}
 	
-	std::cout << "	Level " << level << " done, initial cellCount " << Info.cellCount << ", allocated on GPU, it takes " << Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
+	// std::cout << "	Level " << level << " done, initial cellCount " << Info.cellCount << std::endl;
 	
 	// 8) Recursion
 	if ( !iAmFinest ) buildIJKFull( grids, voxelizers, level + 1 );
-	else std::cout << std::endl;
+	// else std::cout << std::endl;
 }
 
 void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<VoxelizerStruct> &voxelizers, const int level )
 // Delete cells from each level that are deep inside a wall or deeply refined
 // Enforce keep cells that are part of the parent interface
 {
-	std::cout << "Deleting excess cells for grid level " << level << std::endl;
+	if ( level == 0 ) std::cout << "Deleting excess cells for all grid levels" << std::endl; 
 	const bool iAmCoarsest = ( level == 0 );
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
 	
@@ -429,7 +426,6 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 	// 3) Because we changed the coarser grid, we must rebuild the parentMapArray and parentInterfaceMarkerArray
 	if ( !iAmCoarsest )
 	{
-		std::cout << "	Rebuilding parentMapArray" << std::endl;
 		IJKArrayStruct IJKWanted;
 		IJKWanted.iArray = Grid.IJK.iArray / 2;
 		IJKWanted.jArray = Grid.IJK.jArray / 2;
@@ -438,7 +434,6 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 	}
 	if ( !iAmCoarsest )
 	{
-		std::cout << "	Rebuilding parentInterfaceMarkerArray" << std::endl;
 		auto parentInterfaceMarkerView = Grid.parentInterfaceMarkerArray.getView();
 		auto parentMapView = Grid.parentMapArray.getConstView();
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
@@ -502,7 +497,6 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 	
 	// 7) set new cellCount
 	Info.cellCount = TNL::sum( Grid.keepCellMarkerArray );
-	std::cout << "	Final cellCount set to " << Info.cellCount << std::endl;
 	
 	// 8) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
 	Grid.IJK.iArray.resize( Info.cellCount );
@@ -524,14 +518,12 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 	Grid.refinementMarkerArray.resize( 0 );
 	
 	// 10) Rebuild our NBR Plus
-	std::cout << "	Rebuilding NBR Plus" << std::endl;
 	buildNBRPlus( Grid );
 	markGeometricNBRPlus( Grid );
 	
 	// 11) Build our NBR Minus
 	if ( !iAmCoarsest )
 	{
-		std::cout << "	Building NBR Minus" << std::endl;
 		auto jPlusView = Grid.NBR.jPlusArray.getConstView();
 		auto kPlusView = Grid.NBR.kPlusArray.getConstView();
 		auto jMinusView = Grid.NBR.jMinusArray.getView();
@@ -544,15 +536,18 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
 	}
 	
+	// std::cout << "	Level " << level << " done, final cellCount " << Info.cellCount << std::endl;
+	
 	// 12) Recursion
 	if ( !iAmFinest ) deleteExcessCells( grids, voxelizers, level + 1 );
+	// else std::cout << std::endl;
 }
 
 void buildWallMarkers( std::vector<GridStruct> &grids, const std::vector<VoxelizerStruct> &voxelizers, const int level )
 // Delete cells from each level that are deep inside a wall or deeply refined
 // Enforce keep cells that are part of the parent interface
 {
-	std::cout << "Building wall markers for grid level " << level << std::endl;
+	if ( level == 0 ) std::cout << "Marking walls for all grid levels" << std::endl; 
 	const bool iAmCoarsest = ( level == 0 );
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
 	
@@ -564,7 +559,6 @@ void buildWallMarkers( std::vector<GridStruct> &grids, const std::vector<Voxeliz
     GridStruct &GridCoarse = iAmCoarsest ? dummyGrid : grids[ level - 1 ];
 	
 	// 1) Final marking of the wall
-	std::cout << "	Final wall marking" << std::endl;
 	markWallCells( Grid.wallMarkerArray, Voxelizer.rayMapTotal, Grid );
 	if ( !iAmCoarsest ) // if we are not coarsest, inherit wall state at parent interface from the parent
 	{
@@ -621,9 +615,11 @@ void buildWallMarkers( std::vector<GridStruct> &grids, const std::vector<Voxeliz
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallIDLambda );
 	}
 	
+	// std::cout << "	Level " << level << " done" << std::endl;
 	// 3) Recursion
 	if ( !iAmFinest ) buildWallMarkers( grids, voxelizers, level + 1 );
-}
+	// else std::cout << std::endl;
+}	
 
 /*
 #include "./genericArrayFunctions.h"
