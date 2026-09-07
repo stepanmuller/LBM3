@@ -23,7 +23,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 		long long dataSize = (long long)targetCellCountHorizontal * targetCellCountVertical;
 		
 		// Break if it fits in memory OR if we are forced to use the absolute coarsest grid
-		if ( dataSize < 20000000 || targetLevelCount == 1 ) break; 
+		if ( dataSize < 80000000 || targetLevelCount == 1 ) break; 
 		
 		targetLevelCount--;
 	}

@@ -11,7 +11,7 @@ void markWallCells( BoolArrayType &markerArray, const RayMapStruct &rayMap, cons
 	auto jView = Grid.IJK.jArray.getConstView();
 	auto kView = Grid.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
-	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
+	const LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
 	auto rayMapView = rayMapArray.getConstView();
 	auto hitCounterScanView = hitCounterScanArray.getConstView();
@@ -25,13 +25,13 @@ void markWallCells( BoolArrayType &markerArray, const RayMapStruct &rayMap, cons
 		const int kCell = kView[ cell ];
 		int kStart, kEnd;
 		const int rayIndex = cellCountX * jCell + iCell;
-		const int startingPoint = hitCounterScanView( rayIndex );
-		const int endingPoint = hitCounterScanView( rayIndex + 1 );
-		for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
+		const long long startingPoint = hitCounterScanView( rayIndex );
+		const long long endingPoint = hitCounterScanView( rayIndex + 1 );
+		for ( long long startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2LL )
 		{
 			kStart = rayMapView( startIndex );
 			if ( kStart > kCell ) break;
-			kEnd = rayMapView( startIndex + 1 );
+			kEnd = rayMapView( startIndex + 1LL );
 			if ( kEnd > kCell )
 			{
 				markerView[ cell ] = true;
@@ -50,7 +50,7 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 	// const int cellCountZ = SkeletonGrid.Info.cellCountZ; // this is not needed
 	const int cellCount = SkeletonGrid.Info.cellCount;
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
-	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
+	const LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
 	auto rayMapView = rayMapArray.getConstView();
 	auto hitCounterScanView = hitCounterScanArray.getConstView();
@@ -78,14 +78,14 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 			{
 				iFine = iFineFirst + iAdd;
 				const int rayIndex = ( cellCountX * downsample ) * jFine + iFine;
-				const int startingPoint = hitCounterScanView( rayIndex );
-				const int endingPoint = hitCounterScanView( rayIndex + 1 );
-				for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
+				const long long startingPoint = hitCounterScanView( rayIndex );
+				const long long endingPoint = hitCounterScanView( rayIndex + 1 );
+				for ( long long startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2LL )
 				{
-					kEnd = rayMapView( startIndex + 1 );
+					kEnd = rayMapView( startIndex + 1LL );
 					if ( kEnd < kFineFirst )
 					{
-						if ( startIndex + 2 < endingPoint ) continue; // continue browsing the next interval if there still is one
+						if ( startIndex + 2LL < endingPoint ) continue; // continue browsing the next interval if there still is one
 						else return; // if this was the last interval, return to mark this as fluid
 					}
 					else if ( kEnd >= kFineFirst && kEnd <= kFineLast ) return;
@@ -109,7 +109,7 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 	auto jView = Grid.IJK.jArray.getConstView();
 	auto kView = Grid.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
-	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
+	const LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
 	auto rayMapView = rayMapArray.getConstView();
 	auto hitCounterScanView = hitCounterScanArray.getConstView();
@@ -136,14 +136,14 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 			{
 				iFine = iFineFirst + iAdd;
 				const int rayIndex = ( cellCountX * downsample ) * jFine + iFine;
-				const int startingPoint = hitCounterScanView( rayIndex );
-				const int endingPoint = hitCounterScanView( rayIndex + 1 );
-				for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
+				const long long startingPoint = hitCounterScanView( rayIndex );
+				const long long endingPoint = hitCounterScanView( rayIndex + 1 );
+				for ( long long startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2LL )
 				{
 					kEnd = rayMapView( startIndex + 1 );
 					if ( kEnd < kFineFirst ) 
 					{
-						if ( startIndex + 2 < endingPoint ) continue; // continue browsing the next interval if there still is one
+						if ( startIndex + 2LL < endingPoint ) continue; // continue browsing the next interval if there still is one
 						else return; // if this was the last interval, return to mark this as fluid
 					}
 					else if ( kEnd >= kFineFirst && kEnd <= kFineLast ) return;
@@ -167,7 +167,7 @@ void markSingleFinerWall( BoolArrayType &markerArray, const RayMapStruct &rayMap
 	auto jView = Grid.IJK.jArray.getConstView();
 	auto kView = Grid.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
-	const IntArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
+	const LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
 	auto rayMapView = rayMapArray.getConstView();
 	auto hitCounterScanView = hitCounterScanArray.getConstView();
@@ -194,9 +194,9 @@ void markSingleFinerWall( BoolArrayType &markerArray, const RayMapStruct &rayMap
 			{
 				iFine = iFineFirst + iAdd;
 				const int rayIndex = ( cellCountX * downsample ) * jFine + iFine;
-				const int startingPoint = hitCounterScanView( rayIndex );
-				const int endingPoint = hitCounterScanView( rayIndex + 1 );
-				for ( int startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2 )
+				const long long startingPoint = hitCounterScanView( rayIndex );
+				const long long endingPoint = hitCounterScanView( rayIndex + 1 );
+				for ( long long startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2LL )
 				{
 					kStart = rayMapView( startIndex );
 					if ( kStart > kFineLast ) break;

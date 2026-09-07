@@ -35,6 +35,8 @@ using IntArrayType = TNL::Containers::Vector< int, TNL::Devices::Cuda, size_t >;
 using IntConstViewType = TNL::Containers::VectorView< const int, TNL::Devices::Cuda, size_t >;
 using IntArrayTypeCPU = TNL::Containers::Vector< int, TNL::Devices::Host, size_t >;
 
+using LongLongArrayType = TNL::Containers::Vector< long long, TNL::Devices::Cuda, size_t >;
+
 using IntArray2DType = TNL::Containers::NDArray< int, 
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
 												std::index_sequence< 0, 1 >,
@@ -124,7 +126,7 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
-struct RayMapStruct { int gridID = 0; int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; }; // I need to change the hitCounterScanArray to use long int
+struct RayMapStruct { int gridID = 0; long long totalHitCount = 0LL; IntArrayType rayMapArray; LongLongArrayType hitCounterScanArray; };
 
 struct VoxelizerStruct { InfoStruct Info; std::vector<RayMapStruct> rayMaps; RayMapStruct rayMapTotal; };
 
