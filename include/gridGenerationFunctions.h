@@ -589,12 +589,7 @@ void buildWallMarkers( std::vector<GridStruct> &grids, const std::vector<Voxeliz
 	Grid.wallIDArray.setSize( Info.cellCount );
 	Grid.wallIDArray.setValue( -1 );
 	
-	BoolArrayType wallAdjacentMarkerArray( Info.cellCount );
 	BoolArrayType markerSourceArray( Info.cellCount );
-	markerSourceArray = Grid.wallMarkerArray;
-	spreadMarkers( wallAdjacentMarkerArray, markerSourceArray, Grid );
-	wallAdjacentMarkerArray = wallAdjacentMarkerArray * !Grid.wallMarkerArray;
-	
 	BoolArrayType bodyWallMarkerArray( Info.cellCount );
 	
 	for ( int wallID = 0; wallID < (int)Voxelizer.rayMaps.size(); wallID++ )
@@ -619,17 +614,15 @@ void buildWallMarkers( std::vector<GridStruct> &grids, const std::vector<Voxeliz
 		}
 		markerSourceArray = bodyWallMarkerArray;
 		spreadMarkers( bodyWallMarkerArray, markerSourceArray, Grid );
+		bodyWallMarkerArray = bodyWallMarkerArray * !Grid.wallMarkerArray;
 		auto bodyWallMarkerView = bodyWallMarkerArray.getConstView();
-		auto wallAdjacentMarkerView = wallAdjacentMarkerArray.getConstView();
 		auto wallIDView = Grid.wallIDArray.getView();
 		auto wallIDLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{	
-			if ( !wallAdjacentMarkerView( cell ) ) return;
 			if ( bodyWallMarkerView( cell ) ) wallIDView( cell ) = wallID;	
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallIDLambda );
 	}
-	// here I could add a check: as markerSource use global wall, check if all wall adjacent cells have a valid wallID >= 0
 	
 	// 3) Recursion
 	if ( !iAmFinest ) buildWallMarkers( grids, voxelizers, level + 1 );

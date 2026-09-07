@@ -1,5 +1,5 @@
-constexpr float RES_GLOBAL = 1.6f; 	
-constexpr int GRID_LEVEL_COUNT = 2;
+constexpr float RES_GLOBAL = 2.0f; 	
+constexpr int GRID_LEVEL_COUNT = 4;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
 const float dtPhysGlobal = 1.f;
@@ -7,7 +7,7 @@ const float nuPhys = 1.f;
 
 #include "../../include/types.h"
 
-std::string STLPathStator = "../../../../ns300/ns300_STATOR.STL";
+std::string STLPathStator = "../../../../ns300/ns300_STATOR_ENLARGED_TIP_GAP.STL";
 std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
 std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
 
@@ -20,18 +20,22 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 {
 	float x, y, z;
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+	const float rz = std::sqrt( x*x + y*y );
 	if ( Info.gridID == 0 )
 	{
-		if ( y > 400.f ) refinementMarker = false;
-		if ( z > 200.f ) refinementMarker = false;
+		refinementMarker = false;
 		if ( y <= 400.f && z <= 200.f ) refinementMarker = true;
 	}
 	if ( Info.gridID == 1 )
 	{
 		refinementMarker = false;
-		if ( y > 350.f && y < 410.f ) refinementMarker = true;
+		if ( rz < 170.f && z < 140.f ) refinementMarker = true;
 	}
-	if ( Info.gridID > 1 ) refinementMarker = true;
+	if ( Info.gridID == 2 ) // additional refinement for the tip gap
+	{
+		refinementMarker = false;
+		if ( rz < 134.f && rz > 129.5f && z < 126.f && z > 104.f ) refinementMarker = true;
+	}
 	return; // this just keeps the automatic default refinement setting
 }
 

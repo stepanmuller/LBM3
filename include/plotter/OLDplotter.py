@@ -81,5 +81,5 @@ setup_plot(ax3, gridID, "Grid ID [1]")
 
 # 5. Save
 os.makedirs("results", exist_ok=True)
-plt.savefig(f"results/{plotNumber}.png", dpi=min(1000, max([300, nVertical/2, nHorizontal/2])), bbox_inches="tight")
+plt.savefig(f"results/{plotNumber}.png", dpi=1500, bbox_inches="tight") #dpi=min(1000, max([300, nVertical/2, nHorizontal/2])), bbox_inches="tight")
 plt.close()
