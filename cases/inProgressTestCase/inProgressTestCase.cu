@@ -45,7 +45,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 }
 
 #include "../../include/gridGenerationFunctions.h"
-#include "../../include/TEMPexportSectionCutPlot.h"
+#include "../../include/exportSectionCutPlot.h"
 
 int main(int argc, char **argv)
 {
