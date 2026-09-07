@@ -304,7 +304,7 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 // Builds uncompressed full IJK for all grid levels recursively. 
 // "Full" IJK means that the area on coarse grid that has a finer grid on top does not get deleted (yet)
 {
-	std::cout << "Building full IJK for grid level " << level << std::endl;
+	if ( level == 0 ) std::cout << "Building full IJK for all grid levels" << std::endl; 
 	const bool iAmCoarsest = ( level == 0 );
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
 	
@@ -329,7 +329,6 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 		markRefinementCells( GridCoarse, voxelizers );
 		Info.cellCount = 8 * TNL::sum( GridCoarse.refinementMarkerArray );
 	}
-	std::cout << "	Initial cellCount set to " << Info.cellCount << std::endl;
 	
 	// 2) Set size of our arrays to cellCount
 	Grid.IJK.iArray.setSize( Info.cellCount );
@@ -354,25 +353,21 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 		Grid.parentInterfaceMarkerArray.setSize( Info.cellCount );
 		Info.gridMemoryBytes += (long long)(1 * 4 + 1 * 1) * (long long)(Info.cellCount); // 1 int array, 1 bool array
 	}
-	std::cout << "	Initial arrays allocated on GPU, it takes " << Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
 	
 	// 3) Build our grid = fill our IJK (we are the "finer grid" with respect to the grid we are taking spatial information from)
 	if ( iAmCoarsest ) buildFinerGrid( SkeletonGrid, Grid );
 	else buildFinerGrid( GridCoarse, Grid );
 	
 	// 4) Sort our IJK so that k changes the slowest
-	std::cout << "	Sorting IJK" << std::endl;
 	sortIJK( Grid.IJK );
 	
 	// 5) Build our NBR Plus and mark geometric validity
-	std::cout << "	Building NBR Plus" << std::endl;
 	buildNBRPlus( Grid );
 	markGeometricNBRPlus( Grid );
 	
 	// 6) Build parentMapArray
 	if ( !iAmCoarsest )
 	{
-		std::cout << "	Building parentMapArray" << std::endl;
 		IJKArrayStruct IJKWanted;
 		IJKWanted.iArray = Grid.IJK.iArray / 2;
 		IJKWanted.jArray = Grid.IJK.jArray / 2;
@@ -386,7 +381,6 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 	//	  - inherits fluid / wall state from the parent, even if the voxelizer says otherwise
 	if ( !iAmCoarsest )
 	{
-		std::cout << "	Marking parent interface" << std::endl;
 		auto parentInterfaceMarkerView = Grid.parentInterfaceMarkerArray.getView();
 		auto parentMapView = Grid.parentMapArray.getConstView();
 		auto parentCoarseToFineMarkerView = GridCoarse.coarseToFineMarkerArray.getConstView();
@@ -400,8 +394,11 @@ void buildIJKFull( std::vector<GridStruct> &grids, const std::vector<VoxelizerSt
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 	}
 	
+	std::cout << "	Level " << level << " done, initial cellCount " << Info.cellCount << ", allocated on GPU, it takes " << Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
+	
 	// 8) Recursion
 	if ( !iAmFinest ) buildIJKFull( grids, voxelizers, level + 1 );
+	else std::cout << std::endl;
 }
 
 void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<VoxelizerStruct> &voxelizers, const int level )

@@ -91,7 +91,7 @@ void checkSTLEdges( STLStruct &STL )
 			std::cout << "	Faulty edge on triangle " << triangleIndex << ", ABcount: " << ABcount << ", BCcount: " << BCcount << ", CAcount: " << CAcount << std::endl;
 		}
 	}    
-	if ( errorCounter == 0 ) std::cout<< "	Check finished, number of faulty edges: " << errorCounter << std::endl; 
+	if ( errorCounter == 0 ) {} //std::cout<< "	Check finished, number of faulty edges: " << errorCounter << std::endl; 
 	else std::cout<< "	Check failed, number of faulty edges: " << errorCounter << std::endl; 
 	if ( errorCounter > 0 ) throw std::runtime_error("Check failed, the STL has some faulty edges which aren't shared between exactly two triangles. This means the STL is not closed. Please fix the STL file.");
 }
@@ -112,7 +112,7 @@ void readSTL( STLStruct &STL, const std::string &filename )
 	file.read( reinterpret_cast<char*>(&triangleCount32), sizeof(uint32_t) );
 	
 	int initialTriangleCount = static_cast<int>( triangleCount32 );
-	std::cout<<"	Initial triangle count: " << initialTriangleCount << std::endl;
+	// std::cout<<"	Initial triangle count: " << initialTriangleCount << std::endl;
 	// Track excluded triangles (exclude triangles whose at least 2 points are identical)
 	int excludedTriangleCount = 0;
 	
@@ -215,13 +215,17 @@ void readSTL( STLStruct &STL, const std::string &filename )
     STLCPU.cyArray.resize(triangleCount);
     STLCPU.czArray.resize(triangleCount);
     
-    std::cout<<"	Excluded triangles with zero area: " << excludedTriangleCount << std::endl;    
-    std::cout<<"	Final triangle count: " << triangleCount << std::endl;
+    if ( excludedTriangleCount > 0 )
+    {
+		std::cout<<"	Excluded triangles with zero area: " << excludedTriangleCount << std::endl;    
+		std::cout<<"	Final triangle count: " << triangleCount << std::endl;
+    }
+    else std::cout<<"	Triangle count: " << triangleCount << std::endl;
     std::cout << "	xMin xMax: " << STLCPU.Bounds.xMin << " " << STLCPU.Bounds.xMax << "\n";
     std::cout << "	yMin yMax: " << STLCPU.Bounds.yMin << " " << STLCPU.Bounds.yMax << "\n";
     std::cout << "	zMin zMax: " << STLCPU.Bounds.zMin << " " << STLCPU.Bounds.zMax << "\n";
-    std::cout << "	rxMax ryMax rzMax: " << STLCPU.Bounds.rxMax << " " << STLCPU.Bounds.ryMax << " " << STLCPU.Bounds.rzMax << "\n";
-   
+    // std::cout << "	rxMax ryMax rzMax: " << STLCPU.Bounds.rxMax << " " << STLCPU.Bounds.ryMax << " " << STLCPU.Bounds.rzMax << "\n";
+
     STL = STLStruct( STLCPU );
 	checkSTLEdges( STL );
 	STL.raysPerTriangleCounterArray.setSize( STL.triangleCount );
@@ -229,7 +233,7 @@ void readSTL( STLStruct &STL, const std::string &filename )
 	STL.threadToTriangleMapArray.setSize( STL.triangleCount * STL.threadsToTrianglesRatio );
 	STL.threadToTriangleMapArray.setValue( 0 );
 	unsigned long long memoryBytes = 4LL * 9LL * STL.triangleCount; // 1 float has 4 Bytes, 9 floats per triangle
-	std::cout << "	Done, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
+	std::cout << "	Check OK, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
 	std::cout << std::endl;
 }
 

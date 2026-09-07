@@ -67,18 +67,19 @@ __host__ __device__ bool getRayHitYesNo( 	const int &i, const int &j,
 void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxelizer )
 {
 	if ( STL.triangleCount == 0 ) throw std::runtime_error("voxelizeSTL failed: the passed STL has 0 triangles.");
+	
 	InfoStruct &Info = Voxelizer.Info;
 	IntArrayType &rayMapArray = rayMap.rayMapArray;
-	IntArrayType hitCounterTempArray;
 	LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
-	IntArrayType hitCounterScanArrayInt( Info.cellCountX * Info.cellCountY + 1 );
-	hitCounterScanArrayInt.setValue( 0 );
 	long long &totalHitCount = rayMap.totalHitCount;
 	
+	IntArrayType hitCounterTempArray;
 	hitCounterTempArray.setSize( Info.cellCountX * Info.cellCountY );
 	hitCounterTempArray.setValue( 0 );
 	hitCounterScanArray.setSize( Info.cellCountX * Info.cellCountY + 1 );
 	hitCounterScanArray.setValue( 0LL );
+	IntArrayType hitCounterScanArrayInt( Info.cellCountX * Info.cellCountY + 1 ); // this is required because atomic add is not supported for long long
+	hitCounterScanArrayInt.setValue( 0 );
 	
 	auto hitCounterTempView = hitCounterTempArray.getView();
 	auto hitCounterScanView = hitCounterScanArray.getView();
@@ -100,7 +101,7 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 	const int threadCountMax = threadToTriangleMapArray.getSize();
 	auto threadToTriangleMapView = threadToTriangleMapArray.getView();
 	
-	// first find rays per triangle to be able to distribute workload on threads evenly later
+	// 1) find rays per triangle to be able to distribute workload on threads evenly later
 	auto raysPerTriangleCounterLambda = [ = ] __cuda_callable__( const int triangleIndex ) mutable
     {
 		// transform into the coordinate system of the LBM grid
@@ -134,6 +135,7 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, STL.triangleCount, raysPerTriangleCounterLambda );
 	
+	// 2) find total task count = total number of possible intersections that have to be evaluated
 	auto raysPerTriangleCounterViewReduction = raysPerTriangleCounterArray.getConstView();
 	auto fetchTaskCount = [=] __cuda_callable__( const int triangleIndex )
 	{
@@ -143,13 +145,14 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 	auto reductionTaskCount = [] __cuda_callable__( const long long& a, const long long& b ) { return a + b; };
 	const long long taskCount = TNL::Algorithms::reduce<TNL::Devices::Cuda>( (size_t)0, raysPerTriangleCounterArray.getSize(), fetchTaskCount, reductionTaskCount, 0LL );
 	
+	// 3) distribute the tasks to threads
 	// set worst case scenario limit for rays per thread so that thread count will never exceed size of the threadToTriangleMapArray
 	const int raysPerThreadLimit = (int)TNL::max(16LL, (long long)TNL::max(0LL, taskCount - (long long)STL.triangleCount) / ( (long long)threadCountMax - (long long)STL.triangleCount )); 
-			
-	IntArrayType &threadsPerTriangleScanArray = raysPerTriangleCounterArray;
-	auto &threadsPerTriangleScanView = raysPerTriangleCounterView;
 	
+	IntArrayType &threadsPerTriangleScanArray = raysPerTriangleCounterArray; // renaming the array for clarity
+	auto &threadsPerTriangleScanView = raysPerTriangleCounterView;
 	threadsPerTriangleScanArray = ( raysPerTriangleCounterArray - 1 ) / raysPerThreadLimit + 1;
+	
 	const int threadsPerLastTriangle = threadsPerTriangleScanArray.getElement( STL.triangleCount - 1 );
 	TNL::Algorithms::inplaceExclusiveScan( threadsPerTriangleScanArray );
 	const int threadCount = threadsPerTriangleScanArray.getElement( STL.triangleCount - 1 ) + threadsPerLastTriangle;
@@ -164,6 +167,7 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 	
 	TNL::Algorithms::inplaceInclusiveScan( threadToTriangleMapArray, 0, threadCount, TNL::Max{} );
 	
+	// 4) first pass over rays: count total hits per ray to be able to size rayMap correctly
 	auto rayHitCounterLambda = [ = ] __cuda_callable__( const int threadIndex ) mutable
     {
 		// first, find which triangle our thread is working on
@@ -236,7 +240,7 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const long long dwbc_dj = qzLong * bcxLong * 100LL;
 		const long long dwca_di = - qzLong * cayLong * 100LL;
 		const long long dwca_dj = qzLong * caxLong * 100LL;
-		// Prepare calculation of the intersection coordinate
+		// Prepare calculation of the intersection coordinate ... not needed here in the first pass
 		//const float v1x = bx - ax;
 		//const float v1y = by - ay;
 		//const float v1z = bz - az;
@@ -306,7 +310,8 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 				if ( rayHit ) 
 				{
 					const int rayIndex = j * Info.cellCountX + i;
-					TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(hitCounterScanViewInt( rayIndex ), 1);
+					// here we are using the int array because atomic does not support long long
+					TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(hitCounterScanViewInt( rayIndex ), 1); 
 				}
 				// add the increments after ending one i pass - we will be increasing i by 1
 				wab = wab + dwab_di;
@@ -321,18 +326,19 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, threadCount, rayHitCounterLambda );
 	
+	// convert the int array we used for atomic add to long long, then we run scan using long long arithmetic because there can be over 2B total hits
 	auto conversionLambda = [=] __cuda_callable__ ( const int triangleIndex ) mutable
 	{
 		hitCounterScanView( triangleIndex ) = (long long)hitCounterScanViewInt( triangleIndex );
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCountX * Info.cellCountY + 1, conversionLambda );	
-	
+	// scan on the long long hit counter array
 	TNL::Algorithms::inplaceExclusiveScan( hitCounterScanArray, 0, Info.cellCountX * Info.cellCountY + 1, TNL::Plus{} );
-	totalHitCount = hitCounterScanArray.getElement( Info.cellCountX * Info.cellCountY );
+	totalHitCount = hitCounterScanArray.getElement( Info.cellCountX * Info.cellCountY ); // this is a long long
 	
+	// 5) second pass over rays: fill the rayMap with intersections
 	rayMapArray.setSize( totalHitCount );
 	auto rayMapView = rayMapArray.getView();
-		
 	auto rayHitIndexLambda = [ = ] __cuda_callable__( const int threadIndex ) mutable
     {
 		// first, find which triangle our thread is working on
@@ -503,7 +509,7 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, threadCount, rayHitIndexLambda );
 	
-	// sort the intersections in ascending order
+	// 6) sort the intersections in ascending order
 	auto rayLambda = [=] __cuda_callable__ ( const int rayIndex ) mutable
 	{
 		const long long startingPoint = hitCounterScanView( rayIndex );
@@ -526,11 +532,11 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 
 void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 {
-	// add rayMapBonus into rayMapSum as unification of all their solid intervals
-	const long long rayCountSum =	rayMapSum.hitCounterScanArray.getSize() - 1;
-	const long long rayCountBonus = rayMapBonus.hitCounterScanArray.getSize() - 1;
+	// adds rayMapBonus into rayMapSum as unification of all their solid intervals
+	const int rayCountSum = rayMapSum.hitCounterScanArray.getSize() - 1;
+	const int rayCountBonus = rayMapBonus.hitCounterScanArray.getSize() - 1;
 	if ( rayCountSum != rayCountBonus ) throw std::runtime_error("sumRayMaps failed: ray maps have different ray counts.");
-	const long long rayCount = rayCountSum;
+	const int rayCount = rayCountSum;
 
 	// Keep the original input arrays unchanged until both passes are finished.
 	auto rayMapSumView = rayMapSum.rayMapArray.getConstView();
@@ -538,25 +544,22 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 	auto rayMapBonusView = rayMapBonus.rayMapArray.getConstView();
 	auto hitCounterScanBonusView = rayMapBonus.hitCounterScanArray.getConstView();
 
-	// -------------------------------------------------------------------------
-	// First pass: count the number of result intersections on every ray
-	// -------------------------------------------------------------------------
-
+	// 1) first pass: count the number of result intersections on every ray
 	LongLongArrayType resultHitCounterScanArray;
-	resultHitCounterScanArray.setSize( rayCount + 1LL );
+	resultHitCounterScanArray.setSize( rayCount + 1 );
 	resultHitCounterScanArray.setValue( 0LL );
 
 	auto resultHitCounterScanView = resultHitCounterScanArray.getView();
 
-	auto countLambda = [=] __cuda_callable__ ( const long long rayIndex ) mutable
+	auto countLambda = [=] __cuda_callable__ ( const int rayIndex ) mutable
 	{
 		long long sumIndex = hitCounterScanSumView( rayIndex );
 		const long long sumEnd = hitCounterScanSumView( rayIndex + 1 );
 		long long bonusIndex = hitCounterScanBonusView( rayIndex );
 		const long long bonusEnd = hitCounterScanBonusView( rayIndex + 1 );
-		long long resultHitCount = 0;
+		int resultHitCount = 0;
 		bool intervalActive = false;
-		long long lastEnd = 0;
+		long long lastEnd = 0LL;
 		
 		// Merge two sorted lists of intervals without storing them locally.
 		while ( sumIndex < sumEnd || bonusIndex < bonusEnd )
@@ -568,14 +571,14 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 			if ( bonusIndex >= bonusEnd || ( sumIndex < sumEnd && rayMapSumView( sumIndex ) <= rayMapBonusView( bonusIndex )))
 			{
 				currentStart = rayMapSumView( sumIndex );
-				currentEnd   = rayMapSumView( sumIndex + 1 );
-				sumIndex += 2;
+				currentEnd   = rayMapSumView( sumIndex + 1LL );
+				sumIndex += 2LL;
 			}
 			else
 			{
 				currentStart = rayMapBonusView( bonusIndex );
-				currentEnd   = rayMapBonusView( bonusIndex + 1 );
-				bonusIndex += 2;
+				currentEnd   = rayMapBonusView( bonusIndex + 1LL );
+				bonusIndex += 2LL;
 			}
 
 			if ( ! intervalActive )
@@ -599,28 +602,19 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 		}
 
 		if ( intervalActive ) resultHitCount += 2;
-		resultHitCounterScanView( rayIndex ) = resultHitCount;
+		resultHitCounterScanView( rayIndex ) = (long long)resultHitCount;
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, rayCount, countLambda );
-
 	TNL::Algorithms::inplaceExclusiveScan( resultHitCounterScanArray, 0, rayCount + 1, TNL::Plus{} );
-
 	const long long resultTotalHitCount = resultHitCounterScanArray.getElement( rayCount );
 
-	// -------------------------------------------------------------------------
-	// Allocate the exact amount of result storage
-	// -------------------------------------------------------------------------
-
+	// 2) second pass: fill the resulting rayMap
 	IntArrayType resultRayMapArray;
 	resultRayMapArray.setSize( resultTotalHitCount );
 	auto resultRayMapView =	resultRayMapArray.getView();
 	auto resultHitCounterScanConstView = resultHitCounterScanArray.getConstView();
 
-	// -------------------------------------------------------------------------
-	// Second pass: repeat the merge and write the result intervals
-	// -------------------------------------------------------------------------
-
-	auto fillLambda = [=] __cuda_callable__ ( const long long rayIndex ) mutable
+	auto fillLambda = [=] __cuda_callable__ ( const int rayIndex ) mutable
 	{
 		long long sumIndex = hitCounterScanSumView( rayIndex );
 		const long long sumEnd = hitCounterScanSumView( rayIndex + 1 );
@@ -628,8 +622,8 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 		const long long bonusEnd = hitCounterScanBonusView( rayIndex + 1 );
 		long long resultIndex = resultHitCounterScanConstView( rayIndex );
 		bool intervalActive = false;
-		long long lastStart = 0;
-		long long lastEnd = 0;
+		long long lastStart = 0LL;
+		long long lastEnd = 0LL;
 
 		while ( sumIndex < sumEnd || bonusIndex < bonusEnd )
 		{
@@ -640,14 +634,14 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 			if ( bonusIndex >= bonusEnd || ( sumIndex < sumEnd && rayMapSumView( sumIndex ) <= rayMapBonusView( bonusIndex )))
 			{
 				currentStart = rayMapSumView( sumIndex );
-				currentEnd   = rayMapSumView( sumIndex + 1 );
-				sumIndex += 2;
+				currentEnd   = rayMapSumView( sumIndex + 1LL );
+				sumIndex += 2LL;
 			}
 			else
 			{
 				currentStart = rayMapBonusView( bonusIndex );
-				currentEnd   = rayMapBonusView( bonusIndex + 1 );
-				bonusIndex += 2;
+				currentEnd   = rayMapBonusView( bonusIndex + 1LL );
+				bonusIndex += 2LL;
 			}
 
 			if ( ! intervalActive )
@@ -666,8 +660,8 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 			{
 				// Write the completed interval.
 				resultRayMapView( resultIndex     ) = lastStart;
-				resultRayMapView( resultIndex + 1 ) = lastEnd;
-				resultIndex += 2;
+				resultRayMapView( resultIndex + 1LL ) = lastEnd;
+				resultIndex += 2LL;
 
 				// Begin the next interval.
 				lastStart = currentStart;
@@ -679,16 +673,13 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 		if ( intervalActive )
 		{
 			resultRayMapView( resultIndex     ) = lastStart;
-			resultRayMapView( resultIndex + 1 ) = lastEnd;
+			resultRayMapView( resultIndex + 1LL ) = lastEnd;
 		}
 	};
 
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, rayCount, fillLambda );
 
-	// -------------------------------------------------------------------------
-	// Replace rayMapSum with the compact result
-	// -------------------------------------------------------------------------
-
+	// 3) save the result
 	rayMapSum.rayMapArray = resultRayMapArray;
 	rayMapSum.hitCounterScanArray = resultHitCounterScanArray;
 	rayMapSum.totalHitCount = resultTotalHitCount;
@@ -696,7 +687,7 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 
 void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, const int level )
 {
-	std::cout << "Initializing voxelizer for grid level " << level << std::endl; 
+	if ( level == 0 ) std::cout << "Initializing voxelizers for all grid levels" << std::endl; 
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
 	
 	VoxelizerStruct &Voxelizer = voxelizers[ level ];
@@ -705,12 +696,12 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::
 	const int rayMapCount = gridStaticSTLs.size();
 	Voxelizer.rayMaps.resize( rayMapCount );
 
-	unsigned long long totalElementCount = 0LL;
+	unsigned long long memoryBytes = 0LL;
 	for ( int rayMapIndex = 0; rayMapIndex < rayMapCount; rayMapIndex++ ) 
 	{
 		Voxelizer.rayMaps[rayMapIndex].gridID = Voxelizer.Info.gridID;
 		voxelizeSTL( Voxelizer.rayMaps[rayMapIndex], gridStaticSTLs[rayMapIndex], Voxelizer );
-		totalElementCount += (long long)Voxelizer.rayMaps[rayMapIndex].rayMapArray.getSize() + (long long)Voxelizer.rayMaps[rayMapIndex].hitCounterScanArray.getSize();
+		memoryBytes += 4LL * (long long)Voxelizer.rayMaps[rayMapIndex].rayMapArray.getSize() + 8LL * (long long)Voxelizer.rayMaps[rayMapIndex].hitCounterScanArray.getSize();
 	}
 	Voxelizer.rayMapTotal.gridID = Voxelizer.Info.gridID;
 	Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
@@ -718,11 +709,10 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::
 	{
 		sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMaps[bonusIndex] );
 	}
-	totalElementCount += (long long)Voxelizer.rayMapTotal.rayMapArray.getSize() + (long long)Voxelizer.rayMapTotal.hitCounterScanArray.getSize();
+	memoryBytes += 4LL * (long long)Voxelizer.rayMapTotal.rayMapArray.getSize() + 8LL * (long long)Voxelizer.rayMapTotal.hitCounterScanArray.getSize();
 	
-	unsigned long long memoryBytes = 4LL * totalElementCount; // 1 int has 4 Bytes
-	std::cout << "	Done, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
-	std::cout << std::endl;
+	std::cout << "	Level " << level << " done, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
 	
 	if ( !iAmFinest ) initializeVoxelizers( voxelizers, grids, gridStaticSTLs, level + 1 );
+	else std::cout << std::endl;
 }
