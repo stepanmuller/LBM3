@@ -39,9 +39,8 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	if ( Info.gridID == 3 ) // additional refinement for the tip gap
 	{
 		refinementMarker = false;
-		if ( rz < 134.f && rz > 129.8f && z < 125.5f && z > 104.5f ) refinementMarker = true;
+		if ( rz < 130.5f && rz > 129.8f && z < 125.5f && z > 104.5f ) refinementMarker = true;
 	}
-	return; // this just keeps the automatic default refinement setting
 }
 
 #include "../../include/gridGenerationFunctions.h"
@@ -82,10 +81,17 @@ int main(int argc, char **argv)
 	exportSectionCutPlotZY( grids, iCut, 0 );
 	if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
 	
+	// Detail
+	exportSectionCutPlotZY( grids, grids[2].Info.Bounds, iCut, 1 );
+	if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+	
 	// XY section cut shows the rotor and the outlet pipe
 	float zCut = 32.5f;
 	getIJKCellIndexFromXYZ( iCut, jCut, kCut, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
-	exportSectionCutPlotXY( grids, kCut, 1 );
+	exportSectionCutPlotXY( grids, kCut, 2 );
+	if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+	// Detail
+	exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, 3 );
 	if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
 		
 	return EXIT_SUCCESS;

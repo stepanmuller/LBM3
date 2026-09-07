@@ -536,9 +536,17 @@ void deleteExcessCells( std::vector<GridStruct> &grids, const std::vector<Voxeli
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
 	}
 	
-	// std::cout << "	Level " << level << " done, final cellCount " << Info.cellCount << std::endl;
+	// 12) fill grid bounds
+	Info.Bounds.xMin = Info.ox + Info.res * TNL::min( Grid.IJK.iArray ) - 0.5f * Info.res;
+	Info.Bounds.xMax = Info.ox + Info.res * TNL::max( Grid.IJK.iArray ) + 0.5f * Info.res;
+	Info.Bounds.yMin = Info.oy + Info.res * TNL::min( Grid.IJK.jArray ) - 0.5f * Info.res;
+	Info.Bounds.yMax = Info.oy + Info.res * TNL::max( Grid.IJK.jArray ) + 0.5f * Info.res;
+	Info.Bounds.zMin = Info.oz + Info.res * TNL::min( Grid.IJK.kArray ) - 0.5f * Info.res;
+	Info.Bounds.zMax = Info.oz + Info.res * TNL::max( Grid.IJK.kArray ) + 0.5f * Info.res;
 	
-	// 12) Recursion
+	std::cout << "	Level " << level << " done, final cellCount " << Info.cellCount << std::endl;
+	
+	// 13) Recursion
 	if ( !iAmFinest ) deleteExcessCells( grids, voxelizers, level + 1 );
 	// else std::cout << std::endl;
 }

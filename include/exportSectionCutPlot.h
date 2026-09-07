@@ -8,21 +8,48 @@ constexpr long long EXPORT_RESOLUTION_PIXEL_LIMIT = 16000000;
 
 enum PlaneEnum { XY, ZY, ZX };
 
-void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cutIndex, const int &plotNumber, PlaneEnum plane )
+void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &cutIndex, const int &plotNumber, PlaneEnum plane )
 {
-	// 1) find the finest level that fits the resolution limit
+	const InfoStruct InfoFinest = grids[GRID_LEVEL_COUNT-1].Info;
+	
+	// 1) use bounds
+	int iStartFinest = 0; int iEndFinest = InfoFinest.cellCountX;
+	int jStartFinest = 0; int jEndFinest = InfoFinest.cellCountY;
+	int kStartFinest = 0; int kEndFinest = InfoFinest.cellCountZ;
+	
+	BoundsStruct TotalGridBounds;
+	TotalGridBounds.xMin = InfoFinest.ox - 0.5f * InfoFinest.res;
+	TotalGridBounds.xMax = InfoFinest.ox + InfoFinest.res * InfoFinest.cellCountX + 0.5f * InfoFinest.res;
+	TotalGridBounds.yMin = InfoFinest.oy - 0.5f * InfoFinest.res;
+	TotalGridBounds.yMax = InfoFinest.oy + InfoFinest.res * InfoFinest.cellCountY + 0.5f * InfoFinest.res;
+	TotalGridBounds.zMin = InfoFinest.oz - 0.5f * InfoFinest.res;
+	TotalGridBounds.zMax = InfoFinest.oz + InfoFinest.res * InfoFinest.cellCountZ + 0.5f * InfoFinest.res;
+	
+	if ( Bounds.xMin != 0.f || Bounds.xMax != 0.f || Bounds.yMin != 0.f || Bounds.yMax != 0.f || Bounds.zMin != 0.f ||Bounds.zMax != 0.f )
+	{
+		iStartFinest = TNL::max(0, (int)ceilf(((Bounds.xMin - TotalGridBounds.xMin) / InfoFinest.res)));
+		iEndFinest = TNL::min(InfoFinest.cellCountX, InfoFinest.cellCountX - (int)ceilf(((TotalGridBounds.xMax - Bounds.xMax) / InfoFinest.res)));
+		jStartFinest = TNL::max(0, (int)ceilf(((Bounds.yMin - TotalGridBounds.yMin) / InfoFinest.res)));
+		jEndFinest = TNL::min(InfoFinest.cellCountY, InfoFinest.cellCountY - (int)ceilf(((TotalGridBounds.yMax - Bounds.yMax) / InfoFinest.res)));
+		kStartFinest = TNL::max(0, (int)ceilf(((Bounds.zMin - TotalGridBounds.zMin) / InfoFinest.res)));
+		kEndFinest = TNL::min(InfoFinest.cellCountZ, InfoFinest.cellCountZ - (int)ceilf(((TotalGridBounds.zMax - Bounds.zMax) / InfoFinest.res)));
+	}
+	// 2) find the finest level that fits the resolution limit
 	int imageLevel = GRID_LEVEL_COUNT-1; // start with the finest level
-	int pixelsHorizontal = 0, pixelsVertical = 0;
-	if ( plane == XY ) 		{ pixelsHorizontal = grids[imageLevel].Info.cellCountX; pixelsVertical = grids[imageLevel].Info.cellCountY; }
-	else if ( plane == ZY ) { pixelsHorizontal = grids[imageLevel].Info.cellCountZ; pixelsVertical = grids[imageLevel].Info.cellCountY; }
-	else 					{ pixelsHorizontal = grids[imageLevel].Info.cellCountZ; pixelsVertical = grids[imageLevel].Info.cellCountX; }
+	int pixelsHorizontal = 0, pixelsVertical = 0, startHorizontal = 0, startVertical = 0;
+	if ( plane == XY ) 		{ pixelsHorizontal = (iEndFinest - iStartFinest); pixelsVertical = (jEndFinest - jStartFinest); 
+								startHorizontal = iStartFinest; startVertical = jStartFinest; }
+	else if ( plane == ZY ) { pixelsHorizontal = (kEndFinest - kStartFinest); pixelsVertical = (jEndFinest - jStartFinest); 
+								startHorizontal = kStartFinest; startVertical = jStartFinest; }
+	else 					{ pixelsHorizontal = (kEndFinest - kStartFinest); pixelsVertical = (iEndFinest - iStartFinest); 
+								startHorizontal = kStartFinest; startVertical = iStartFinest; }
 	long long pixelCount = (long long)pixelsHorizontal * (long long)pixelsVertical;
 	
 	while ( pixelCount > EXPORT_RESOLUTION_PIXEL_LIMIT )
 	{
 		imageLevel--; 
-		pixelsHorizontal /= 2; 
-		pixelsVertical /= 2; 
+		pixelsHorizontal /= 2; startHorizontal /= 2;
+		pixelsVertical /= 2; startVertical /= 2;
 		pixelCount /= 4LL;
 	}
 	
@@ -30,7 +57,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 	const int downsampleFromFinestLevel = std::pow( 2, ( GRID_LEVEL_COUNT-1 - imageLevel ) ); 
 	const int cutIndexImage = cutIndex / downsampleFromFinestLevel;
 	
-	// 2) Initialize the sectionCut
+	// 3) Initialize the sectionCut
 	SectionCutStruct SectionCut;
 	SectionCut.rhoArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.rhoArray.setValue( 1.f );
 	SectionCut.uxArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.uxArray.setValue( 0.f );
@@ -46,7 +73,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 	auto markerArrayView = SectionCut.markerArray.getView();
 	auto gridIDArrayView = SectionCut.gridIDArray.getView();
 	
-	// 3) Loop through all grid levels
+	// 4) Loop through all grid levels
 	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ )
 	{
 		GridStruct &Grid = grids[level];
@@ -110,6 +137,9 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 				indexVertical = iImage; 
 				indexHorizontal = kImage; 
 			}
+			// refuse out of bounds indexes
+			if ( indexHorizontal < startHorizontal || indexHorizontal >= startHorizontal + pixelsHorizontal ) return;
+			if ( indexVertical < startVertical || indexVertical >= startVertical + pixelsVertical ) return;
 			
 			// PLACEHOLDER SECTION START
 			float rho, ux, uy, uz;
@@ -121,10 +151,12 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 			
 			for ( int shiftVertical = 0; shiftVertical < upsample; shiftVertical++ )
 			{
-				const int y = indexVertical + shiftVertical;
+				const int y = indexVertical + shiftVertical - startVertical;
+				if ( y >= pixelsVertical ) continue;
 				for ( int shiftHorizontal = 0; shiftHorizontal < upsample; shiftHorizontal++ )
 				{
-					const int x = indexHorizontal + shiftHorizontal;
+					const int x = indexHorizontal + shiftHorizontal - startHorizontal;
+					if ( x >= pixelsHorizontal ) continue;
 					rhoArrayView( y, x ) = rho;
 					uxArrayView( y, x ) = ux;
 					uyArrayView( y, x ) = uy;
@@ -180,15 +212,30 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 void exportSectionCutPlotXY( std::vector<GridStruct> &grids, const int &kCell, const int &plotNumber )
 {
 	std::cout << "Exporting XY section cut plot " << plotNumber << std::endl;
-	exportSectionCutPlotGeneral( grids, kCell, plotNumber, XY );
+	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, kCell, plotNumber, XY );
 }
 void exportSectionCutPlotZY( std::vector<GridStruct> &grids, const int &iCell, const int &plotNumber )
 {
 	std::cout << "Exporting ZY section cut plot " << plotNumber << std::endl;
-	exportSectionCutPlotGeneral( grids, iCell, plotNumber, ZY );
+	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, iCell, plotNumber, ZY );
 }
 void exportSectionCutPlotZX( std::vector<GridStruct> &grids, const int &jCell, const int &plotNumber )
 {
 	std::cout << "Exporting ZX section cut plot " << plotNumber << std::endl;
-	exportSectionCutPlotGeneral( grids, jCell, plotNumber, ZX );
+	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, jCell, plotNumber, ZX );
+}
+void exportSectionCutPlotXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &kCell, const int &plotNumber )
+{
+	std::cout << "Exporting XY section cut plot " << plotNumber << std::endl;
+	exportSectionCutPlotGeneral( grids, Bounds, kCell, plotNumber, XY );
+}
+void exportSectionCutPlotZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &iCell, const int &plotNumber )
+{
+	std::cout << "Exporting ZY section cut plot " << plotNumber << std::endl;
+	exportSectionCutPlotGeneral( grids, Bounds, iCell, plotNumber, ZY );
+}
+void exportSectionCutPlotZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &jCell, const int &plotNumber )
+{
+	std::cout << "Exporting ZX section cut plot " << plotNumber << std::endl;
+	exportSectionCutPlotGeneral( grids, Bounds, jCell, plotNumber, ZX );
 }

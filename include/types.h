@@ -86,8 +86,12 @@ using IntTripleType = TNL::Containers::StaticArray< 3, int >;
 //--------------------------------- STRUCTS  -----------------------------------------
 //------------------------------------------------------------------------------------
 
+struct BoundsStruct { float xMin = 0.f; float yMin = 0.f; float zMin = 0.f; float xMax = 0.f; float yMax = 0.f; float zMax = 0.f; 
+						float rxMax = 0.f; float ryMax = 0.f; float rzMax = 0.f; }; 
+
 struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL; int iterationsFinished = 0;
 					float res = 1.f; float ox = 0.f; float oy = 0.f; float oz = 0.f; 
+					BoundsStruct Bounds;
 					float nu = 1.f; float dtPhys = 1.f; 
 					int cellCountX = 0; int cellCountY = 0; int cellCountZ = 0; 
 					int cellCount = 0; 
@@ -99,8 +103,6 @@ struct MarkerStruct { 	bool fluid = 0; bool bounceback = 0; bool movingBouncebac
 						bool refinement = 0; bool deepRefinement = 0; bool fineToCoarse = 0; };
 						
 struct BCStruct { float rho = 1.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; float gx = 0.f; float gy = 0.f; float gz = 0.f; float nuMultiplier = 1.f; float collisionLimiter = 0.01f; };
-
-struct BoundsStruct { float xMin; float yMin; float zMin; float xMax; float yMax; float zMax; float rxMax; float ryMax; float rzMax; }; 
 					
 // IJK holds cell indexes on X, Y, Z axes within the Grid that owns it
 struct IJKArrayStructCPU; // just declaring first

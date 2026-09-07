@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.ma as ma
 
-
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
@@ -449,7 +448,8 @@ def main():
 	)
 	plt.close(fig)
 
-	print(f"Saved {output_path}")
+	print(f"Exported to {output_path}")
+	"""
 	print(
 		f"Each {n_horizontal} x {n_vertical} panel uses "
 		f"{geometry['plot_width_px']} x {geometry['plot_height_px']} pixels "
@@ -459,6 +459,7 @@ def main():
 		f"Full PNG size: {geometry['figure_width_px']} x "
 		f"{geometry['figure_height_px']} pixels."
 	)
+	"""
 
 
 if __name__ == "__main__":
