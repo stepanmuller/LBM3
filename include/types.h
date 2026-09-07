@@ -124,7 +124,7 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
-struct RayMapStruct { int gridID = 0; int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; };
+struct RayMapStruct { int gridID = 0; int totalHitCount = 0; IntArrayType rayMapArray; IntArrayType hitCounterScanArray; }; // I need to change the hitCounterScanArray to use long int
 
 struct VoxelizerStruct { InfoStruct Info; std::vector<RayMapStruct> rayMaps; RayMapStruct rayMapTotal; };
 

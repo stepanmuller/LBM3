@@ -34,7 +34,12 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	if ( Info.gridID == 2 ) // additional refinement for the tip gap
 	{
 		refinementMarker = false;
-		if ( rz < 134.f && rz > 129.5f && z < 126.f && z > 104.f ) refinementMarker = true;
+		if ( rz < 134.f && rz > 129.f && z < 126.5f && z > 103.5f ) refinementMarker = true;
+	}
+	if ( Info.gridID == 3 ) // additional refinement for the tip gap
+	{
+		refinementMarker = false;
+		if ( rz < 134.f && rz > 129.5f && z < 125.5f && z > 104.5f ) refinementMarker = true;
 	}
 	return; // this just keeps the automatic default refinement setting
 }
