@@ -271,7 +271,9 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 		auto cyView = STL.cyArray.getConstView();
 		auto czView = STL.czArray.getConstView();
 		
-		const BoundsStruct &STLBounds = STL.Bounds;
+		const float &oxBin = STL.oxBin;
+		const float &oyBin = STL.oyBin;
+		const float &ozBin = STL.ozBin;
 		
 		auto binView = STL.binArray.getConstView();
 		auto firstInBinView = STL.firstInBinArray.getConstView();
@@ -290,9 +292,9 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 			float xCell, yCell, zCell;
 			getXYZFromIJKCellIndex( iCell, jCell, kCell, xCell, yCell, zCell, Info );
 			
-			const int iBin = (int)(( xCell - STLBounds.xMin ) / binSize);
-			const int jBin = (int)(( yCell - STLBounds.yMin ) / binSize);
-			const int kBin = (int)(( zCell - STLBounds.zMin ) / binSize);
+			const int iBin = (int)(( xCell - oxBin ) / binSize);
+			const int jBin = (int)(( yCell - oyBin ) / binSize);
+			const int kBin = (int)(( zCell - ozBin ) / binSize);
 			if ( iBin < 0 || iBin >= binCountX || jBin < 0 || jBin >= binCountY || kBin < 0 || kBin >= binCountZ ) return;
 			
 			const int bin = binCountXY * kBin + binCountX * jBin + iBin;

@@ -104,9 +104,15 @@ void sortSTLToBins( STLStruct &STL )
 	const float targetBinVolume = totalVolume / ((float)triangleCount / (float)STL.avgTrianglesPerBin);
 	STL.binSize = powf( targetBinVolume, 1.f/3.f );
 	const float &binSize = STL.binSize;
-	STL.binCountX = (int)((Bounds.xMax - Bounds.xMin) / STL.binSize) + 1;
-	STL.binCountY = (int)((Bounds.yMax - Bounds.yMin) / STL.binSize) + 1;
-	STL.binCountZ = (int)((Bounds.zMax - Bounds.zMin) / STL.binSize) + 1;
+	STL.oxBin = Bounds.xMin - binSize;
+	STL.oyBin = Bounds.yMin - binSize;
+	STL.ozBin = Bounds.zMin - binSize;
+	const float &oxBin = STL.oxBin;
+	const float &oyBin = STL.oyBin;
+	const float &ozBin = STL.ozBin;
+	STL.binCountX = (int)((Bounds.xMax - Bounds.xMin + 2.f * binSize) / STL.binSize) + 1;
+	STL.binCountY = (int)((Bounds.yMax - Bounds.yMin + 2.f * binSize) / STL.binSize) + 1;
+	STL.binCountZ = (int)((Bounds.zMax - Bounds.zMin + 2.f * binSize) / STL.binSize) + 1;
 	const int &binCountX = STL.binCountX;
 	const int &binCountY = STL.binCountY;
 	const int &binCountZ = STL.binCountZ;
@@ -125,20 +131,21 @@ void sortSTLToBins( STLStruct &STL )
 	auto cyView = STL.cyArray.getConstView();
 	auto czView = STL.czArray.getConstView();
 	
-	const float tolerance = binSize * 0.1f;
+	// generous tolerance to make sure each relevant triangle is surely found
+	const float tolerance = binSize * 0.2f + RES_GLOBAL * 3.f; 
 	
 	// 1) First pass: atomic add trianles to all bins that intersect with their bounding box
 	auto counterLambda = [ = ] __cuda_callable__( const int triangleIndex ) mutable
 	{
-		const float ax = axView[ triangleIndex ] - Bounds.xMin;
-		const float ay = ayView[ triangleIndex ] - Bounds.yMin;
-		const float az = azView[ triangleIndex ] - Bounds.zMin;
-		const float bx = bxView[ triangleIndex ] - Bounds.xMin;
-		const float by = byView[ triangleIndex ] - Bounds.yMin;
-		const float bz = bzView[ triangleIndex ] - Bounds.zMin;
-		const float cx = cxView[ triangleIndex ] - Bounds.xMin;
-		const float cy = cyView[ triangleIndex ] - Bounds.yMin;
-		const float cz = czView[ triangleIndex ] - Bounds.zMin;
+		const float ax = axView[ triangleIndex ] - oxBin;
+		const float ay = ayView[ triangleIndex ] - oyBin;
+		const float az = azView[ triangleIndex ] - ozBin;
+		const float bx = bxView[ triangleIndex ] - oxBin;
+		const float by = byView[ triangleIndex ] - oyBin;
+		const float bz = bzView[ triangleIndex ] - ozBin;
+		const float cx = cxView[ triangleIndex ] - oxBin;
+		const float cy = cyView[ triangleIndex ] - oyBin;
+		const float cz = czView[ triangleIndex ] - ozBin;
 		const float xMin = TNL::min( ax, TNL::min(bx, cx)) - tolerance;
 		const float yMin = TNL::min( ay, TNL::min(by, cy)) - tolerance;
 		const float zMin = TNL::min( az, TNL::min(bz, cz)) - tolerance;
@@ -176,15 +183,15 @@ void sortSTLToBins( STLStruct &STL )
 	auto binView = STL.binArray.getView();
 	auto writeLambda = [ = ] __cuda_callable__( const int triangleIndex ) mutable
 	{
-		const float ax = axView[ triangleIndex ] - Bounds.xMin;
-		const float ay = ayView[ triangleIndex ] - Bounds.yMin;
-		const float az = azView[ triangleIndex ] - Bounds.zMin;
-		const float bx = bxView[ triangleIndex ] - Bounds.xMin;
-		const float by = byView[ triangleIndex ] - Bounds.yMin;
-		const float bz = bzView[ triangleIndex ] - Bounds.zMin;
-		const float cx = cxView[ triangleIndex ] - Bounds.xMin;
-		const float cy = cyView[ triangleIndex ] - Bounds.yMin;
-		const float cz = czView[ triangleIndex ] - Bounds.zMin;
+		const float ax = axView[ triangleIndex ] - oxBin;
+		const float ay = ayView[ triangleIndex ] - oyBin;
+		const float az = azView[ triangleIndex ] - ozBin;
+		const float bx = bxView[ triangleIndex ] - oxBin;
+		const float by = byView[ triangleIndex ] - oyBin;
+		const float bz = bzView[ triangleIndex ] - ozBin;
+		const float cx = cxView[ triangleIndex ] - oxBin;
+		const float cy = cyView[ triangleIndex ] - oyBin;
+		const float cz = czView[ triangleIndex ] - ozBin;
 		const float xMin = TNL::min( ax, TNL::min(bx, cx)) - tolerance;
 		const float yMin = TNL::min( ay, TNL::min(by, cy)) - tolerance;
 		const float zMin = TNL::min( az, TNL::min(bz, cz)) - tolerance;

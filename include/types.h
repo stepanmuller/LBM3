@@ -183,7 +183,8 @@ struct STLStructCPU { 	int triangleCount = 0;
 
 struct STLStruct { 	static constexpr int threadsToTrianglesRatio = 4;
 					int triangleCount = 0; float binSize = 0.f; static constexpr int avgTrianglesPerBin = 1;
-					int binCountX = 0; int binCountY = 0; int binCountZ = 0;
+					int binCountX = 0; int binCountY = 0; int binCountZ = 0; 
+					float oxBin = 0.f; float oyBin = 0.f; float ozBin = 0.f;
 					FloatArrayType axArray; FloatArrayType ayArray; FloatArrayType azArray; 
 					FloatArrayType bxArray; FloatArrayType byArray; FloatArrayType bzArray; 
 					FloatArrayType cxArray; FloatArrayType cyArray; FloatArrayType czArray; 
