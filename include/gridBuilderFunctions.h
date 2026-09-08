@@ -2,7 +2,7 @@
 
 #include "./types.h"
 #include "./markerFunctions.h"
-#include "./IBBLinkBuilderFunctions.h"
+#include "./interpolatedBouncebackFunctions.h"
 
 void initializeGridInfo( std::vector<GridBuilderStruct> &gridBuilders, const BoundsStruct &Bounds, const int level )
 {
@@ -673,6 +673,8 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 
 void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
 {
+	const bool iAmCoarsest = ( GridBuilder.Info.gridID == 0 );
+	
 	// 1) copy information that can be copied directly
 	Grid.Info = GridBuilder.Info;
 	Grid.NBR.jPlusArray = GridBuilder.NBR.jPlusArray;
@@ -747,15 +749,17 @@ void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, compressedIJKLambda );
 	
 	// 4) Build wallMap
-	Grid.wallMap.setSize( Info.cellCount );
-	Grid.wallMap.setValue( -1 ); // set to "free fluid" as default
-	auto wallMapView = Grid.wallMap.getView();
+	Grid.wallMapArray.setSize( Info.cellCount );
+	Grid.wallMapArray.setValue( -1 ); // set to "free fluid" as default
+	const int wallAdjacentCellCount = GridBuilder.wallAdjacentCellList.getSize();
+	auto wallMapView = Grid.wallMapArray.getView();
 	auto wallMarkerView = GridBuilder.wallMarkerArray.getConstView();
 	auto wallAdjacentCellListView = GridBuilder.wallAdjacentCellList.getConstView();
+	auto parentMapView = GridBuilder.parentMapArray.getConstView();
 	auto wallMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{	
-		const bool wallMarker = wallMarkerView( cell );
-		if ( wallMarker ) wallMapView( cell ) = -2; // overwrite where wall is
+		if ( wallMarkerView( cell ) ) wallMapView( cell ) = -3; // overwrite where wall is
+		else if ( !iAmCoarsest && parentMapView( cell ) >= 0 ) wallMapView( cell ) = -2; // free fluid under a parent interface -> dont track force
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallMarkerLambda );
 	auto wallAdjacentLambda = [=] __cuda_callable__ ( const int index ) mutable
@@ -763,7 +767,33 @@ void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
 		const int cell = wallAdjacentCellListView( index );
 		wallMapView( cell ) = index; // overwrite where wall adjacent fluid is
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridBuilder.wallAdjacentCellList.getSize(), wallAdjacentLambda );
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, wallAdjacentCellCount, wallAdjacentLambda );
+	
+	// 5) Build wallData
+	Grid.wallDataArray.setSize( wallAdjacentCellCount );
+	auto wallDataView = Grid.wallDataArray.getView();
+	auto linkExistenceMarkerView = GridBuilder.linkExistenceMarkerArray.getConstView();
+	auto linkLengthView = GridBuilder.linkLengthArray.getConstView();
+	auto wallIDView = GridBuilder.wallIDArray.getConstView();
+	auto wallDataLambda = [=] __cuda_callable__ ( const int index ) mutable
+	{	
+		const int cell = wallAdjacentCellListView( index );
+		bool parentInterfaceMarker = false; if ( !iAmCoarsest && parentMapView( cell ) >= 0 ) parentInterfaceMarker = true;
+		bool linkExistenceMarker[26];
+		float linkLength[26];
+		for ( int direction = 1; direction < 27; direction++ ) 
+		{
+			linkExistenceMarker[direction-1] = linkExistenceMarkerView( direction, index );
+			linkLength[direction-1] = linkLengthView( direction, index );
+		}
+		const int wallID = wallIDView( index );
+		// now take linkExistenceMarker, linkLength, wallID and parentInterfaceMarker and pack it into 4 uints
+		uint32_t packed[4];
+		// call the packing function
+		packWallData( packed, linkExistenceMarker, linkLength, wallID, parentInterfaceMarker );
+		wallDataView( index ) = make_uint4( packed[0], packed[1], packed[2], packed[3] );
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, wallAdjacentCellCount, wallDataLambda );
 }
 
 void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, BoundsStruct DomainBounds )

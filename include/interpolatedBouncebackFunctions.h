@@ -348,7 +348,7 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 							
 							if (q > -qTol && q <= 1.f + qTol)
 							{
-								q = std::clamp(q, 0.0000001f, 1.f);
+								q = std::clamp(q, 0.00001f, 1.f);
 
 								const float qPrev = linkLengthView(direction, index);
 								if (q < qPrev) linkLengthView(direction, index) = q;
@@ -385,4 +385,68 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 	const int linksTotalCount = countOnesInBoolArray2D( GridBuilder.linkExistenceMarkerArray );
 	
 	std::cout << "	Links not found: " << linksNotFoundCount << " out of " << linksTotalCount << std::endl;
+}
+
+__cuda_callable__ inline void packWallData( uint32_t (&packed)[4], 
+											const bool (&linkExists)[26], const float (&linkLength)[26], 
+											const int wallID, const bool parentInterfaceMarker )
+{
+    constexpr uint32_t divider = 23u;
+    uint32_t digits[28]; // 1 wallID, 26 links, 1 parentInterfaceMarker
+    digits[0] = static_cast<uint32_t>( wallID );
+   
+    for( int i = 0; i < 26; ++i )
+    {
+        if( !linkExists[i] )
+        {
+            digits[i + 1] = 0u;
+            continue;
+        }
+        const float q = linkLength[i];
+        // Round to nearest multiple of 0.05:
+        // q = 0 -> code 1, q = 0.5 -> code 11, q = 1 -> code 21.
+        digits[i + 1] = 1u + static_cast<uint32_t>( q * 20.0f + 0.5f );
+    }
+    
+    digits[27] = parentInterfaceMarker ? 1u : 0u;
+   
+    for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
+    {
+        uint32_t value = 0u;
+        for( int digitIndex = 6; digitIndex >= 0; digitIndex-- )
+        {
+            value = value * divider + digits[7 * packedIndex + digitIndex];
+		}
+        packed[packedIndex] = value;
+    }
+}
+
+__cuda_callable__ inline void unpackWallData( 	const uint32_t (&packed)[4],
+												bool (&linkExists)[26], float (&linkLength)[26],
+												int &wallID, bool &parentInterfaceMarker )
+{
+    constexpr uint32_t divider = 23u;
+    uint32_t digits[28]; // 1 wallID, 26 links, 1 parentInterfaceMarker
+
+    for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
+    {
+        uint32_t value = packed[packedIndex];
+        for( int digitIndex = 0; digitIndex < 7; digitIndex++ )
+        {
+            digits[7 * packedIndex + digitIndex] = value % divider;
+            value /= divider;
+        }
+    }
+
+    wallID = static_cast<int>( digits[0] );
+
+    for( int i = 0; i < 26; ++i )
+    {
+        const uint32_t code = digits[i + 1];
+        linkExists[i] = ( code != 0u );
+        if ( !linkExists[i] ) linkLength[i] = 0.f;
+        else linkLength[i] = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f); 
+    }
+
+    parentInterfaceMarker = ( digits[27] == 1u );
 }

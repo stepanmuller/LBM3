@@ -174,7 +174,7 @@ struct GridStruct { InfoStruct Info;
 					bool esotwistFlipper = false; 
 					CompressedIJKArrayStruct IJK;
 					NBRArrayStruct NBR; 
-					IntArrayType wallMap; 
+					IntArrayType wallMapArray; Uint4ArrayType wallDataArray;
 					InterfaceStruct Interface; }; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;
