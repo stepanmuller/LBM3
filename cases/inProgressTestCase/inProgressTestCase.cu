@@ -44,7 +44,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 }
 
 #include "../../include/gridBuilderFunctions.h"
-//#include "../../include/exportSectionCutPlot.h"
+#include "../../include/plotter/exportSectionCutPlot.h"
 
 int main(int argc, char **argv)
 {
@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 	DomainBounds.yMax = 1000.f;
 	
 	buildGrids( grids, gridStaticSTLs, DomainBounds );
-	/*
+	
 	int iCut, jCut, kCut;
 	const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;
 	
@@ -84,6 +84,6 @@ int main(int argc, char **argv)
 	// Detail
 	exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, 3 );
 	if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
-	*/	
+	
 	return EXIT_SUCCESS;
 }

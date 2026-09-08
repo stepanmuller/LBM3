@@ -4,6 +4,19 @@
 #include "./D3Q27Directions.h"
 #include "./cellFunctions.h"
 
+// TO DO:
+// The current issue is that during voxelization, x and y coordinates of the STL get snapped to an integer grid
+// to prevent ray from hitting a vertex, and to eliminate floating point errors.
+// This way of voxelizing has so far never shown failure for STLs that passed the shared edge check.
+// However, doing the shift in the voxelizer and not when calculating the link distances
+// introduces errors: Some links between fluid and solid cells do not contain the triangle surface
+// when evaluated via the original STL float coordinates.
+// A likely better way to do this would be to transform the STL to a fixed integer grid immediately
+// after opening, and then do all calculations that involve the STL using the integer grid.
+// The voxelization is running on the integer grid mostly already, just the intersection coordinte 
+// would need a rewrite. The link length evaluation below would require a serious rewrite
+// that would evaluate the link lengths using integer arithmetic.
+
 int countOnesInBoolArray2D( const BoolArray2DType &boolArray )
 {
 	const int firstBound = boolArray.getSizes()[0];
@@ -36,12 +49,19 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 	auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
 	auto jMinusView = GridBuilder.NBR.jMinusArray.getConstView();
 	auto kMinusView = GridBuilder.NBR.kMinusArray.getConstView();
+	auto parentMapView = GridBuilder.parentMapArray.getConstView();
+	auto fineToCoarseMarkerView = GridBuilder.fineToCoarseMarkerArray.getConstView();
+	auto coarseToFineMarkerView = GridBuilder.coarseToFineMarkerArray.getConstView();
+	const bool iAmCoarsest = (GridBuilder.parentMapArray.getSize() == 0);
+	const bool iAmFinest = (GridBuilder.fineToCoarseMarkerArray.getSize() == 0);
 	auto wallMarkerView = GridBuilder.wallMarkerArray.getConstView();
 	auto wallAdjacentCellListView = GridBuilder.wallAdjacentCellList.getConstView();
 	const int wallAdjacentCellCount = GridBuilder.wallAdjacentCellList.getSize();
 	
 	GridBuilder.linkExistenceMarkerArray.setValue( false );
 	auto linkExistenceMarkerView = GridBuilder.linkExistenceMarkerArray.getView();
+	GridBuilder.linkPiercesInterfaceMarkerArray.setValue( false );
+	auto linkPiercesInterfaceMarkerView = GridBuilder.linkPiercesInterfaceMarkerArray.getView();
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
 	{
@@ -50,6 +70,17 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 		const int iCell = iView[ cell ];
 		const int jCell = jView[ cell ];
 		const int kCell = kView[ cell ];
+	
+		bool iAmInterface = false;
+		if ( !iAmCoarsest )
+		{
+			if ( parentMapView( cell ) >= 0 ) iAmInterface = true;
+		}
+		if ( !iAmFinest )
+		{ 
+			if ( fineToCoarseMarkerView( cell ) ) iAmInterface = true;
+			if ( coarseToFineMarkerView( cell ) ) iAmInterface = true;
+		}
 		
 		NBRStruct NBR;
 		NBR.self = cell;
@@ -95,6 +126,18 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 		{
 			const int nbr = fullNBRList[direction];
 			if ( !wallMarkerView(nbr) ) continue; 
+			
+			bool nbrIsInterface = false;
+			if ( !iAmCoarsest )
+			{
+				if ( parentMapView( nbr ) >= 0 ) nbrIsInterface = true;
+			}
+			if ( !iAmFinest )
+			{ 
+				if ( fineToCoarseMarkerView( nbr ) ) nbrIsInterface = true;
+				if ( coarseToFineMarkerView( nbr ) ) nbrIsInterface = true;
+			}
+			
 			// if we got here, nbr is a wall, check its position
 			const int cx = CX_DIRECTIONS[direction]; 
 			const int cy = CY_DIRECTIONS[direction]; 
@@ -109,6 +152,9 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 			{
 				// nbr is a true geometric wall neighbour -> mark the link existence
 				linkExistenceMarkerView( direction, index ) = true;
+				// if me or nbr is interface, mark that this link pierces an interface 
+				// -> linkLength will be forced to 0.5f later
+				if ( iAmInterface || nbrIsInterface ) linkPiercesInterfaceMarkerView( direction, index ) = true;
 			}
 		}
 	};
@@ -120,10 +166,10 @@ __host__ __device__ bool intersectRayTriangle(
     const float bx, const float by, const float bz,
     const float cx, const float cy, const float cz,
     const float ex, const float ey, const float ez,
-    const float eps,
+    const float edgeTol,
     float &hitX, float &hitY, float &hitZ, float &distance, float &t )
 {
-    // Edge vectors of the triangle
+    // Triangle edges AB and AC.
     const float e1x = bx - ax;
     const float e1y = by - ay;
     const float e1z = bz - az;
@@ -132,51 +178,66 @@ __host__ __device__ bool intersectRayTriangle(
     const float e2y = cy - ay;
     const float e2z = cz - az;
 
-    // Cross product of ray direction and e2 ( P = D x e2 )
+    // Triangle normal; its magnitude is twice the triangle area.
+    const float nx = e1y * e2z - e1z * e2y;
+    const float ny = e1z * e2x - e1x * e2z;
+    const float nz = e1x * e2y - e1y * e2x;
+    const float area2 = sqrtf(nx * nx + ny * ny + nz * nz);
+
+    if (area2 == 0.f) return false;
+
+    // P = ray direction x AC.
     const float px = ey * e2z - ez * e2y;
     const float py = ez * e2x - ex * e2z;
     const float pz = ex * e2y - ey * e2x;
 
-    // Determinant
     const float det = e1x * px + e1y * py + e1z * pz;
 
-    // If det is close to zero, the ray is parallel to the triangle plane
-    const float detEps = 1e-8f; 
-    if ( det > -detEps && det < detEps ) return false;
+    // Preserve your existing parallel-ray rejection.
+    const float detEps = 1e-8f;
+    if (det > -detEps && det < detEps) return false;
 
-    const float invDet = 1.0f / det;
+    const float invDet = 1.f / det;
 
-    // Vector from origin (cell center) to A
+    // Convert the physical edge tolerance into barycentric tolerances.
+    const float lenAB = sqrtf(e1x * e1x + e1y * e1y + e1z * e1z);
+    const float lenAC = sqrtf(e2x * e2x + e2y * e2y + e2z * e2z);
+
+    const float bcx = cx - bx;
+    const float bcy = cy - by;
+    const float bcz = cz - bz;
+    const float lenBC = sqrtf(bcx * bcx + bcy * bcy + bcz * bcz);
+
+    const float uTol = edgeTol * lenAC / area2;
+    const float vTol = edgeTol * lenAB / area2;
+    const float wTol = edgeTol * lenBC / area2;
+
+    // Ray origin is the cell center, at (0, 0, 0).
     const float tx = -ax;
     const float ty = -ay;
     const float tz = -az;
 
-    // Calculate u parameter and test bounds
     const float u = (tx * px + ty * py + tz * pz) * invDet;
-    if ( u < -eps || u > 1.0f + eps ) return false;
+    if (u < -uTol) return false;
 
-    // Cross product of T and e1 ( Q = T x e1 )
+    // Q = T x AB.
     const float qx = ty * e1z - tz * e1y;
     const float qy = tz * e1x - tx * e1z;
     const float qz = tx * e1y - ty * e1x;
 
-    // Calculate v parameter and test bounds
     const float v = (ex * qx + ey * qy + ez * qz) * invDet;
-    if ( v < -eps || u + v > 1.0f + eps ) return false;
+    if (v < -vTol || u + v > 1.f + wTol) return false;
 
-    // Calculate t parameter (scale along the ray vector)
     t = (e2x * qx + e2y * qy + e2z * qz) * invDet;
 
-    // If t is negative, the triangle is behind the cell center
-    if ( t <= 0.0f ) return false;
+    // Allow zero and negative t here.
+    // The caller applies qTol to decide whether the hit is acceptable.
 
-    // Calculate coords of the hit (relative to the cell center)
     hitX = t * ex;
     hitY = t * ey;
     hitZ = t * ez;
 
-    // Calculate physical signed distance
-    const float normD = TNL::sqrt( ex * ex + ey * ey + ez * ez );
+    const float normD = sqrtf(ex * ex + ey * ey + ez * ez);
     distance = t * normD;
 
     return true;
@@ -192,6 +253,7 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 	GridBuilder.linkLengthArray.setValue( 2.f ); // purposedly large value that will get overwritten by actual intersections
 	auto linkLengthView = GridBuilder.linkLengthArray.getView();
 	auto linkExistenceMarkerView = GridBuilder.linkExistenceMarkerArray.getConstView();
+	auto linkPiercesInterfaceMarkerView = GridBuilder.linkPiercesInterfaceMarkerArray.getConstView();
 	const int wallAdjacentCellCount = GridBuilder.wallAdjacentCellList.getSize();
 	
 	const int STLCount = gridStaticSTLs.size();
@@ -235,33 +297,40 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 				{
 					if ( linkExistenceMarkerView( direction, index ) ) // this means there is a wall in this direction
 					{
+						if ( linkPiercesInterfaceMarkerView( direction, index ) )
+						{
+							// force any link lengths which pierce interface to safe 0.5f
+							// this way interface geometry appears the same for parent and child
+							linkLengthView( direction, index ) = 0.5f;  
+							continue;
+						}
 						const float ex = (float)CX_DIRECTIONS[direction]; 
 						const float ey = (float)CY_DIRECTIONS[direction]; 
 						const float ez = (float)CZ_DIRECTIONS[direction];
 						// Now, the triangle is defined by those 3 points and we are searching for an intersection with 
 						// a line from the origin (=cell) pointing in the direction ex, ey, ez
 						
-						const float eps = 1e-5f; // dimensionless tolerance for triangle edges
-						// unlike during the voxelization, here we dont mind counting some intersection multiple times
-						// better add some eps to the triangle to make sure each likely intersection is counted
-						// the closest found intersection wins
+						// Physical allowance outside each triangle edge:
+						// 0.1 means 10% of this grid level's cell spacing.
+						const float edgeTolCells = 0.1f;
+						const float edgeTol = edgeTolCells * Info.res;
+
 						float hitX, hitY, hitZ, distance, t;
 
-						if ( intersectRayTriangle( ax, ay, az, bx, by, bz, cx, cy, cz, ex, ey, ez, eps, hitX, hitY, hitZ, distance, t ) )
+						if ( intersectRayTriangle( ax, ay, az, bx, by, bz, cx, cy, cz, ex, ey, ez, edgeTol, hitX, hitY, hitZ, distance, t ) )
 						{
 							float q = t / Info.res;
-							// here we need to add tolerance again
-							// because during voxelization we shifted the STL by up to 1/50 res, the correct triangle might
-							// in fact land slightly out of the (0, 1> interval. This error is proportional to that shift, so
-							const float qTol = 0.05f;
-							if ( q > 0.f - qTol && q <= 1.f + qTol ) 
+							
+							const float qTol = 0.25f;
+							
+							if (q > -qTol && q <= 1.f + qTol)
 							{
-								q = std::clamp( q, 0.0000001f, 1.f );
-								const float qPrev = linkLengthView( direction, index );
-								if ( q < qPrev ) linkLengthView( direction, index ) = q; // prefer the closer intersection
+								q = std::clamp(q, 0.0000001f, 1.f);
+
+								const float qPrev = linkLengthView(direction, index);
+								if (q < qPrev) linkLengthView(direction, index) = q;
 							}
 						}
-						
 					}
 				}
 			}

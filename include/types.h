@@ -128,7 +128,7 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
-struct CompressedIJKStruct { IntArrayType shifter; IntArrayType iArray; IntArrayType jArray; IntArrayType kArray; };
+struct CompressedIJKArrayStruct { IntArrayType shifter; IntArrayType iArray; IntArrayType jArray; IntArrayType kArray; };
 
 struct RayMapStruct { int gridID = 0; long long totalHitCount = 0LL; IntArrayType rayMapArray; LongLongArrayType hitCounterScanArray; };
 
@@ -156,19 +156,24 @@ struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; 
 struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
 							FloatArray2DType fArray; 
 							IntArrayType parentMapArray; IntArrayType wallIDArray; IntArrayType wallAdjacentCellList;
-							BoolArray2DType linkExistenceMarkerArray; FloatArray2DType linkLengthArray;
+							BoolArray2DType linkExistenceMarkerArray; FloatArray2DType linkLengthArray; BoolArray2DType linkPiercesInterfaceMarkerArray;
 							BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray; 
 							BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
 							BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
 							BoolArrayType parentInterfaceMarkerArray;
 							SkeletonGridStruct SkeletonGrid; }; 
-							
+
+struct InterfaceStruct { 	IntArrayType fineToCoarseList; IntArrayType coarseToFineList; 
+							IntArrayType jMinusArray; IntArrayType kMinusArray; 
+							IntArrayType childMapArray; };
+						
 struct GridStruct { InfoStruct Info; 
 					FloatArray2DType fArray; 
 					bool esotwistFlipper = false; 
-					CompressedIJKStruct IJK;
+					CompressedIJKArrayStruct IJK;
 					NBRArrayStruct NBR; 
-					IntArrayType wallMap; }; 	
+					IntArrayType wallMap; 
+					InterfaceStruct Interface; }; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 

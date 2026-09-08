@@ -3,8 +3,8 @@
 constexpr long long EXPORT_RESOLUTION_PIXEL_LIMIT = 16000000;
 
 //#include "./OLDcellFunctions.h"
-#include "./NBRFunctions.h"
-#include "./esotwistStreamingFunctions.h"
+#include "../NBRFunctions.h"
+#include "../esotwistStreamingFunctions.h"
 
 enum PlaneEnum { XY, ZY, ZX };
 
@@ -83,19 +83,16 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		int upsample = 1;
 		if ( level > imageLevel ) downsample = std::pow( 2, ( level - imageLevel ) );
 		else if ( level < imageLevel ) upsample = std::pow( 2, ( imageLevel - level ) );
-				
+			
+		auto shifterView = Grid.IJK.shifter.getConstView();	
 		auto iView = Grid.IJK.iArray.getConstView();
 		auto jView = Grid.IJK.jArray.getConstView();
 		auto kView = Grid.IJK.kArray.getConstView();
 		
-		auto wallMarkerView = Grid.wallMarkerArray.getConstView();
-		auto wallIDView = Grid.wallIDArray.getConstView();
-		
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
-			const int iCell = iView[ cell ]; 
-			const int jCell = jView[ cell ];
-			const int kCell = kView[ cell ];
+			int iCell, jCell, kCell;
+			getCompressedIJK( cell, iCell, jCell, kCell, shifterView, iView, jView, kView);
 			
 			int iImage = iCell;
 			int jImage = jCell;
@@ -144,9 +141,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			// PLACEHOLDER SECTION START
 			float rho, ux, uy, uz;
 			rho = 1.f; ux = 0.f; uy = 0.f; uz = 0.f; // placeholder values
-			const float marker = (float)wallMarkerView(cell);
-			const int wallID  = wallIDView( cell );
-			if ( wallID >= 0 ) ux = 1.f + (float)wallID;
+			const float marker = 0.f; 
 			// PLACEHOLDER SECTION END
 			
 			for ( int shiftVertical = 0; shiftVertical < upsample; shiftVertical++ )

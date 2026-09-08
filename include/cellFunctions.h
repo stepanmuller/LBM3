@@ -17,6 +17,26 @@
 
 // w:  { 8/27, 2/27, 2/27, 2/27 , 2/27, 2/27, 2/27, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/216, 1/216, 1/216, 1/216, 1/216, 1/216, 1/216, 1/216 };
 
+__host__ __device__ inline void getCompressedIJK( const int &cell, int& iCell, int& jCell, int& kCell, 
+								IntConstViewType& shifterView, IntConstViewType& iView, IntConstViewType& jView, IntConstViewType& kView)
+{
+    const int shift = shifterView(cell);
+	if ( shift >= 0 ) 
+	{ 
+		iCell = iView( shift ); 
+		jCell = jView( shift ); 
+		kCell = kView( shift ); 
+	}
+	else 
+	{ 
+		const int firstInRow = cell + shift; 
+		const int compressedIndex = shifterView( firstInRow );
+		iCell = iView( compressedIndex ) - shift; 
+		jCell = jView( compressedIndex ); 
+		kCell = kView( compressedIndex );
+	}
+}
+
 __host__ __device__ void getIJKCellIndexFromXYZ( int& iCell, int& jCell, int& kCell, const float &x, const float &y, const float &z, const InfoStruct &Info)
 {
     iCell = (int)(( x - Info.ox ) / Info.res + 0.5f);

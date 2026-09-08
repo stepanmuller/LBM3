@@ -656,8 +656,9 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, compactionLambda );
 	
-	// 5) Fill linkExistenceMarkerArray
+	// 5) Fill linkExistenceMarkerArray and linkPiercesInterfaceMarkerArray
 	GridBuilder.linkExistenceMarkerArray.setSizes( 27, wallAdjacentCellCount );
+	GridBuilder.linkPiercesInterfaceMarkerArray.setSizes( 27, wallAdjacentCellCount );
 	buildLinkExistenceMarkerArray( GridBuilder );
 	
 	// 6) Fill link lengths
@@ -669,6 +670,81 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	if ( !iAmFinest ) buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, level + 1 );
 	// else std::cout << std::endl;
 }	
+
+void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
+{
+	// 1) copy information that can be copied directly
+	Grid.Info = GridBuilder.Info;
+	Grid.NBR.jPlusArray = GridBuilder.NBR.jPlusArray;
+	Grid.NBR.kPlusArray = GridBuilder.NBR.kPlusArray;
+	
+	// 2) just get info
+	InfoStruct &Info = Grid.Info;
+	
+	// 3) build scans to be able to build compressed IJK
+	IntArrayType firstInRowArray( Info.cellCount );
+	IntArrayType scanArray( Info.cellCount );
+	auto firstInRowView = firstInRowArray.getView();
+	auto scanView = scanArray.getView();
+	auto iBuilderView = GridBuilder.IJK.iArray.getConstView();
+	auto jBuilderView = GridBuilder.IJK.jArray.getConstView();
+	auto kBuilderView = GridBuilder.IJK.kArray.getConstView();
+	auto firstInRowMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( cell == 0 ) 
+		{
+			firstInRowView( cell ) = cell;
+			scanView( cell ) = 1;
+			return;
+		}
+		const int iCell = iBuilderView( cell );
+		const int jCell = jBuilderView( cell );
+		const int kCell = kBuilderView( cell );
+		const int iPrev = iBuilderView( cell-1 );
+		const int jPrev = jBuilderView( cell-1 );
+		const int kPrev = kBuilderView( cell-1 );
+		if ( iCell != iPrev+1 || jCell != jPrev || kCell != kPrev ) 
+		{
+			firstInRowView( cell ) = cell;
+			scanView( cell ) = 1;
+		}
+		else 
+		{
+			firstInRowView( cell ) = 0;
+			scanView( cell ) = 0;
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, firstInRowMarkerLambda );
+	TNL::Algorithms::inplaceInclusiveScan( firstInRowArray, 0, Info.cellCount, TNL::Max{} );
+	const int compressedIJKCount = TNL::sum( scanArray );
+	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
+	// 3) build compressed IJK
+	Grid.IJK.shifter.setSize( Info.cellCount );
+	Grid.IJK.iArray.setSize( compressedIJKCount );
+	Grid.IJK.jArray.setSize( compressedIJKCount );
+	Grid.IJK.kArray.setSize( compressedIJKCount );
+	auto shifterView = Grid.IJK.shifter.getView();
+	auto iView = Grid.IJK.iArray.getView();
+	auto jView = Grid.IJK.jArray.getView();
+	auto kView = Grid.IJK.kArray.getView();
+	auto compressedIJKLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		const int firstInRow = firstInRowView( cell );
+		if ( cell == firstInRow ) // we are first in row
+		{
+			const int compressedIndex = scanView( cell );
+			shifterView( cell ) = compressedIndex;
+			iView( compressedIndex ) = iBuilderView( cell );
+			jView( compressedIndex ) = jBuilderView( cell );
+			kView( compressedIndex ) = kBuilderView( cell );
+		}
+		else
+		{
+			shifterView( cell ) = firstInRow - cell; // now this tells how much I need to shift backwards to find firstInRow
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, compressedIJKLambda );
+}
 
 void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, BoundsStruct DomainBounds )
 {
@@ -688,5 +764,9 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, 0 );
 		
 		// Pass the information to the actual grids, but in a compressed form
+		for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) 
+		{
+			gridBuilderToGrid( gridBuilders[level], grids[level] );
+		}
 	}
 }
