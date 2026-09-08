@@ -344,7 +344,7 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 						{
 							float q = t / Info.res;
 							
-							const float qTol = 0.25f;
+							const float qTol = 0.2f;
 							
 							if (q > -qTol && q <= 1.f + qTol)
 							{

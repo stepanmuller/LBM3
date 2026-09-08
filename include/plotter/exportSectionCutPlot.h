@@ -88,6 +88,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		auto iView = Grid.IJK.iArray.getConstView();
 		auto jView = Grid.IJK.jArray.getConstView();
 		auto kView = Grid.IJK.kArray.getConstView();
+		auto wallMapView = Grid.wallMap.getConstView();
 		
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
@@ -138,10 +139,13 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			if ( indexHorizontal < startHorizontal || indexHorizontal >= startHorizontal + pixelsHorizontal ) return;
 			if ( indexVertical < startVertical || indexVertical >= startVertical + pixelsVertical ) return;
 			
+			float marker = 0.f; 
+			const int wallMap = wallMapView( cell );
+			if ( wallMap == -2 ) marker = 1.f;
+			
 			// PLACEHOLDER SECTION START
 			float rho, ux, uy, uz;
 			rho = 1.f; ux = 0.f; uy = 0.f; uz = 0.f; // placeholder values
-			const float marker = 0.f; 
 			// PLACEHOLDER SECTION END
 			
 			for ( int shiftVertical = 0; shiftVertical < upsample; shiftVertical++ )

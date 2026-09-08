@@ -718,6 +718,7 @@ void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
 	TNL::Algorithms::inplaceInclusiveScan( firstInRowArray, 0, Info.cellCount, TNL::Max{} );
 	const int compressedIJKCount = TNL::sum( scanArray );
 	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
+	
 	// 3) build compressed IJK
 	Grid.IJK.shifter.setSize( Info.cellCount );
 	Grid.IJK.iArray.setSize( compressedIJKCount );
@@ -744,6 +745,25 @@ void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
 		}
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, compressedIJKLambda );
+	
+	// 4) Build wallMap
+	Grid.wallMap.setSize( Info.cellCount );
+	Grid.wallMap.setValue( -1 ); // set to "free fluid" as default
+	auto wallMapView = Grid.wallMap.getView();
+	auto wallMarkerView = GridBuilder.wallMarkerArray.getConstView();
+	auto wallAdjacentCellListView = GridBuilder.wallAdjacentCellList.getConstView();
+	auto wallMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		const bool wallMarker = wallMarkerView( cell );
+		if ( wallMarker ) wallMapView( cell ) = -2; // overwrite where wall is
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallMarkerLambda );
+	auto wallAdjacentLambda = [=] __cuda_callable__ ( const int index ) mutable
+	{	
+		const int cell = wallAdjacentCellListView( index );
+		wallMapView( cell ) = index; // overwrite where wall adjacent fluid is
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridBuilder.wallAdjacentCellList.getSize(), wallAdjacentLambda );
 }
 
 void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, BoundsStruct DomainBounds )

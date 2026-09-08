@@ -79,6 +79,8 @@ using FloatArray3DTypeCPU = TNL::Containers::NDArray< float,
 												
 using Uint8_tArrayType = TNL::Containers::Vector< uint8_t, TNL::Devices::Cuda, size_t >;
 
+using Uint4ArrayType = TNL::Containers::Vector< uint4, TNL::Devices::Cuda, size_t >;
+
 using IntPairType = TNL::Containers::StaticArray< 2, int >;											
 using IntTripleType = TNL::Containers::StaticArray< 3, int >;
 
