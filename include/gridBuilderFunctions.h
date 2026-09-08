@@ -2,6 +2,7 @@
 
 #include "./types.h"
 #include "./markerFunctions.h"
+#include "./IBBLinkBuilderFunctions.h"
 
 void initializeGridInfo( std::vector<GridBuilderStruct> &gridBuilders, const BoundsStruct &Bounds, const int level )
 {
@@ -551,7 +552,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	// else std::cout << std::endl;
 }
 
-void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::vector<VoxelizerStruct> &voxelizers, const int level )
+void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::vector<VoxelizerStruct> &voxelizers, std::vector<STLStruct> &gridStaticSTLs, const int level )
 // Delete cells from each level that are deep inside a wall or deeply refined
 // Enforce keep cells that are part of the parent interface
 {
@@ -623,9 +624,49 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallIDLambda );
 	}
 	
+	// 3) Build scan over wall adjacent cells
+	IntArrayType wallAdjacentScanArray( Info.cellCount );
+	wallAdjacentScanArray.setValue( 0 );
+	auto wallIDView = GridBuilder.wallIDArray.getConstView();
+	auto wallAdjacentScanView = wallAdjacentScanArray.getView();
+	auto wallAdjacentLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( wallIDView( cell ) >= 0 ) wallAdjacentScanView( cell ) = 1;	
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallAdjacentLambda );
+	const int wallAdjacentCellCount = TNL::sum( wallAdjacentScanArray );
+	TNL::Algorithms::inplaceExclusiveScan( wallAdjacentScanArray, 0, Info.cellCount, TNL::Plus{} );
+	
+	// 4) Build compact wall adjacent list and compact the wallID array
+	GridBuilder.wallAdjacentCellList.setSize( wallAdjacentCellCount );
+	IntArrayType wallIDArrayCopy;
+	wallIDArrayCopy = GridBuilder.wallIDArray;
+	GridBuilder.wallIDArray.resize( wallAdjacentCellCount );
+	auto wallAdjacentCellListView = GridBuilder.wallAdjacentCellList.getView();
+	auto wallIDCopyView = wallIDArrayCopy.getConstView();
+	auto wallIDCompactView = GridBuilder.wallIDArray.getView();
+	auto compactionLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( wallIDCopyView( cell ) >= 0 ) 
+		{
+			const int compactIndex = wallAdjacentScanView( cell );
+			wallAdjacentCellListView( compactIndex ) = cell;	
+			wallIDCompactView( compactIndex ) = wallIDCopyView( cell );
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, compactionLambda );
+	
+	// 5) Fill linkExistenceMarkerArray
+	GridBuilder.linkExistenceMarkerArray.setSizes( 27, wallAdjacentCellCount );
+	buildLinkExistenceMarkerArray( GridBuilder );
+	
+	// 6) Fill link lengths
+	GridBuilder.linkLengthArray.setSizes( 27, wallAdjacentCellCount );
+	buildLinkLengthArray( GridBuilder, gridStaticSTLs );
+	
 	// std::cout << "	Level " << level << " done" << std::endl;
 	// 3) Recursion
-	if ( !iAmFinest ) buildWallMarkers( gridBuilders, voxelizers, level + 1 );
+	if ( !iAmFinest ) buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, level + 1 );
 	// else std::cout << std::endl;
 }	
 
@@ -644,7 +685,7 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		// Build grids
 		buildIJKFull( gridBuilders, voxelizers, 0 );
 		deleteExcessCells( gridBuilders, voxelizers, 0 );
-		buildWallMarkers( gridBuilders, voxelizers, 0 );
+		buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, 0 );
 		
 		// Pass the information to the actual grids, but in a compressed form
 	}

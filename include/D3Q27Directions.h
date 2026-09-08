@@ -32,3 +32,15 @@ constexpr int PMM = 23;
 constexpr int MPP = 24;
 constexpr int MMM = 25;
 constexpr int PPP = 26;
+
+#if !defined(__CUDA_ARCH__)
+    // Seen by the CPU compiler pass
+    constexpr int CX_DIRECTIONS[27] = { 0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1,-1, 1, 0, 0,-1, 1, 0, 0,-1, 1,-1, 1, 1,-1,-1, 1 };
+    constexpr int CY_DIRECTIONS[27] = { 0, 0, 0, 0, 0,-1, 1, 0, 0, 0, 0,-1, 1, 1,-1, 1,-1, 1,-1, 1,-1,-1, 1,-1, 1,-1, 1 };
+    constexpr int CZ_DIRECTIONS[27] = { 0, 0, 0,-1, 1, 0, 0,-1, 1, 1,-1, 0, 0,-1, 1, 0, 0, 1,-1,-1, 1, 1,-1,-1, 1,-1, 1 };
+#else
+    // Seen by the GPU compiler pass
+    __constant__ int CX_DIRECTIONS[27] = { 0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1,-1, 1, 0, 0,-1, 1, 0, 0,-1, 1,-1, 1, 1,-1,-1, 1 };
+    __constant__ int CY_DIRECTIONS[27] = { 0, 0, 0, 0, 0,-1, 1, 0, 0, 0, 0,-1, 1, 1,-1, 1,-1, 1,-1, 1,-1,-1, 1,-1, 1,-1, 1 };
+    __constant__ int CZ_DIRECTIONS[27] = { 0, 0, 0,-1, 1, 0, 0,-1, 1, 1,-1, 0, 0,-1, 1, 0, 0, 1,-1,-1, 1, 1,-1,-1, 1,-1, 1 };
+#endif
