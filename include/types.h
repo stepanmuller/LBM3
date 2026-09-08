@@ -128,6 +128,8 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
+struct CompressedIJKStruct { IntArrayType shifter; IntArrayType iArray; IntArrayType jArray; IntArrayType kArray; };
+
 struct RayMapStruct { int gridID = 0; long long totalHitCount = 0LL; IntArrayType rayMapArray; LongLongArrayType hitCounterScanArray; };
 
 struct VoxelizerStruct { InfoStruct Info; std::vector<RayMapStruct> rayMaps; RayMapStruct rayMapTotal; };
@@ -151,14 +153,21 @@ struct NBRHoleMapStruct { IntArray3DType holeStartArray; IntArray2DType startCou
 
 struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; };
 
-struct GridStruct { InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
-					FloatArray2DType fArray; bool esotwistFlipper = false;
-					IntArrayType parentMapArray;
-					BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray; IntArrayType wallIDArray;
-					BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
-					BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
-					BoolArrayType parentInterfaceMarkerArray;
-					SkeletonGridStruct SkeletonGrid; }; 		
+struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
+							FloatArray2DType fArray; 
+							IntArrayType parentMapArray; IntArrayType wallIDArray;
+							BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray; 
+							BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
+							BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
+							BoolArrayType parentInterfaceMarkerArray;
+							SkeletonGridStruct SkeletonGrid; }; 
+							
+struct GridStruct { InfoStruct Info; 
+					FloatArray2DType fArray; 
+					bool esotwistFlipper = false; 
+					CompressedIJKStruct IJK;
+					NBRArrayStruct NBR; 
+					IntArrayType wallMap; }; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 

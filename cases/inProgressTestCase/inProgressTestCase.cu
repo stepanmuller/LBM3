@@ -43,8 +43,8 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	}
 }
 
-#include "../../include/gridGenerationFunctions.h"
-#include "../../include/exportSectionCutPlot.h"
+#include "../../include/gridBuilderFunctions.h"
+//#include "../../include/exportSectionCutPlot.h"
 
 int main(int argc, char **argv)
 {
@@ -60,18 +60,9 @@ int main(int argc, char **argv)
 	DomainBounds = gridStaticSTLs[0].Bounds;
 	DomainBounds.zMax = 400.f;
 	DomainBounds.yMax = 1000.f;
-	initializeGridInfo( grids, DomainBounds, 0 );
 	
-	// Voxelizers
-	std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT );
-	initializeVoxelizers( voxelizers, grids, gridStaticSTLs, 0 );
-	
-	buildIJKFull( grids, voxelizers, 0 );
-	
-	deleteExcessCells( grids, voxelizers, 0 );
-	
-	buildWallMarkers( grids, voxelizers, 0 );
-	
+	buildGrids( grids, gridStaticSTLs, DomainBounds );
+	/*
 	int iCut, jCut, kCut;
 	const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;
 	
@@ -93,6 +84,6 @@ int main(int argc, char **argv)
 	// Detail
 	exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, 3 );
 	if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
-		
+	*/	
 	return EXIT_SUCCESS;
 }

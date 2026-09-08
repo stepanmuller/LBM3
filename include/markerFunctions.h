@@ -3,13 +3,13 @@
 #include "./types.h"
 #include "./NBRFunctions.h"
 
-void markWallCells( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
+void markWallCells( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridBuilderStruct &GridBuilder )
 {
-	const int &cellCount = Grid.Info.cellCount;
-	const int &cellCountX = Grid.Info.cellCountX;
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
+	const int &cellCount = GridBuilder.Info.cellCount;
+	const int &cellCountX = GridBuilder.Info.cellCountX;
+	auto iView = GridBuilder.IJK.iArray.getConstView();
+	auto jView = GridBuilder.IJK.jArray.getConstView();
+	auto kView = GridBuilder.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
 	const LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
@@ -100,21 +100,21 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
+void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridBuilderStruct &GridBuilder )
 {
 	// marks a coarse grid based on a finer rayMapArray, result is 1 if at least one fine cell is 0 (fluid)
-	const int cellCountX = Grid.Info.cellCountX;
-	const int cellCount = Grid.Info.cellCount;
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
+	const int cellCountX = GridBuilder.Info.cellCountX;
+	const int cellCount = GridBuilder.Info.cellCount;
+	auto iView = GridBuilder.IJK.iArray.getConstView();
+	auto jView = GridBuilder.IJK.jArray.getConstView();
+	auto kView = GridBuilder.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
 	const LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
 	auto rayMapView = rayMapArray.getConstView();
 	auto hitCounterScanView = hitCounterScanArray.getConstView();
 	
-	const int levelDifference = rayMap.gridID - (Grid.Info.gridID);
+	const int levelDifference = rayMap.gridID - (GridBuilder.Info.gridID);
 	const int downsample = 1 << levelDifference;
 	
 	markerArray.setValue( true );
@@ -158,21 +158,21 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void markSingleFinerWall( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridStruct &Grid )
+void markSingleFinerWall( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridBuilderStruct &GridBuilder )
 {
 	// marks a coarse grid based on a fine rayMapArray, result is 1 if at least one fine cell is 1 (wall)
-	const int cellCountX = Grid.Info.cellCountX;
-	const int cellCount = Grid.Info.cellCount;
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
+	const int cellCountX = GridBuilder.Info.cellCountX;
+	const int cellCount = GridBuilder.Info.cellCount;
+	auto iView = GridBuilder.IJK.iArray.getConstView();
+	auto jView = GridBuilder.IJK.jArray.getConstView();
+	auto kView = GridBuilder.IJK.kArray.getConstView();
 	const IntArrayType &rayMapArray = rayMap.rayMapArray;
 	const LongLongArrayType &hitCounterScanArray = rayMap.hitCounterScanArray;
 	auto markerView = markerArray.getView();
 	auto rayMapView = rayMapArray.getConstView();
 	auto hitCounterScanView = hitCounterScanArray.getConstView();
 	
-	const int levelDifference = rayMap.gridID - (Grid.Info.gridID);
+	const int levelDifference = rayMap.gridID - (GridBuilder.Info.gridID);
 	const int downsample = 1 << levelDifference;
 	
 	markerArray.setValue( false );
@@ -230,24 +230,24 @@ void markAllFinerFluids( BoolArrayType &resultArray, const std::vector<Voxelizer
 	}
 }
 
-void markAllFinerFluids( BoolArrayType &resultArray, const std::vector<VoxelizerStruct> &voxelizers, const GridStruct &Grid )
+void markAllFinerFluids( BoolArrayType &resultArray, const std::vector<VoxelizerStruct> &voxelizers, const GridBuilderStruct &GridBuilder )
 {
 	resultArray.setValue( false );
 	BoolArrayType markerArray( resultArray.getSize() );
-	for ( int level = Grid.Info.gridID; level < GRID_LEVEL_COUNT; level++ )
+	for ( int level = GridBuilder.Info.gridID; level < GRID_LEVEL_COUNT; level++ )
 	{
-		markSingleFinerFluid( markerArray, voxelizers[level].rayMapTotal, Grid );
+		markSingleFinerFluid( markerArray, voxelizers[level].rayMapTotal, GridBuilder );
 		resultArray += markerArray;
 	}
 }
 
-void applyUserRefinementModification( BoolArrayType &markerArray, const GridStruct &Grid )
+void applyUserRefinementModification( BoolArrayType &markerArray, const GridBuilderStruct &GridBuilder )
 {
 	// uses the getRefinementModifier function defined in the main file to adjust refinement area
-	const InfoStruct &Info = Grid.Info;
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
+	const InfoStruct &Info = GridBuilder.Info;
+	auto iView = GridBuilder.IJK.iArray.getConstView();
+	auto jView = GridBuilder.IJK.jArray.getConstView();
+	auto kView = GridBuilder.IJK.kArray.getConstView();
 	auto markerView = markerArray.getView();
 
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
@@ -262,13 +262,13 @@ void applyUserRefinementModification( BoolArrayType &markerArray, const GridStru
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 }
 
-void markAllFinerWalls( BoolArrayType &resultArray, const std::vector<VoxelizerStruct> &voxelizers, const GridStruct &Grid )
+void markAllFinerWalls( BoolArrayType &resultArray, const std::vector<VoxelizerStruct> &voxelizers, const GridBuilderStruct &GridBuilder )
 {
 	resultArray.setValue( false );
 	BoolArrayType markerArray( resultArray.getSize() );
-	for ( int level = Grid.Info.gridID; level < GRID_LEVEL_COUNT; level++ )
+	for ( int level = GridBuilder.Info.gridID; level < GRID_LEVEL_COUNT; level++ )
 	{
-		markSingleFinerWall( markerArray, voxelizers[level].rayMapTotal, Grid );
+		markSingleFinerWall( markerArray, voxelizers[level].rayMapTotal, GridBuilder );
 		resultArray += markerArray;
 	}
 }
@@ -327,15 +327,15 @@ void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourc
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCount, cellLambda );	
 }
 
-void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourceMarkerArray, GridStruct &Grid )
+void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourceMarkerArray, GridBuilderStruct &GridBuilder )
 {
 	// The way this is written creates a race condition, one that is harmless because all threads write the same 1
-	const int &cellCount = Grid.Info.cellCount;
+	const int &cellCount = GridBuilder.Info.cellCount;
 	auto targetMarkerView = targetMarkerArray.getView();
 	auto sourceMarkerView = sourceMarkerArray.getConstView();
-	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
-	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
-	auto isGeometricBitPackedMarkerView = Grid.NBR.isGeometricBitPackedMarkerArray.getView();
+	auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
+	auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
+	auto isGeometricBitPackedMarkerView = GridBuilder.NBR.isGeometricBitPackedMarkerArray.getView();
 	
 	targetMarkerArray = sourceMarkerArray; // initialize as source
 
@@ -381,7 +381,7 @@ void spreadMarkers( BoolArrayType &targetMarkerArray, const BoolArrayType &sourc
 			}
 		}		
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, cellLambda );	
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridBuilder.Info.cellCount, cellLambda );	
 }
 
 void markKeepCells( SkeletonGridStruct &SkeletonGrid, const std::vector<VoxelizerStruct> &voxelizers )
@@ -392,42 +392,42 @@ void markKeepCells( SkeletonGridStruct &SkeletonGrid, const std::vector<Voxelize
 	spreadMarkers( SkeletonGrid.keepCellMarkerArray, markerSource, SkeletonGrid );
 }
 
-void markKeepCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &voxelizers )
+void markKeepCells( GridBuilderStruct &GridBuilder, const std::vector<VoxelizerStruct> &voxelizers )
 {
-	markAllFinerFluids( Grid.keepCellMarkerArray, voxelizers, Grid );
+	markAllFinerFluids( GridBuilder.keepCellMarkerArray, voxelizers, GridBuilder );
 	BoolArrayType markerSource;
-	markerSource = Grid.keepCellMarkerArray;
-	spreadMarkers( Grid.keepCellMarkerArray, markerSource, Grid );
+	markerSource = GridBuilder.keepCellMarkerArray;
+	spreadMarkers( GridBuilder.keepCellMarkerArray, markerSource, GridBuilder );
 	// A fine cell located at the parent interface is blocked from getting deleted later
-	if ( Grid.Info.gridID > 0 )	Grid.keepCellMarkerArray += Grid.parentInterfaceMarkerArray; 
+	if ( GridBuilder.Info.gridID > 0 )	GridBuilder.keepCellMarkerArray += GridBuilder.parentInterfaceMarkerArray; 
 }
 
-void markRefinementCells( GridStruct &Grid, const std::vector<VoxelizerStruct> &voxelizers )
+void markRefinementCells( GridBuilderStruct &GridBuilder, const std::vector<VoxelizerStruct> &voxelizers )
 {
-	markKeepCells( Grid, voxelizers );
+	markKeepCells( GridBuilder, voxelizers );
 	// search deep refinement area
-	markAllFinerWalls( Grid.deepRefinementMarkerArray, voxelizers, Grid );
+	markAllFinerWalls( GridBuilder.deepRefinementMarkerArray, voxelizers, GridBuilder );
 	
-	BoolArrayType markerBuffer( Grid.deepRefinementMarkerArray.getSize() );
+	BoolArrayType markerBuffer( GridBuilder.deepRefinementMarkerArray.getSize() );
 	for ( int spread = 0; spread < WALL_REFINEMENT_COUNT; spread++ )
 	{
-		Grid.deepRefinementMarkerArray.swap( markerBuffer );
-		spreadMarkers( Grid.deepRefinementMarkerArray, markerBuffer, Grid );
+		GridBuilder.deepRefinementMarkerArray.swap( markerBuffer );
+		spreadMarkers( GridBuilder.deepRefinementMarkerArray, markerBuffer, GridBuilder );
 	}
-	applyUserRefinementModification( Grid.deepRefinementMarkerArray, Grid );
+	applyUserRefinementModification( GridBuilder.deepRefinementMarkerArray, GridBuilder );
 	// A fine cell located at the parent interface is blocked from getting deeply refined (interface with finer grid is still allowed)
-	if ( Grid.Info.gridID > 0 )	Grid.deepRefinementMarkerArray *= !Grid.parentInterfaceMarkerArray;
-	Grid.deepRefinementMarkerArray = Grid.deepRefinementMarkerArray * Grid.keepCellMarkerArray;
+	if ( GridBuilder.Info.gridID > 0 )	GridBuilder.deepRefinementMarkerArray *= !GridBuilder.parentInterfaceMarkerArray;
+	GridBuilder.deepRefinementMarkerArray = GridBuilder.deepRefinementMarkerArray * GridBuilder.keepCellMarkerArray;
 	// search fine to coarse interface
-	Grid.fineToCoarseMarkerArray = Grid.deepRefinementMarkerArray;
-	Grid.fineToCoarseMarkerArray.swap( markerBuffer );
-	spreadMarkers( Grid.fineToCoarseMarkerArray, markerBuffer, Grid );
-	Grid.fineToCoarseMarkerArray = Grid.fineToCoarseMarkerArray * Grid.keepCellMarkerArray * !Grid.deepRefinementMarkerArray;
+	GridBuilder.fineToCoarseMarkerArray = GridBuilder.deepRefinementMarkerArray;
+	GridBuilder.fineToCoarseMarkerArray.swap( markerBuffer );
+	spreadMarkers( GridBuilder.fineToCoarseMarkerArray, markerBuffer, GridBuilder );
+	GridBuilder.fineToCoarseMarkerArray = GridBuilder.fineToCoarseMarkerArray * GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray;
 	// search coarse to fine interface
-	Grid.coarseToFineMarkerArray = Grid.fineToCoarseMarkerArray;
-	Grid.coarseToFineMarkerArray.swap( markerBuffer );
-	spreadMarkers( Grid.coarseToFineMarkerArray, markerBuffer, Grid );
-	Grid.coarseToFineMarkerArray = Grid.coarseToFineMarkerArray * Grid.keepCellMarkerArray * !Grid.deepRefinementMarkerArray * !Grid.fineToCoarseMarkerArray;
+	GridBuilder.coarseToFineMarkerArray = GridBuilder.fineToCoarseMarkerArray;
+	GridBuilder.coarseToFineMarkerArray.swap( markerBuffer );
+	spreadMarkers( GridBuilder.coarseToFineMarkerArray, markerBuffer, GridBuilder );
+	GridBuilder.coarseToFineMarkerArray = GridBuilder.coarseToFineMarkerArray * GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray * !GridBuilder.fineToCoarseMarkerArray;
 	// mark refinement all together
-	Grid.refinementMarkerArray = Grid.deepRefinementMarkerArray + Grid.fineToCoarseMarkerArray + Grid.coarseToFineMarkerArray;
+	GridBuilder.refinementMarkerArray = GridBuilder.deepRefinementMarkerArray + GridBuilder.fineToCoarseMarkerArray + GridBuilder.coarseToFineMarkerArray;
 }

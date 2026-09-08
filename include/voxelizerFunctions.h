@@ -685,7 +685,7 @@ void sumRayMaps( RayMapStruct &rayMapSum, RayMapStruct &rayMapBonus )
 	rayMapSum.totalHitCount = resultTotalHitCount;
 }
 
-void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, const int level )
+void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::vector<GridBuilderStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, const int level )
 {
 	if ( level == 0 ) std::cout << "Initializing voxelizers for all grid levels" << std::endl; 
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );

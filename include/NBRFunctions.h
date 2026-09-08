@@ -20,7 +20,7 @@ __host__ __device__ void finishNBRAll( NBRStruct &NBR, const InfoStruct &Info )
 	NBR.iMinus = NBR.self - 1; if ( NBR.iMinus < 0 ) NBR.iMinus = Info.cellCount-1;		
 }
 
-// this is used to bit unpack the information from Grid.NBR.isGeometricBitPackedMarkerArray
+// this is used to bit unpack the information from GridBuilder.NBR.isGeometricBitPackedMarkerArray
 __host__ __device__ inline void byteToBools( const uint8_t &value, bool (&bools)[8] )
 {
     for (int i = 0; i < 8; ++i)
@@ -29,7 +29,7 @@ __host__ __device__ inline void byteToBools( const uint8_t &value, bool (&bools)
     }
 }
 
-// this is used to bit pack the information for Grid.NBR.isGeometricBitPackedMarkerArray
+// this is used to bit pack the information for GridBuilder.NBR.isGeometricBitPackedMarkerArray
 __host__ __device__ inline void boolsToByte( uint8_t& value, const bool (&bools)[8] )
 {
     value = 0;
@@ -80,13 +80,13 @@ void connectNBRInRows( IntArrayType &NBRArray, IntArrayType &rowMapArray, const 
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, totalRows, rowLambda );	
 }
 
-void buildNBRPlus( GridStruct &Grid )
+void buildNBRPlus( GridBuilderStruct &GridBuilder )
 {
-	InfoStruct &Info = Grid.Info;
-	NBRArrayStruct &NBR = Grid.NBR;
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
+	InfoStruct &Info = GridBuilder.Info;
+	NBRArrayStruct &NBR = GridBuilder.NBR;
+	auto iView = GridBuilder.IJK.iArray.getConstView();
+	auto jView = GridBuilder.IJK.jArray.getConstView();
+	auto kView = GridBuilder.IJK.kArray.getConstView();
 	
 	IntArrayType rowMapArray( Info.cellCount );
 	auto rowMapView = rowMapArray.getView();
@@ -152,15 +152,15 @@ void buildNBRPlus( GridStruct &Grid )
 	connectNBRInRows( NBR.kPlusArray, rowMapArray, rowCounterScanArray );
 }
 
-void markGeometricNBRPlus( GridStruct &Grid )
+void markGeometricNBRPlus( GridBuilderStruct &GridBuilder )
 {
-	const int &cellCount = Grid.Info.cellCount;
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
-	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
-	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
-	auto isGeometricBitPackedMarkerView = Grid.NBR.isGeometricBitPackedMarkerArray.getView();
+	const int &cellCount = GridBuilder.Info.cellCount;
+	auto iView = GridBuilder.IJK.iArray.getConstView();
+	auto jView = GridBuilder.IJK.jArray.getConstView();
+	auto kView = GridBuilder.IJK.kArray.getConstView();
+	auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
+	auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
+	auto isGeometricBitPackedMarkerView = GridBuilder.NBR.isGeometricBitPackedMarkerArray.getView();
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
