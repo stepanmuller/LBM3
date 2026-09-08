@@ -96,6 +96,124 @@ void checkSTLEdges( STLStruct &STL )
 	if ( errorCounter > 0 ) throw std::runtime_error("Check failed, the STL has some faulty edges which aren't shared between exactly two triangles. This means the STL is not closed. Please fix the STL file.");
 }
 
+void sortSTLToBins( STLStruct &STL )
+{
+	BoundsStruct &Bounds = STL.Bounds;
+	const int &triangleCount = STL.triangleCount;
+	const float totalVolume = (Bounds.xMax - Bounds.xMin) * (Bounds.yMax - Bounds.yMin) * (Bounds.zMax - Bounds.zMin);
+	const float targetBinVolume = totalVolume / ((float)triangleCount / (float)STL.avgTrianglesPerBin);
+	STL.binSize = powf( targetBinVolume, 1.f/3.f );
+	const float &binSize = STL.binSize;
+	STL.binCountX = (int)((Bounds.xMax - Bounds.xMin) / STL.binSize) + 1;
+	STL.binCountY = (int)((Bounds.yMax - Bounds.yMin) / STL.binSize) + 1;
+	STL.binCountZ = (int)((Bounds.zMax - Bounds.zMin) / STL.binSize) + 1;
+	const int &binCountX = STL.binCountX;
+	const int &binCountY = STL.binCountY;
+	const int &binCountZ = STL.binCountZ;
+	const int binCountXY = binCountX * binCountY;
+	STL.firstInBinArray.setSize( binCountX * binCountY * binCountZ + 1 );
+	STL.firstInBinArray.setValue( 0 );
+	auto firstInBinView = STL.firstInBinArray.getView();
+	
+	auto axView = STL.axArray.getConstView();
+	auto ayView = STL.ayArray.getConstView();
+	auto azView = STL.azArray.getConstView();
+	auto bxView = STL.bxArray.getConstView();
+	auto byView = STL.byArray.getConstView();
+	auto bzView = STL.bzArray.getConstView();
+	auto cxView = STL.cxArray.getConstView();
+	auto cyView = STL.cyArray.getConstView();
+	auto czView = STL.czArray.getConstView();
+	
+	const float tolerance = binSize * 0.1f;
+	
+	// 1) First pass: atomic add trianles to all bins that intersect with their bounding box
+	auto counterLambda = [ = ] __cuda_callable__( const int triangleIndex ) mutable
+	{
+		const float ax = axView[ triangleIndex ] - Bounds.xMin;
+		const float ay = ayView[ triangleIndex ] - Bounds.yMin;
+		const float az = azView[ triangleIndex ] - Bounds.zMin;
+		const float bx = bxView[ triangleIndex ] - Bounds.xMin;
+		const float by = byView[ triangleIndex ] - Bounds.yMin;
+		const float bz = bzView[ triangleIndex ] - Bounds.zMin;
+		const float cx = cxView[ triangleIndex ] - Bounds.xMin;
+		const float cy = cyView[ triangleIndex ] - Bounds.yMin;
+		const float cz = czView[ triangleIndex ] - Bounds.zMin;
+		const float xMin = TNL::min( ax, TNL::min(bx, cx)) - tolerance;
+		const float yMin = TNL::min( ay, TNL::min(by, cy)) - tolerance;
+		const float zMin = TNL::min( az, TNL::min(bz, cz)) - tolerance;
+		const float xMax = TNL::max( ax, TNL::max(bx, cx)) + tolerance;
+		const float yMax = TNL::max( ay, TNL::max(by, cy)) + tolerance;
+		const float zMax = TNL::max( az, TNL::max(bz, cz)) + tolerance;
+		const int iStart = TNL::max(0, (int)(xMin / binSize));
+		const int jStart = TNL::max(0, (int)(yMin / binSize));
+		const int kStart = TNL::max(0, (int)(zMin / binSize));
+		const int iEnd = TNL::min(binCountX, ((int)(xMax / binSize) + 1));
+		const int jEnd = TNL::min(binCountY, ((int)(yMax / binSize) + 1));
+		const int kEnd = TNL::min(binCountZ, ((int)(zMax / binSize) + 1));
+		for ( int kBin = kStart; kBin < kEnd; kBin++ )
+		{
+			for ( int jBin = jStart; jBin < jEnd; jBin++ )
+			{
+				for ( int iBin = iStart; iBin < iEnd; iBin++ )
+				{
+					const int bin = binCountXY * kBin + binCountX * jBin + iBin;	
+					TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add( firstInBinView( bin ), 1 ); 
+				}
+			}
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, triangleCount, counterLambda );	
+	const int totalBinWrites = TNL::sum( STL.firstInBinArray );
+	TNL::Algorithms::inplaceExclusiveScan( STL.firstInBinArray, 0, binCountX * binCountY * binCountZ + 1, TNL::Plus{} );
+	
+	// 2) Second pass: write triangle indexes into binArray
+	STL.binArray.setSize( totalBinWrites );
+	// allocate temporary atomic add counter
+	IntArrayType counterArray( binCountX * binCountY * binCountZ );
+	counterArray.setValue( 0 );
+	auto counterView = counterArray.getView();
+	auto binView = STL.binArray.getView();
+	auto writeLambda = [ = ] __cuda_callable__( const int triangleIndex ) mutable
+	{
+		const float ax = axView[ triangleIndex ] - Bounds.xMin;
+		const float ay = ayView[ triangleIndex ] - Bounds.yMin;
+		const float az = azView[ triangleIndex ] - Bounds.zMin;
+		const float bx = bxView[ triangleIndex ] - Bounds.xMin;
+		const float by = byView[ triangleIndex ] - Bounds.yMin;
+		const float bz = bzView[ triangleIndex ] - Bounds.zMin;
+		const float cx = cxView[ triangleIndex ] - Bounds.xMin;
+		const float cy = cyView[ triangleIndex ] - Bounds.yMin;
+		const float cz = czView[ triangleIndex ] - Bounds.zMin;
+		const float xMin = TNL::min( ax, TNL::min(bx, cx)) - tolerance;
+		const float yMin = TNL::min( ay, TNL::min(by, cy)) - tolerance;
+		const float zMin = TNL::min( az, TNL::min(bz, cz)) - tolerance;
+		const float xMax = TNL::max( ax, TNL::max(bx, cx)) + tolerance;
+		const float yMax = TNL::max( ay, TNL::max(by, cy)) + tolerance;
+		const float zMax = TNL::max( az, TNL::max(bz, cz)) + tolerance;
+		const int iStart = TNL::max(0, (int)(xMin / binSize));
+		const int jStart = TNL::max(0, (int)(yMin / binSize));
+		const int kStart = TNL::max(0, (int)(zMin / binSize));
+		const int iEnd = TNL::min(binCountX, ((int)(xMax / binSize) + 1));
+		const int jEnd = TNL::min(binCountY, ((int)(yMax / binSize) + 1));
+		const int kEnd = TNL::min(binCountZ, ((int)(zMax / binSize) + 1));
+		for ( int kBin = kStart; kBin < kEnd; kBin++ )
+		{
+			for ( int jBin = jStart; jBin < jEnd; jBin++ )
+			{
+				for ( int iBin = iStart; iBin < iEnd; iBin++ )
+				{
+					const int bin = binCountXY * kBin + binCountX * jBin + iBin;
+					int writeIndex = firstInBinView( bin );
+					writeIndex += TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add( counterView( bin ), 1 ); 
+					binView( writeIndex ) = triangleIndex;
+				}
+			}
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, triangleCount, writeLambda );
+}
+
 void readSTL( STLStruct &STL, const std::string &filename )
 {
 	STLStructCPU STLCPU;
@@ -234,6 +352,11 @@ void readSTL( STLStruct &STL, const std::string &filename )
 	STL.threadToTriangleMapArray.setValue( 0 );
 	unsigned long long memoryBytes = 4LL * 9LL * STL.triangleCount; // 1 float has 4 Bytes, 9 floats per triangle
 	std::cout << "	Check OK, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
+	
+	sortSTLToBins( STL );
+	unsigned long long memoryBytesBins = 4LL * (STL.firstInBinArray.getSize() + STL.binArray.getSize());
+	std::cout << "	STL sorted to bins, bin structure takes " << memoryBytesBins / 1048576.0 << " MiB" << std::endl;
+	
 	std::cout << std::endl;
 }
 

@@ -260,7 +260,7 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 	for ( int STLIndex = 0; STLIndex < STLCount; STLIndex++ )
 	{
 		STLStruct &STL = gridStaticSTLs[ STLIndex ];
-		const int triangleCount = STL.triangleCount;
+		// const int triangleCount = STL.triangleCount;
 		auto axView = STL.axArray.getConstView();
 		auto ayView = STL.ayArray.getConstView();
 		auto azView = STL.azArray.getConstView();
@@ -271,6 +271,16 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 		auto cyView = STL.cyArray.getConstView();
 		auto czView = STL.czArray.getConstView();
 		
+		const BoundsStruct &STLBounds = STL.Bounds;
+		
+		auto binView = STL.binArray.getConstView();
+		auto firstInBinView = STL.firstInBinArray.getConstView();
+		const int &binCountX = STL.binCountX;
+		const int &binCountY = STL.binCountY;
+		const int &binCountZ = STL.binCountZ;
+		const int binCountXY = binCountX * binCountY;
+		const float &binSize = STL.binSize;
+		
 		auto cellLambda = [ = ] __cuda_callable__( const int index ) mutable
 		{
 			const int cell = indexList( index );
@@ -279,9 +289,20 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 			const int kCell = kView( cell );
 			float xCell, yCell, zCell;
 			getXYZFromIJKCellIndex( iCell, jCell, kCell, xCell, yCell, zCell, Info );
+			
+			const int iBin = (int)(( xCell - STLBounds.xMin ) / binSize);
+			const int jBin = (int)(( yCell - STLBounds.yMin ) / binSize);
+			const int kBin = (int)(( zCell - STLBounds.zMin ) / binSize);
+			if ( iBin < 0 || iBin >= binCountX || jBin < 0 || jBin >= binCountY || kBin < 0 || kBin >= binCountZ ) return;
+			
+			const int bin = binCountXY * kBin + binCountX * jBin + iBin;
+			const int startReadIndex = firstInBinView( bin );
+			const int endReadIndex = firstInBinView( bin + 1 );
+			
 			// loop through all triangles (very slow, yes I know, maybe I will have to redo this if some STL gets very large)
-			for ( int triangleIndex = 0; triangleIndex < triangleCount; triangleIndex++ )
+			for ( int readIndex = startReadIndex; readIndex < endReadIndex; readIndex++ )
 			{
+				const int triangleIndex = binView( readIndex );
 				// transform into the coordinate system of the cell
 				const float ax = axView[ triangleIndex ] - xCell;
 				const float ay = ayView[ triangleIndex ] - yCell;
