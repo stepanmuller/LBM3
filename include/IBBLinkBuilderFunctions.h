@@ -250,8 +250,13 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 						if ( intersectRayTriangle( ax, ay, az, bx, by, bz, cx, cy, cz, ex, ey, ez, eps, hitX, hitY, hitZ, distance, t ) )
 						{
 							float q = t / Info.res;
-							if ( q > 0.f && q <= 1.f ) 
+							// here we need to add tolerance again
+							// because during voxelization we shifted the STL by up to 1/50 res, the correct triangle might
+							// in fact land slightly out of the (0, 1> interval. This error is proportional to that shift, so
+							const float qTol = 0.05f;
+							if ( q > 0.f - qTol && q <= 1.f + qTol ) 
 							{
+								q = std::clamp( q, 0.0000001f, 1.f );
 								const float qPrev = linkLengthView( direction, index );
 								if ( q < qPrev ) linkLengthView( direction, index ) = q; // prefer the closer intersection
 							}

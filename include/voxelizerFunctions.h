@@ -16,8 +16,8 @@ __host__ __device__ bool getRayHitYesNo( 	const int &i, const int &j,
     if ( wab < 0 || wbc < 0 || wca < 0 ) return false;
     // If these two checks did not produce a return, it means ray is hitting exactly an edge
 	// Translate the triangle so that the ray lies at [0, 0]
-	const int rayXInt = i * 100;
-	const int rayYInt = j * 100;
+	const int rayXInt = i * 1000;
+	const int rayYInt = j * 1000;
     const long long ax0 = axInt - rayXInt;
     const long long ay0 = ayInt - rayYInt;
     const long long bx0 = bxInt - rayXInt;
@@ -111,9 +111,9 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const float by = byView[ triangleIndex ] - Info.oy;
 		const float cx = cxView[ triangleIndex ] - Info.ox;
 		const float cy = cyView[ triangleIndex ] - Info.oy;
-		// transform STL floats to integer grid that is 100x finer than the LBM grid to prevent float errors
+		// transform STL floats to integer grid that is 1000x finer than the LBM grid to prevent float errors
 		// make the STL coords odd, rays will be even, this prevents hitting a vortex
-		const float scale = 50.0f / Info.res;
+		const float scale = 500.0f / Info.res;
 		const int axInt = (int)(round( ax * scale )) * 2 + 1;
 		const int ayInt = (int)(round( ay * scale )) * 2 + 1;
 		const int bxInt = (int)(round( bx * scale )) * 2 + 1;
@@ -121,14 +121,14 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const int cxInt = (int)(round( cx * scale )) * 2 + 1;
 		const int cyInt = (int)(round( cy * scale )) * 2 + 1;
 		// now figure out which rays can possibly hit the triangle -> get bounds
-		const int xIntMin = TNL::max( 0, TNL::min( axInt, bxInt, cxInt, (int)(Info.cellCountX-1)*100 ) );
-		const int xIntMax = TNL::min( (int)(Info.cellCountX-1)*100, TNL::max( axInt, bxInt, cxInt, 0 ) );
-		const int yIntMin = TNL::max( 0, TNL::min( ayInt, byInt, cyInt, (int)(Info.cellCountY-1)*100 ) );
-		const int yIntMax = TNL::min( (int)(Info.cellCountY-1)*100, TNL::max( ayInt, byInt, cyInt, 0 ) );
-		const int iStart = (xIntMin + 99) / 100;
-		const int iEnd = xIntMax / 100 + 1;
-		const int jStart = (yIntMin + 99) / 100;
-		const int jEnd = yIntMax / 100 + 1;
+		const int xIntMin = TNL::max( 0, TNL::min( axInt, bxInt, cxInt, (int)(Info.cellCountX-1)*1000 ) );
+		const int xIntMax = TNL::min( (int)(Info.cellCountX-1)*1000, TNL::max( axInt, bxInt, cxInt, 0 ) );
+		const int yIntMin = TNL::max( 0, TNL::min( ayInt, byInt, cyInt, (int)(Info.cellCountY-1)*1000 ) );
+		const int yIntMax = TNL::min( (int)(Info.cellCountY-1)*1000, TNL::max( ayInt, byInt, cyInt, 0 ) );
+		const int iStart = (xIntMin + 999) / 1000;
+		const int iEnd = xIntMax / 1000 + 1;
+		const int jStart = (yIntMin + 999) / 1000;
+		const int jEnd = yIntMax / 1000 + 1;
 		const int raysPerTriangleCount = TNL::max( 1, ( jEnd - jStart ) * ( iEnd - iStart ) );
 		
 		raysPerTriangleCounterView[ triangleIndex ] = raysPerTriangleCount;
@@ -187,9 +187,9 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const float cx = cxView[ triangleIndex ] - Info.ox;
 		const float cy = cyView[ triangleIndex ] - Info.oy;
 		//const float cz = czView[ triangleIndex ] - Info.oz;
-		// transform STL floats to integer grid that is 100x finer than the LBM grid to prevent float errors
+		// transform STL floats to integer grid that is 1000x finer than the LBM grid to prevent float errors
 		// make the STL coords odd, rays will be even, this prevents hitting a vortex
-		const float scale = 50.0f / Info.res;
+		const float scale = 500.0f / Info.res;
 		const int axInt = (int)(round( ax * scale )) * 2 + 1;
 		const int ayInt = (int)(round( ay * scale )) * 2 + 1;
 		const int bxInt = (int)(round( bx * scale )) * 2 + 1;
@@ -197,20 +197,20 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const int cxInt = (int)(round( cx * scale )) * 2 + 1;
 		const int cyInt = (int)(round( cy * scale )) * 2 + 1;
 		// now figure out which rays can possibly hit the triangle -> get bounds
-		const int xIntMin = TNL::max( 0, TNL::min( axInt, bxInt, cxInt, (int)(Info.cellCountX-1)*100 ) );
-		const int xIntMax = TNL::min( (int)(Info.cellCountX-1)*100, TNL::max( axInt, bxInt, cxInt, 0 ) );
-		const int yIntMin = TNL::max( 0, TNL::min( ayInt, byInt, cyInt, (int)(Info.cellCountY-1)*100 ) );
-		const int yIntMax = TNL::min( (int)(Info.cellCountY-1)*100, TNL::max( ayInt, byInt, cyInt, 0 ) );
-		const int iStartGlobal = (xIntMin + 99) / 100;
-		const int iEndGlobal = xIntMax / 100 + 1;
-		const int jStartGlobal = (yIntMin + 99) / 100;
-		const int jEndGlobal = yIntMax / 100 + 1;
+		const int xIntMin = TNL::max( 0, TNL::min( axInt, bxInt, cxInt, (int)(Info.cellCountX-1)*1000 ) );
+		const int xIntMax = TNL::min( (int)(Info.cellCountX-1)*1000, TNL::max( axInt, bxInt, cxInt, 0 ) );
+		const int yIntMin = TNL::max( 0, TNL::min( ayInt, byInt, cyInt, (int)(Info.cellCountY-1)*1000 ) );
+		const int yIntMax = TNL::min( (int)(Info.cellCountY-1)*1000, TNL::max( ayInt, byInt, cyInt, 0 ) );
+		const int iStartGlobal = (xIntMin + 999) / 1000;
+		const int iEndGlobal = xIntMax / 1000 + 1;
+		const int jStartGlobal = (yIntMin + 999) / 1000;
+		const int jEndGlobal = yIntMax / 1000 + 1;
 		// Prepare cayIntculation of the intersection yes no detection
-		// Here we will have to switch to long long because they get multiplied and an integer could overflow if a triangle is bigger than 300 cells
-		// A long long is large enough if the triangle is up to about 20M cells
+		// Here we will have to switch to long long because they get multiplied and an integer could overflow if a triangle is bigger than 30 cells
+		// A long long is large enough if the triangle is up to about 2M cells
 		// Transform the triangle into coordinate system where the first ray is [iMin, jMin]
-		const long long xLongMin = 100LL * (long long)iStartGlobal;
-		const long long yLongMin = 100LL * (long long)jStartGlobal;
+		const long long xLongMin = 1000LL * (long long)iStartGlobal;
+		const long long yLongMin = 1000LL * (long long)jStartGlobal;
 		const long long axLong = axInt - xLongMin;
 		const long long ayLong = ayInt - yLongMin;
 		const long long bxLong = bxInt - xLongMin;
@@ -234,12 +234,12 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const long long wca0 = qzLong * ( caxLong * ( -ayLong ) - cayLong * ( -axLong ) );
 		// Derivatives of the edge function with respect to i and j
 		// We will be adding this each time we do a step in i or j direction
-		const long long dwab_di = - qzLong * abyLong * 100LL;
-		const long long dwab_dj = qzLong * abxLong * 100LL;
-		const long long dwbc_di = - qzLong * bcyLong * 100LL;
-		const long long dwbc_dj = qzLong * bcxLong * 100LL;
-		const long long dwca_di = - qzLong * cayLong * 100LL;
-		const long long dwca_dj = qzLong * caxLong * 100LL;
+		const long long dwab_di = - qzLong * abyLong * 1000LL;
+		const long long dwab_dj = qzLong * abxLong * 1000LL;
+		const long long dwbc_di = - qzLong * bcyLong * 1000LL;
+		const long long dwbc_dj = qzLong * bcxLong * 1000LL;
+		const long long dwca_di = - qzLong * cayLong * 1000LL;
+		const long long dwca_dj = qzLong * caxLong * 1000LL;
 		// Prepare calculation of the intersection coordinate ... not needed here in the first pass
 		//const float v1x = bx - ax;
 		//const float v1y = by - ay;
@@ -261,7 +261,7 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const int iSpan = iEndGlobal - iStartGlobal;
 		const int jSpan = jEndGlobal - jStartGlobal;
 		
-		const int taskLast = (int)TNL::min((long long)taskStart + (long long)raysPerThreadLimit, (long long)(iSpan * jSpan)) - 1;
+		const int taskLast = (int)TNL::min((long long)taskStart + (long long)raysPerThreadLimit, ((long long)iSpan * (long long)jSpan)) - 1;
 		
 		const int jStartThread = jStartGlobal + (taskStart / iSpan);
 		const int iStartThread = iStartGlobal + (taskStart % iSpan);
@@ -358,9 +358,9 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const float cx = cxView[ triangleIndex ] - Info.ox;
 		const float cy = cyView[ triangleIndex ] - Info.oy;
 		const float cz = czView[ triangleIndex ] - Info.oz;
-		// transform STL floats to integer grid that is 100x finer than the LBM grid to prevent float errors
+		// transform STL floats to integer grid that is 1000x finer than the LBM grid to prevent float errors
 		// make the STL coords odd, rays will be even, this prevents hitting a vortex
-		const float scale = 50.0f / Info.res;
+		const float scale = 500.0f / Info.res;
 		const int axInt = (int)(round( ax * scale )) * 2 + 1;
 		const int ayInt = (int)(round( ay * scale )) * 2 + 1;
 		const int bxInt = (int)(round( bx * scale )) * 2 + 1;
@@ -368,20 +368,20 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const int cxInt = (int)(round( cx * scale )) * 2 + 1;
 		const int cyInt = (int)(round( cy * scale )) * 2 + 1;
 		// now figure out which rays can possibly hit the triangle -> get bounds
-		const int xIntMin = TNL::max( 0, TNL::min( axInt, bxInt, cxInt, (int)(Info.cellCountX-1)*100 ) );
-		const int xIntMax = TNL::min( (int)(Info.cellCountX-1)*100, TNL::max( axInt, bxInt, cxInt, 0 ) );
-		const int yIntMin = TNL::max( 0, TNL::min( ayInt, byInt, cyInt, (int)(Info.cellCountY-1)*100 ) );
-		const int yIntMax = TNL::min( (int)(Info.cellCountY-1)*100, TNL::max( ayInt, byInt, cyInt, 0 ) );
-		const int iStartGlobal = (xIntMin + 99) / 100;
-		const int iEndGlobal = xIntMax / 100 + 1;
-		const int jStartGlobal = (yIntMin + 99) / 100;
-		const int jEndGlobal = yIntMax / 100 + 1;
+		const int xIntMin = TNL::max( 0, TNL::min( axInt, bxInt, cxInt, (int)(Info.cellCountX-1)*1000 ) );
+		const int xIntMax = TNL::min( (int)(Info.cellCountX-1)*1000, TNL::max( axInt, bxInt, cxInt, 0 ) );
+		const int yIntMin = TNL::max( 0, TNL::min( ayInt, byInt, cyInt, (int)(Info.cellCountY-1)*1000 ) );
+		const int yIntMax = TNL::min( (int)(Info.cellCountY-1)*1000, TNL::max( ayInt, byInt, cyInt, 0 ) );
+		const int iStartGlobal = (xIntMin + 999) / 1000;
+		const int iEndGlobal = xIntMax / 1000 + 1;
+		const int jStartGlobal = (yIntMin + 999) / 1000;
+		const int jEndGlobal = yIntMax / 1000 + 1;
 		// Prepare cayIntculation of the intersection yes no detection
-		// Here we will have to switch to long long because they get multiplied and an integer could overflow if a triangle is bigger than 300 cells
-		// A long long is large enough if the triangle is up to about 20M cells
+		// Here we will have to switch to long long because they get multiplied and an integer could overflow if a triangle is bigger than 30 cells
+		// A long long is large enough if the triangle is up to about 2M cells
 		// Transform the triangle into coordinate system where the first ray is [iMin, jMin]
-		const long long xLongMin = 100LL * (long long)iStartGlobal;
-		const long long yLongMin = 100LL * (long long)jStartGlobal;
+		const long long xLongMin = 1000LL * (long long)iStartGlobal;
+		const long long yLongMin = 1000LL * (long long)jStartGlobal;
 		const long long axLong = axInt - xLongMin;
 		const long long ayLong = ayInt - yLongMin;
 		const long long bxLong = bxInt - xLongMin;
@@ -405,12 +405,12 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const long long wca0 = qzLong * ( caxLong * ( -ayLong ) - cayLong * ( -axLong ) );
 		// Derivatives of the edge function with respect to i and j
 		// We will be adding this each time we do a step in i or j direction
-		const long long dwab_di = - qzLong * abyLong * 100LL;
-		const long long dwab_dj = qzLong * abxLong * 100LL;
-		const long long dwbc_di = - qzLong * bcyLong * 100LL;
-		const long long dwbc_dj = qzLong * bcxLong * 100LL;
-		const long long dwca_di = - qzLong * cayLong * 100LL;
-		const long long dwca_dj = qzLong * caxLong * 100LL;
+		const long long dwab_di = - qzLong * abyLong * 1000LL;
+		const long long dwab_dj = qzLong * abxLong * 1000LL;
+		const long long dwbc_di = - qzLong * bcyLong * 1000LL;
+		const long long dwbc_dj = qzLong * bcxLong * 1000LL;
+		const long long dwca_di = - qzLong * cayLong * 1000LL;
+		const long long dwca_dj = qzLong * caxLong * 1000LL;
 		// Prepare calculation of the intersection coordinate
 		const float v1x = bx - ax;
 		const float v1y = by - ay;
@@ -432,7 +432,7 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const int iSpan = iEndGlobal - iStartGlobal;
 		const int jSpan = jEndGlobal - jStartGlobal;
 		
-		const int taskLast = (int)TNL::min((long long)taskStart + (long long)raysPerThreadLimit, (long long)(iSpan * jSpan)) - 1;
+		const int taskLast = (int)TNL::min((long long)taskStart + (long long)raysPerThreadLimit, ((long long)iSpan * (long long)jSpan)) - 1;
 		
 		const int jStartThread = jStartGlobal + (taskStart / iSpan);
 		const int iStartThread = iStartGlobal + (taskStart % iSpan);
