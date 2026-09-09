@@ -301,7 +301,7 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 			const int startReadIndex = firstInBinView( bin );
 			const int endReadIndex = firstInBinView( bin + 1 );
 			
-			// loop through all triangles (very slow, yes I know, maybe I will have to redo this if some STL gets very large)
+			// loop through triangles in the bin
 			for ( int readIndex = startReadIndex; readIndex < endReadIndex; readIndex++ )
 			{
 				const int triangleIndex = binView( readIndex );
@@ -384,7 +384,8 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 	// compare that to the number of existing links
 	const int linksTotalCount = countOnesInBoolArray2D( GridBuilder.linkExistenceMarkerArray );
 	
-	std::cout << "	Links not found: " << linksNotFoundCount << " out of " << linksTotalCount << std::endl;
+	if ( linksNotFoundCount == 0 ) std::cout << "	Level " << GridBuilder.Info.gridID << " found all " << linksTotalCount << " IBB links" << std::endl;
+	else std::cout << "	Level " << GridBuilder.Info.gridID << " failed to find " << linksNotFoundCount << " IBB links out of " << linksTotalCount << std::endl;
 }
 
 __cuda_callable__ inline void packWallData( uint32_t (&packed)[4], 

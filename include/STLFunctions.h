@@ -2,100 +2,6 @@
 
 #include "./types.h"
 
-void checkSTLEdges( STLStruct &STL )
-// For every edge, counts number of triangles that share it. Must be always 2 for a closed STL.
-{
-	std::cout << "	Starting STL check for faulty edges" << std::endl;
-	auto axArrayView = STL.axArray.getConstView();
-	auto ayArrayView = STL.ayArray.getConstView();
-	auto azArrayView = STL.azArray.getConstView();
-	auto bxArrayView = STL.bxArray.getConstView();
-	auto byArrayView = STL.byArray.getConstView();
-	auto bzArrayView = STL.bzArray.getConstView();
-	auto cxArrayView = STL.cxArray.getConstView();
-	auto cyArrayView = STL.cyArray.getConstView();
-	auto czArrayView = STL.czArray.getConstView();
-	
-	IntArray2DType edgeCounterArray;
-	edgeCounterArray.setSizes( STL.triangleCount, 3 );
-	edgeCounterArray.setValue(0);
-	auto edgeCounterArrayView = edgeCounterArray.getView();
-
-    auto counterLambda = [ = ] __cuda_callable__( const int triangle1Index ) mutable
-    {		
-		float triangle1[9];
-		triangle1[0] = axArrayView[ triangle1Index ];
-		triangle1[1] = ayArrayView[ triangle1Index ];
-		triangle1[2] = azArrayView[ triangle1Index ];
-		triangle1[3] = bxArrayView[ triangle1Index ];
-		triangle1[4] = byArrayView[ triangle1Index ];
-		triangle1[5] = bzArrayView[ triangle1Index ];
-		triangle1[6] = cxArrayView[ triangle1Index ];
-		triangle1[7] = cyArrayView[ triangle1Index ];
-		triangle1[8] = czArrayView[ triangle1Index ];
-		
-		for ( int triangle2Index = 0; triangle2Index < STL.triangleCount; triangle2Index++ ) 
-		{
-			float triangle2[9];
-			triangle2[0] = axArrayView[ triangle2Index ];
-			triangle2[1] = ayArrayView[ triangle2Index ];
-			triangle2[2] = azArrayView[ triangle2Index ];
-			triangle2[3] = bxArrayView[ triangle2Index ];
-			triangle2[4] = byArrayView[ triangle2Index ];
-			triangle2[5] = bzArrayView[ triangle2Index ];
-			triangle2[6] = cxArrayView[ triangle2Index ];
-			triangle2[7] = cyArrayView[ triangle2Index ];
-			triangle2[8] = czArrayView[ triangle2Index ];
-			
-			for ( int edge1 = 0; edge1 < 3; edge1++ )
-			{
-				for ( int edge2 = 0; edge2 < 3; edge2++ )
-				{
-					float ax1 = triangle1[3*edge1];
-					float ay1 = triangle1[3*edge1+1];
-					float az1 = triangle1[3*edge1+2];
-					float bx1 = triangle1[3*((edge1+1)%3)];
-					float by1 = triangle1[3*((edge1+1)%3)+1];
-					float bz1 = triangle1[3*((edge1+1)%3)+2];
-					
-					float ax2 = triangle2[3*edge2];
-					float ay2 = triangle2[3*edge2+1];
-					float az2 = triangle2[3*edge2+2];
-					float bx2 = triangle2[3*((edge2+1)%3)];
-					float by2 = triangle2[3*((edge2+1)%3)+1];
-					float bz2 = triangle2[3*((edge2+1)%3)+2];
-					// testing same orientation of the edge
-					if (ax1 == ax2 && ay1 == ay2 && az1 == az2 && bx1 == bx2 && by1 == by2 && bz1 == bz2) 
-					{
-						TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(edgeCounterArrayView(triangle1Index, edge1), 1);
-					}
-					// testing reverse orientation of the edge
-					if (ax1 == bx2 && ay1 == by2 && az1 == bz2 && bx1 == ax2 && by1 == ay2 && bz1 == az2) 
-					{
-						TNL::Algorithms::AtomicOperations<TNL::Devices::Cuda>::add(edgeCounterArrayView(triangle1Index, edge1), 1);
-					}
-				}
-			}
-		}
-	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, STL.triangleCount, counterLambda );
-	int errorCounter = 0;
-	for ( int triangleIndex = 0; triangleIndex < STL.triangleCount; triangleIndex++ )
-    {
-		int ABcount = edgeCounterArray.getElement( triangleIndex, 0 );
-		int BCcount = edgeCounterArray.getElement( triangleIndex, 1 );
-		int CAcount = edgeCounterArray.getElement( triangleIndex, 2 );
-		if (ABcount != 2 || BCcount != 2 || CAcount != 2)
-		{
-			errorCounter++;
-			std::cout << "	Faulty edge on triangle " << triangleIndex << ", ABcount: " << ABcount << ", BCcount: " << BCcount << ", CAcount: " << CAcount << std::endl;
-		}
-	}    
-	if ( errorCounter == 0 ) {} //std::cout<< "	Check finished, number of faulty edges: " << errorCounter << std::endl; 
-	else std::cout<< "	Check failed, number of faulty edges: " << errorCounter << std::endl; 
-	if ( errorCounter > 0 ) throw std::runtime_error("Check failed, the STL has some faulty edges which aren't shared between exactly two triangles. This means the STL is not closed. Please fix the STL file.");
-}
-
 void sortSTLToBins( STLStruct &STL )
 {
 	BoundsStruct &Bounds = STL.Bounds;
@@ -104,15 +10,15 @@ void sortSTLToBins( STLStruct &STL )
 	const float targetBinVolume = totalVolume / ((float)triangleCount / (float)STL.avgTrianglesPerBin);
 	STL.binSize = powf( targetBinVolume, 1.f/3.f );
 	const float &binSize = STL.binSize;
-	STL.oxBin = Bounds.xMin - binSize;
-	STL.oyBin = Bounds.yMin - binSize;
-	STL.ozBin = Bounds.zMin - binSize;
+	STL.oxBin = Bounds.xMin - binSize - 2.f * RES_GLOBAL;
+	STL.oyBin = Bounds.yMin - binSize - 2.f * RES_GLOBAL;
+	STL.ozBin = Bounds.zMin - binSize - 2.f * RES_GLOBAL;
 	const float &oxBin = STL.oxBin;
 	const float &oyBin = STL.oyBin;
 	const float &ozBin = STL.ozBin;
-	STL.binCountX = (int)((Bounds.xMax - Bounds.xMin + 2.f * binSize) / STL.binSize) + 1;
-	STL.binCountY = (int)((Bounds.yMax - Bounds.yMin + 2.f * binSize) / STL.binSize) + 1;
-	STL.binCountZ = (int)((Bounds.zMax - Bounds.zMin + 2.f * binSize) / STL.binSize) + 1;
+	STL.binCountX = (int)((Bounds.xMax - Bounds.xMin + 2.f * binSize + 4.f * RES_GLOBAL) / STL.binSize) + 1;
+	STL.binCountY = (int)((Bounds.yMax - Bounds.yMin + 2.f * binSize + 4.f * RES_GLOBAL) / STL.binSize) + 1;
+	STL.binCountZ = (int)((Bounds.zMax - Bounds.zMin + 2.f * binSize + 4.f * RES_GLOBAL) / STL.binSize) + 1;
 	const int &binCountX = STL.binCountX;
 	const int &binCountY = STL.binCountY;
 	const int &binCountZ = STL.binCountZ;
@@ -219,6 +125,193 @@ void sortSTLToBins( STLStruct &STL )
 		}
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, triangleCount, writeLambda );
+}
+
+void checkSTLEdges( STLStruct &STL )
+// For every edge, counts number of triangles that share it. Must be always 2 for a closed STL.
+{
+	std::cout << "	Starting STL check for faulty edges ... " << std::flush;
+	auto axArrayView = STL.axArray.getConstView();
+	auto ayArrayView = STL.ayArray.getConstView();
+	auto azArrayView = STL.azArray.getConstView();
+	auto bxArrayView = STL.bxArray.getConstView();
+	auto byArrayView = STL.byArray.getConstView();
+	auto bzArrayView = STL.bzArray.getConstView();
+	auto cxArrayView = STL.cxArray.getConstView();
+	auto cyArrayView = STL.cyArray.getConstView();
+	auto czArrayView = STL.czArray.getConstView();
+	
+	const float &oxBin = STL.oxBin;
+	const float &oyBin = STL.oyBin;
+	const float &ozBin = STL.ozBin;
+	
+	auto binView = STL.binArray.getConstView();
+	auto firstInBinView = STL.firstInBinArray.getConstView();
+	const int &binCountX = STL.binCountX;
+	const int &binCountY = STL.binCountY;
+	// const int &binCountZ = STL.binCountZ;
+	const int binCountXY = binCountX * binCountY;
+	const float &binSize = STL.binSize;
+	
+	IntArray2DType edgeCounterArray;
+	edgeCounterArray.setSizes( STL.triangleCount, 3 );
+	edgeCounterArray.setValue(0);
+	auto edgeCounterView = edgeCounterArray.getView();
+
+	BoolArrayType errorMarkerArray( STL.triangleCount );
+	errorMarkerArray.setValue( false );
+	
+    auto counterLambda = [ = ] __cuda_callable__( const int triangle1Index ) mutable
+    {		
+		float triangle1[9];
+		triangle1[0] = axArrayView[ triangle1Index ];
+		triangle1[1] = ayArrayView[ triangle1Index ];
+		triangle1[2] = azArrayView[ triangle1Index ];
+		triangle1[3] = bxArrayView[ triangle1Index ];
+		triangle1[4] = byArrayView[ triangle1Index ];
+		triangle1[5] = bzArrayView[ triangle1Index ];
+		triangle1[6] = cxArrayView[ triangle1Index ];
+		triangle1[7] = cyArrayView[ triangle1Index ];
+		triangle1[8] = czArrayView[ triangle1Index ];
+		
+		int iBin, jBin, kBin, bin, startReadIndex, endReadIndex;
+		
+		// look at bin where point B is, count edges AB and BC
+		iBin = (int)(( triangle1[3] - oxBin ) / binSize);
+		jBin = (int)(( triangle1[4] - oyBin ) / binSize);
+		kBin = (int)(( triangle1[5] - ozBin ) / binSize);
+		bin = binCountXY * kBin + binCountX * jBin + iBin;
+		startReadIndex = firstInBinView( bin );
+		endReadIndex = firstInBinView( bin + 1 );
+		
+		// loop through triangles in the bin
+		for ( int readIndex = startReadIndex; readIndex < endReadIndex; readIndex++ )
+		{
+			const int triangle2Index = binView( readIndex );
+			float triangle2[9];
+			triangle2[0] = axArrayView[ triangle2Index ];
+			triangle2[1] = ayArrayView[ triangle2Index ];
+			triangle2[2] = azArrayView[ triangle2Index ];
+			triangle2[3] = bxArrayView[ triangle2Index ];
+			triangle2[4] = byArrayView[ triangle2Index ];
+			triangle2[5] = bzArrayView[ triangle2Index ];
+			triangle2[6] = cxArrayView[ triangle2Index ];
+			triangle2[7] = cyArrayView[ triangle2Index ];
+			triangle2[8] = czArrayView[ triangle2Index ];
+			
+			for ( int edge1 = 0; edge1 < 2; edge1++ ) // consider edge1 = AB and edge2 = BC
+			{
+				for ( int edge2 = 0; edge2 < 3; edge2++ )
+				{
+					float ax1 = triangle1[3*edge1];
+					float ay1 = triangle1[3*edge1+1];
+					float az1 = triangle1[3*edge1+2];
+					float bx1 = triangle1[3*((edge1+1)%3)];
+					float by1 = triangle1[3*((edge1+1)%3)+1];
+					float bz1 = triangle1[3*((edge1+1)%3)+2];
+					
+					float ax2 = triangle2[3*edge2];
+					float ay2 = triangle2[3*edge2+1];
+					float az2 = triangle2[3*edge2+2];
+					float bx2 = triangle2[3*((edge2+1)%3)];
+					float by2 = triangle2[3*((edge2+1)%3)+1];
+					float bz2 = triangle2[3*((edge2+1)%3)+2];
+					// testing same orientation of the edge
+					if (ax1 == ax2 && ay1 == ay2 && az1 == az2 && bx1 == bx2 && by1 == by2 && bz1 == bz2) 
+					{
+						edgeCounterView( triangle1Index, edge1 )++;
+					}
+					// testing reverse orientation of the edge
+					if (ax1 == bx2 && ay1 == by2 && az1 == bz2 && bx1 == ax2 && by1 == ay2 && bz1 == az2) 
+					{
+						edgeCounterView( triangle1Index, edge1 )++;
+					}
+				}
+			}
+		}
+		
+		// look at bin where point A is, count edges CA
+		iBin = (int)(( triangle1[0] - oxBin ) / binSize);
+		jBin = (int)(( triangle1[1] - oyBin ) / binSize);
+		kBin = (int)(( triangle1[2] - ozBin ) / binSize);
+		bin = binCountXY * kBin + binCountX * jBin + iBin;
+		startReadIndex = firstInBinView( bin );
+		endReadIndex = firstInBinView( bin + 1 );
+		
+		// loop through triangles in the bin
+		for ( int readIndex = startReadIndex; readIndex < endReadIndex; readIndex++ )
+		{
+			const int triangle2Index = binView( readIndex );
+			float triangle2[9];
+			triangle2[0] = axArrayView[ triangle2Index ];
+			triangle2[1] = ayArrayView[ triangle2Index ];
+			triangle2[2] = azArrayView[ triangle2Index ];
+			triangle2[3] = bxArrayView[ triangle2Index ];
+			triangle2[4] = byArrayView[ triangle2Index ];
+			triangle2[5] = bzArrayView[ triangle2Index ];
+			triangle2[6] = cxArrayView[ triangle2Index ];
+			triangle2[7] = cyArrayView[ triangle2Index ];
+			triangle2[8] = czArrayView[ triangle2Index ];
+			
+			for ( int edge1 = 2; edge1 < 3; edge1++ ) // consider edge1 = CA
+			{
+				for ( int edge2 = 0; edge2 < 3; edge2++ )
+				{
+					float ax1 = triangle1[3*edge1];
+					float ay1 = triangle1[3*edge1+1];
+					float az1 = triangle1[3*edge1+2];
+					float bx1 = triangle1[3*((edge1+1)%3)];
+					float by1 = triangle1[3*((edge1+1)%3)+1];
+					float bz1 = triangle1[3*((edge1+1)%3)+2];
+					
+					float ax2 = triangle2[3*edge2];
+					float ay2 = triangle2[3*edge2+1];
+					float az2 = triangle2[3*edge2+2];
+					float bx2 = triangle2[3*((edge2+1)%3)];
+					float by2 = triangle2[3*((edge2+1)%3)+1];
+					float bz2 = triangle2[3*((edge2+1)%3)+2];
+					// testing same orientation of the edge
+					if (ax1 == ax2 && ay1 == ay2 && az1 == az2 && bx1 == bx2 && by1 == by2 && bz1 == bz2) 
+					{
+						edgeCounterView( triangle1Index, edge1 )++;
+					}
+					// testing reverse orientation of the edge
+					if (ax1 == bx2 && ay1 == by2 && az1 == bz2 && bx1 == ax2 && by1 == ay2 && bz1 == az2) 
+					{
+						edgeCounterView( triangle1Index, edge1 )++;
+					}
+				}
+			}
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, STL.triangleCount, counterLambda );
+	
+	const int errorCounter = TNL::sum( errorMarkerArray );
+	if ( errorCounter == 0 ) 
+	{
+		std::cout << "Check OK" << std::endl;
+		return;
+	}
+	
+	IntArray2DTypeCPU edgeCounterCPU;
+	edgeCounterCPU = edgeCounterArray;
+	for ( int triangleIndex = 0; triangleIndex < STL.triangleCount; triangleIndex++ )
+	{
+		const int ABcount = edgeCounterCPU( triangleIndex, 0 );
+		const int BCcount = edgeCounterCPU( triangleIndex, 1 );
+		const int CAcount = edgeCounterCPU( triangleIndex, 2 );
+
+		if ( ABcount != 2 || BCcount != 2 || CAcount != 2 )
+		{
+			std::cout << "\tFaulty edge on triangle " << triangleIndex
+					  << ", ABcount: " << ABcount
+					  << ", BCcount: " << BCcount
+					  << ", CAcount: " << CAcount << '\n';
+		}
+	}
+	
+	std::cout<< "	Check failed, number of faulty edges: " << errorCounter << std::endl; 
+	throw std::runtime_error("Check failed, the STL has some faulty edges which aren't shared between exactly two triangles. This means the STL is not closed. Please fix the STL file.");
 }
 
 void readSTL( STLStruct &STL, const std::string &filename )
@@ -352,21 +445,24 @@ void readSTL( STLStruct &STL, const std::string &filename )
     // std::cout << "	rxMax ryMax rzMax: " << STLCPU.Bounds.rxMax << " " << STLCPU.Bounds.ryMax << " " << STLCPU.Bounds.rzMax << "\n";
 
     STL = STLStruct( STLCPU );
-	checkSTLEdges( STL );
-	STL.raysPerTriangleCounterArray.setSize( STL.triangleCount );
+    STL.raysPerTriangleCounterArray.setSize( STL.triangleCount );
 	STL.raysPerTriangleCounterArray.setValue( 0 );
 	STL.threadToTriangleMapArray.setSize( STL.triangleCount * STL.threadsToTrianglesRatio );
 	STL.threadToTriangleMapArray.setValue( 0 );
-	unsigned long long memoryBytes = 4LL * 9LL * STL.triangleCount; // 1 float has 4 Bytes, 9 floats per triangle
-	std::cout << "	Check OK, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
+    unsigned long long memoryBytes = 4LL * 9LL * STL.triangleCount; // 1 float has 4 Bytes, 9 floats per triangle
+	std::cout << "	STL allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
 	
 	sortSTLToBins( STL );
 	unsigned long long memoryBytesBins = 4LL * (STL.firstInBinArray.getSize() + STL.binArray.getSize());
 	std::cout << "	STL sorted to bins, bin structure takes " << memoryBytesBins / 1048576.0 << " MiB" << std::endl;
 	
+	checkSTLEdges( STL );
+	
 	std::cout << std::endl;
 }
 
+// STL rotations are now commented out, because rotation breaks bounds and the binning structure
+/*
 // Rotate STL, overwrite it
 void rotateSTLAlongX( STLStruct &STL, float &radians )
 {
@@ -620,3 +716,4 @@ void rotateSTLAlongZ( STLStruct &STLTarget, const STLStruct &STLSource, const fl
     
     TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, STLSource.triangleCount, rotateLambda );
 }
+*/

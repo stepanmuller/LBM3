@@ -88,7 +88,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		auto iView = Grid.IJK.iArray.getConstView();
 		auto jView = Grid.IJK.jArray.getConstView();
 		auto kView = Grid.IJK.kArray.getConstView();
-		auto wallMapView = Grid.wallMapArray.getConstView();
+		auto wallMapView = Grid.Wall.wallMapArray.getConstView();
 		
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
@@ -210,31 +210,31 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 
 void exportSectionCutPlotXY( std::vector<GridStruct> &grids, const int &kCell, const int &plotNumber )
 {
-	std::cout << "Exporting XY section cut plot " << plotNumber << std::endl;
+	std::cout << "Exporting XY section cut plot " << plotNumber << " ... " << std::flush;
 	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, kCell, plotNumber, XY );
 }
 void exportSectionCutPlotZY( std::vector<GridStruct> &grids, const int &iCell, const int &plotNumber )
 {
-	std::cout << "Exporting ZY section cut plot " << plotNumber << std::endl;
+	std::cout << "Exporting ZY section cut plot " << plotNumber << " ... " << std::flush;
 	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, iCell, plotNumber, ZY );
 }
 void exportSectionCutPlotZX( std::vector<GridStruct> &grids, const int &jCell, const int &plotNumber )
 {
-	std::cout << "Exporting ZX section cut plot " << plotNumber << std::endl;
+	std::cout << "Exporting ZX section cut plot " << plotNumber << " ... " << std::flush;
 	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, jCell, plotNumber, ZX );
 }
 void exportSectionCutPlotXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &kCell, const int &plotNumber )
 {
-	std::cout << "Exporting XY section cut plot " << plotNumber << std::endl;
+	std::cout << "Exporting XY section cut plot " << plotNumber << " ... " << std::flush;
 	exportSectionCutPlotGeneral( grids, Bounds, kCell, plotNumber, XY );
 }
 void exportSectionCutPlotZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &iCell, const int &plotNumber )
 {
-	std::cout << "Exporting ZY section cut plot " << plotNumber << std::endl;
+	std::cout << "Exporting ZY section cut plot " << plotNumber << " ... " << std::flush;
 	exportSectionCutPlotGeneral( grids, Bounds, iCell, plotNumber, ZY );
 }
 void exportSectionCutPlotZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &jCell, const int &plotNumber )
 {
-	std::cout << "Exporting ZX section cut plot " << plotNumber << std::endl;
+	std::cout << "Exporting ZX section cut plot " << plotNumber << " ... " << std::flush;
 	exportSectionCutPlotGeneral( grids, Bounds, jCell, plotNumber, ZX );
 }
