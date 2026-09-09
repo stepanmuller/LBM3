@@ -130,7 +130,9 @@ inline IJKArrayStruct::IJKArrayStruct(const IJKArrayStructCPU& IJKCPU) {
     kArray = IJKCPU.kArray;
 }
 
-struct CompressedIJKArrayStruct { IntArrayType shifter; IntArrayType iArray; IntArrayType jArray; IntArrayType kArray; };
+struct CompressedIJKArrayStruct { 	IntArrayType shifter; 
+									IntArrayType iArray; IntArrayType jArray; IntArrayType kArray; 
+									IntArrayType jPlusArray; IntArrayType kPlusArray; };
 
 struct RayMapStruct { int gridID = 0; long long totalHitCount = 0LL; IntArrayType rayMapArray; LongLongArrayType hitCounterScanArray; };
 
@@ -165,7 +167,8 @@ struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct 
 							BoolArrayType parentInterfaceMarkerArray;
 							SkeletonGridStruct SkeletonGrid; }; 
 
-struct InterfaceStruct { int interfaceCount = 0; IntArrayType indexList; IntArrayType jMinusArray; IntArrayType kMinusArray; IntArrayType childMapArray; };
+struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexList; IntArrayType childMapArray; 
+							IntArrayType jPlusArray; IntArrayType kPlusArray; IntArrayType jMinusArray; IntArrayType kMinusArray; };
 	
 struct WallStruct{ int wallCount = 0; IntArrayType wallMapArray; Uint4ArrayType wallDataArray; FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 					
@@ -173,7 +176,6 @@ struct GridStruct { InfoStruct Info;
 					FloatArray2DType fArray; 
 					bool esotwistFlipper = false; 
 					CompressedIJKArrayStruct IJK;
-					NBRArrayStruct NBR; 
 					WallStruct Wall;
 					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
 					IntArrayType BCIndexList; FloatArrayType BCMemoryArray; }; 	
