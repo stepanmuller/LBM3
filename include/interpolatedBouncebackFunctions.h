@@ -109,16 +109,16 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 		fullNBRList[OMP] = kPlusView( NBR.jMinus );	
 		fullNBRList[MPO] = jPlusView( NBR.iMinus );	
 		fullNBRList[PMO] = jMinusView( NBR.iPlus );	
-		fullNBRList[OPP] = kPlusView( NBR.jPlus ); 	
+		fullNBRList[OPP] = jPlusView( NBR.kPlus ); 	
 		fullNBRList[OMM] = kMinusView( NBR.jMinus );	
 		fullNBRList[MPM] = kMinusView( jPlusView( NBR.iMinus ) ); 	
 		fullNBRList[PMP] = kPlusView( jMinusView( NBR.iPlus ) ); 	
 		fullNBRList[MMP] = kPlusView( jMinusView( NBR.iMinus ) ); 
 		fullNBRList[PPM] = kMinusView( jPlusView( NBR.iPlus ) ); 		
 		fullNBRList[PMM] = kMinusView( jMinusView( NBR.iPlus ) ); 	
-		fullNBRList[MPP] = kPlusView( jPlusView( NBR.iMinus ) ); 	
+		fullNBRList[MPP] = jPlusView( kPlusView( NBR.iMinus ) ); 	
 		fullNBRList[MMM] = kMinusView( jMinusView( NBR.iMinus ) );	
-		fullNBRList[PPP] = kPlusView( jPlusView( NBR.iPlus ) );  	
+		fullNBRList[PPP] = jPlusView( kPlusView( NBR.iPlus ) );  	
 		
 		// now look at each neighbour if they are a true geometric wall neighbour 
 		// -> that means the fluid-wall link exists

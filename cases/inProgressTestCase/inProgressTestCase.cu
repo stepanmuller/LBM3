@@ -1,4 +1,4 @@
-constexpr float RES_GLOBAL = 1.78f; 	
+constexpr float RES_GLOBAL = 2.0f; 	
 constexpr int GRID_LEVEL_COUNT = 5;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 

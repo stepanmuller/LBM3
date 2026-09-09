@@ -676,30 +676,47 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	else std::cout << std::endl;
 }	
 
-void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, const IntArrayType &childMapArrayGlobal, const NBRArrayStruct &NBR )
+void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, 
+					const IntArrayType &childMapArrayGlobal, const GridBuilderStruct &GridBuilder,
+					const bool &fineToCoarse )
 {
+	const InfoStruct &Info = GridBuilder.Info;
+	const IJKArrayStruct &IJK = GridBuilder.IJK;
+	const NBRArrayStruct &NBR = GridBuilder.NBR;
+	const BoolArrayType &wallMarkerArray = GridBuilder.wallMarkerArray;
 	const int cellCountTotal = markerArray.getSize();
 	Interface.interfaceCount = TNL::sum( markerArray );
-	Interface.indexList.setSize( Interface.interfaceCount );
+	Interface.indexArray.setSize( Interface.interfaceCount );
 	Interface.childMapArray.setSize( Interface.interfaceCount );
-	Interface.jPlusArray.setSize( Interface.interfaceCount );
-	Interface.kPlusArray.setSize( Interface.interfaceCount );
-	Interface.jMinusArray.setSize( Interface.interfaceCount );
-	Interface.kMinusArray.setSize( Interface.interfaceCount );
+	if ( !fineToCoarse ) // we dont need any stencil for the fineToCoarse interface
+	{
+		Interface.iPlusStencilArray.setSize( Interface.interfaceCount );
+		Interface.jPlusStencilArray.setSize( Interface.interfaceCount );
+		Interface.kPlusStencilArray.setSize( Interface.interfaceCount );
+		Interface.iMinusStencilArray.setSize( Interface.interfaceCount );
+		Interface.jMinusStencilArray.setSize( Interface.interfaceCount );
+		Interface.kMinusStencilArray.setSize( Interface.interfaceCount );
+	}
 	
 	IntArrayType scanArray( markerArray.getSize() );
 	intArrayFromBoolArray( scanArray, markerArray );
 	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, cellCountTotal, TNL::Plus{} );
 	
 	auto scanView = scanArray.getConstView();
-	auto indexListView = Interface.indexList.getView();
+	auto indexView = Interface.indexArray.getView();
 	auto childMapView = Interface.childMapArray.getView();
-	auto jPlusView = Interface.jPlusArray.getView();
-	auto kPlusView = Interface.kPlusArray.getView();
-	auto jMinusView = Interface.jMinusArray.getView();
-	auto kMinusView = Interface.kMinusArray.getView();
+	auto iPlusStencilView = Interface.iPlusStencilArray.getView();
+	auto jPlusStencilView = Interface.jPlusStencilArray.getView();
+	auto kPlusStencilView = Interface.kPlusStencilArray.getView();
+	auto iMinusStencilView = Interface.iMinusStencilArray.getView();
+	auto jMinusStencilView = Interface.jMinusStencilArray.getView();
+	auto kMinusStencilView = Interface.kMinusStencilArray.getView();
 	auto markerView = markerArray.getConstView();
 	auto childMapGlobalView = childMapArrayGlobal.getConstView();
+	auto iView = IJK.iArray.getConstView();
+	auto jView = IJK.jArray.getConstView();
+	auto kView = IJK.kArray.getConstView();
+	auto wallMarkerView = wallMarkerArray.getConstView();
 	auto jPlusGlobalView = NBR.jPlusArray.getConstView();
 	auto kPlusGlobalView = NBR.kPlusArray.getConstView();
 	auto jMinusGlobalView = NBR.jMinusArray.getConstView();
@@ -709,17 +726,37 @@ void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray
 	{	
 		if ( !markerView( cell ) ) return;
 		const int child = childMapGlobalView( cell );
-		const int jPlus = jPlusGlobalView( cell );
-		const int kPlus = kPlusGlobalView( cell );
-		const int jMinus = jMinusGlobalView( cell );
-		const int kMinus = kMinusGlobalView( cell );
 		const int index = scanView( cell );
-		indexListView( index ) = cell;
+		
+		indexView( index ) = cell;
 		childMapView( index ) = child;
-		jPlusView( index ) = jPlus;
-		kPlusView( index ) = kPlus;
-		jMinusView( index ) = jMinus;
-		kMinusView( index ) = kMinus;
+		
+		if ( !fineToCoarse )
+		{
+			int iPlus = cell + 1; if ( iPlus >= Info.cellCount ) iPlus = 0;		
+			int jPlus = jPlusGlobalView( cell ); 
+			int kPlus = kPlusGlobalView( cell );
+			int iMinus = cell - 1; if ( iMinus < 0 ) iMinus = Info.cellCount-1;	
+			int jMinus = jMinusGlobalView( cell );
+			int kMinus = kMinusGlobalView( cell );
+			const int iCell = iView( cell );
+			const int jCell = jView( cell );
+			const int kCell = kView( cell );
+			// check iPlus, jPlus, kPlus, iMinus, jMinus, kMinus, if invalid, set it to cell
+			if ( wallMarkerView(iPlus) || iView(iPlus)!=iCell+1 || jView(iPlus)!=jCell || kView(iPlus)!=kCell ) iPlus = cell;
+			if ( wallMarkerView(jPlus) || iView(jPlus)!=iCell || jView(jPlus)!=jCell+1 || kView(jPlus)!=kCell ) jPlus = cell;
+			if ( wallMarkerView(kPlus) || iView(kPlus)!=iCell || jView(kPlus)!=jCell || kView(kPlus)!=kCell+1 ) kPlus = cell;
+			if ( wallMarkerView(iMinus) || iView(iMinus)!=iCell-1 || jView(iMinus)!=jCell || kView(iMinus)!=kCell ) iMinus = cell;
+			if ( wallMarkerView(jMinus) || iView(jMinus)!=iCell || jView(jMinus)!=jCell-1 || kView(jMinus)!=kCell ) jMinus = cell;
+			if ( wallMarkerView(kMinus) || iView(kMinus)!=iCell || jView(kMinus)!=jCell || kView(kMinus)!=kCell-1 ) kMinus = cell;
+			
+			iPlusStencilView( index ) = iPlus;
+			jPlusStencilView( index ) = jPlus;
+			kPlusStencilView( index ) = kPlus;
+			iMinusStencilView( index ) = iMinus;
+			jMinusStencilView( index ) = jMinus;
+			kMinusStencilView( index ) = kMinus;
+		}
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, cellLambda );
 }
@@ -737,7 +774,7 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	Grid.Info = GridBuilder.Info;
 	InfoStruct &Info = Grid.Info;
 	
-	// 2) build scans to be able to build compressed IJK
+	// 2) build scans to be able to build compressed IJKNBR
 	IntArrayType firstInRowArray( Info.cellCount );
 	IntArrayType scanArray( Info.cellCount );
 	auto firstInRowView = firstInRowArray.getView();
@@ -760,14 +797,14 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		const int kCell = kBuilderView( cell );
 		const int jPlus = jPlusBuilderView( cell );
 		const int kPlus = kPlusBuilderView( cell );
-		const int jkPlus = kPlusBuilderView( jPlus );
+		const int jkPlus = jPlusBuilderView( kPlus );
 		
 		const int iPrev = iBuilderView( cell-1 );
 		const int jPrev = jBuilderView( cell-1 );
 		const int kPrev = kBuilderView( cell-1 );
 		const int jPlusPrev = jPlusBuilderView( cell-1 );
 		const int kPlusPrev = kPlusBuilderView( cell-1 );
-		const int jkPlusPrev = kPlusBuilderView( jPlusPrev );
+		const int jkPlusPrev = jPlusBuilderView( kPlusPrev );
 		if ( 	iCell != iPrev+1 	 || jCell != jPrev 		 || kCell  != kPrev || 
 				jPlus != jPlusPrev+1 || kPlus != kPlusPrev+1 || jkPlus != jkPlusPrev+1 ) 
 		{
@@ -785,19 +822,21 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	const int compressedIJKCount = TNL::sum( scanArray );
 	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
 	
-	// 3) build compressed IJK
-	Grid.IJK.shifter.setSize( Info.cellCount );
-	Grid.IJK.iArray.setSize( compressedIJKCount );
-	Grid.IJK.jArray.setSize( compressedIJKCount );
-	Grid.IJK.kArray.setSize( compressedIJKCount );
-	Grid.IJK.jPlusArray.setSize( compressedIJKCount );
-	Grid.IJK.kPlusArray.setSize( compressedIJKCount );
-	auto shifterView = Grid.IJK.shifter.getView();
-	auto iView = Grid.IJK.iArray.getView();
-	auto jView = Grid.IJK.jArray.getView();
-	auto kView = Grid.IJK.kArray.getView();
-	auto jPlusView = Grid.IJK.jPlusArray.getView();
-	auto kPlusView = Grid.IJK.kPlusArray.getView();
+	// 3) build compressed IJKNBR
+	Grid.IJKNBR.shifterArray.setSize( Info.cellCount );
+	Grid.IJKNBR.iArray.setSize( compressedIJKCount );
+	Grid.IJKNBR.jArray.setSize( compressedIJKCount );
+	Grid.IJKNBR.kArray.setSize( compressedIJKCount );
+	Grid.IJKNBR.jPlusArray.setSize( compressedIJKCount );
+	Grid.IJKNBR.kPlusArray.setSize( compressedIJKCount );
+	Grid.IJKNBR.jkPlusArray.setSize( compressedIJKCount );
+	auto shifterView = Grid.IJKNBR.shifterArray.getView();
+	auto iView = Grid.IJKNBR.iArray.getView();
+	auto jView = Grid.IJKNBR.jArray.getView();
+	auto kView = Grid.IJKNBR.kArray.getView();
+	auto jPlusView = Grid.IJKNBR.jPlusArray.getView();
+	auto kPlusView = Grid.IJKNBR.kPlusArray.getView();
+	auto jkPlusView = Grid.IJKNBR.jkPlusArray.getView();
 	auto compressedIJKLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{	
 		const int firstInRow = firstInRowView( cell );
@@ -810,6 +849,7 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 			kView( compressedIndex ) = kBuilderView( cell );
 			jPlusView( compressedIndex ) = jPlusBuilderView( cell );
 			kPlusView( compressedIndex ) = kPlusBuilderView( cell );
+			jkPlusView( compressedIndex ) = jPlusBuilderView( kPlusBuilderView( cell ) );
 		}
 		else
 		{
@@ -901,14 +941,16 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		
 		BoolArrayType markerArray( Info.cellCount );
 		// Fine to coarse
+		bool fineToCoarse = true;
 		markerArray = GridBuilder.fineToCoarseMarkerArray * !GridBuilder.wallMarkerArray;
-		fillInterface( Grid.FineToCoarseInterface, markerArray, childMapArrayGlobal, GridBuilder.NBR );
+		fillInterface( Grid.FineToCoarseInterface, markerArray, childMapArrayGlobal, GridBuilder, fineToCoarse );
 		// Coarse to fine
+		fineToCoarse = false;
 		markerArray = GridBuilder.coarseToFineMarkerArray * !GridBuilder.wallMarkerArray;
-		fillInterface( Grid.CoarseToFineInterface, markerArray, childMapArrayGlobal, GridBuilder.NBR );
+		fillInterface( Grid.CoarseToFineInterface, markerArray, childMapArrayGlobal, GridBuilder, fineToCoarse );
 	}
 	
-	// 6) Build BCIndexList and allocate BCMemoryArray
+	// 6) Build BCIndexArray and allocate BCMemoryArray
 	BoolArrayType BCMarkerArray( Grid.Info.cellCount );
 	BCMarkerArray.setValue( false );
 	auto BCMarkerView = BCMarkerArray.getView();
@@ -924,22 +966,22 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, BCMarkerLambda );
 	const int BCCount = TNL::sum( BCMarkerArray );
-	Grid.BCIndexList.setSize( BCCount );
+	Grid.BCIndexArray.setSize( BCCount );
 	Grid.BCMemoryArray.setSize( BCCount );
 	
 	scanArray.resize( Info.cellCount );
 	intArrayFromBoolArray( scanArray, BCMarkerArray );
 	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
 	auto scanView2 = scanArray.getConstView();
-	auto BCIndexListView = Grid.BCIndexList.getView();
+	auto BCIndexView = Grid.BCIndexArray.getView();
 	
-	auto BCIndexListLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	auto BCIndexArrayLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{	
 		if ( !BCMarkerView( cell ) ) return;
 		const int index = scanView2( cell );
-		BCIndexListView( index ) = cell;
+		BCIndexView( index ) = cell;
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, BCIndexListLambda );
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, BCIndexArrayLambda );
 		
 	// 7) Recursion
 	if ( !iAmFinest ) gridBuilderToGrid( gridBuilders, grids, level + 1 );
@@ -988,11 +1030,11 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		
 		Info.gridMemoryBytes = 27LL * (long long)Info.cellCount * 4LL; // fArray
 		Info.gridMemoryBytes += 2LL * (long long)Info.cellCount * 4LL; // IJK shifter, wallMap
-		Info.gridMemoryBytes += 5LL * (long long)Grid.IJK.iArray.getSize() * 4LL; // compressed iArray, jArray, kArray, jPlusArray, kPlusArray
+		Info.gridMemoryBytes += 6LL * (long long)Grid.IJKNBR.iArray.getSize() * 4LL; // compressed iArray, jArray, kArray, jPlusArray, kPlusArray, jkPlusArray
 		Info.gridMemoryBytes += 7LL * (long long)Grid.Wall.wallCount * 4LL; // wall data + wall force tracker
-		Info.gridMemoryBytes += 6LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // cellList, childMap, NBR arrays
-		Info.gridMemoryBytes += 6LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // cellList, childMap, NBR arrays
-		Info.gridMemoryBytes += 2LL * (long long)Grid.BCIndexList.getSize() * 4LL; // cellList, BCMemory
+		Info.gridMemoryBytes += 8LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap, stencil arrays
+		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
+		Info.gridMemoryBytes += 2LL * (long long)Grid.BCIndexArray.getSize() * 4LL; // cellList, BCMemory
 		
 		std::cout << "	Level " << level << " with " << Info.cellCount << "	cells requires	" << Info.gridMemoryBytes / 1048576.0 << "	MiB ... " << std::flush;;
 		

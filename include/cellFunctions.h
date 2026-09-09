@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./D3Q27Directions.h"
+#include "./NBRFunctions.h"
 
 // id: { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26 };
 // cx: { 0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1,-1, 1, 0, 0,-1, 1, 0, 0,-1, 1,-1, 1, 1,-1,-1, 1 };
@@ -17,15 +18,21 @@
 
 // w:  { 8/27, 2/27, 2/27, 2/27 , 2/27, 2/27, 2/27, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/54, 1/216, 1/216, 1/216, 1/216, 1/216, 1/216, 1/216, 1/216 };
 
-__host__ __device__ inline void getCompressedIJK( const int &cell, int& iCell, int& jCell, int& kCell, 
-								IntConstViewType& shifterView, IntConstViewType& iView, IntConstViewType& jView, IntConstViewType& kView)
+__host__ __device__ inline void getCompressedIJKNBR( const int &cell, int& iCell, int& jCell, int& kCell, NBRStruct &NBR,
+								IntConstViewType& shifterView, IntConstViewType& iView, IntConstViewType& jView, IntConstViewType& kView,
+								IntConstViewType& jPlusView, IntConstViewType& kPlusView, IntConstViewType& jkPlusView, 
+								const InfoStruct &Info )
 {
+    NBR.self = cell;
     const int shift = shifterView(cell);
 	if ( shift >= 0 ) 
 	{ 
 		iCell = iView( shift ); 
 		jCell = jView( shift ); 
 		kCell = kView( shift ); 
+		NBR.jPlus = jPlusView( shift );
+		NBR.kPlus = kPlusView( shift );
+		NBR.jkPlus = jkPlusView( shift );
 	}
 	else 
 	{ 
@@ -34,7 +41,35 @@ __host__ __device__ inline void getCompressedIJK( const int &cell, int& iCell, i
 		iCell = iView( compressedIndex ) - shift; 
 		jCell = jView( compressedIndex ); 
 		kCell = kView( compressedIndex );
+		NBR.jPlus = jPlusView( compressedIndex ) - shift;
+		NBR.kPlus = kPlusView( compressedIndex ) - shift;
+		NBR.jkPlus = jkPlusView( compressedIndex ) - shift;
 	}
+	finishNBRPlus( NBR, Info );
+}
+
+__host__ __device__ inline void getCompressedNBR( const int &cell, NBRStruct &NBR,
+								IntConstViewType& shifterView,
+								IntConstViewType& jPlusView, IntConstViewType& kPlusView, IntConstViewType& jkPlusView, 
+								const InfoStruct &Info )
+{
+    NBR.self = cell;
+    const int shift = shifterView(cell);
+	if ( shift >= 0 ) 
+	{ 
+		NBR.jPlus = jPlusView( shift );
+		NBR.kPlus = kPlusView( shift );
+		NBR.jkPlus = jkPlusView( shift );
+	}
+	else 
+	{ 
+		const int firstInRow = cell + shift; 
+		const int compressedIndex = shifterView( firstInRow );
+		NBR.jPlus = jPlusView( compressedIndex ) - shift;
+		NBR.kPlus = kPlusView( compressedIndex ) - shift;
+		NBR.jkPlus = jkPlusView( compressedIndex ) - shift;
+	}
+	finishNBRPlus( NBR, Info );
 }
 
 __host__ __device__ void getIJKCellIndexFromXYZ( int& iCell, int& jCell, int& kCell, const float &x, const float &y, const float &z, const InfoStruct &Info)

@@ -84,16 +84,22 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		if ( level > imageLevel ) downsample = std::pow( 2, ( level - imageLevel ) );
 		else if ( level < imageLevel ) upsample = std::pow( 2, ( imageLevel - level ) );
 			
-		auto shifterView = Grid.IJK.shifter.getConstView();	
-		auto iView = Grid.IJK.iArray.getConstView();
-		auto jView = Grid.IJK.jArray.getConstView();
-		auto kView = Grid.IJK.kArray.getConstView();
+		auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
+		auto iView = Grid.IJKNBR.iArray.getConstView();
+		auto jView = Grid.IJKNBR.jArray.getConstView();
+		auto kView = Grid.IJKNBR.kArray.getConstView();
+		auto jPlusView = Grid.IJKNBR.jPlusArray.getConstView();
+		auto kPlusView = Grid.IJKNBR.kPlusArray.getConstView();
+		auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
 		auto wallMapView = Grid.Wall.wallMapArray.getConstView();
 		
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
 			int iCell, jCell, kCell;
-			getCompressedIJK( cell, iCell, jCell, kCell, shifterView, iView, jView, kView);
+			NBRStruct NBR;
+			getCompressedIJKNBR( cell, iCell, jCell, kCell, NBR, 
+								shifterView, iView, jView, kView, jPlusView, kPlusView, jkPlusView,
+								Info );
 			
 			int iImage = iCell;
 			int jImage = jCell;
