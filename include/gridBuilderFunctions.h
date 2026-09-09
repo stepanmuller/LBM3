@@ -523,7 +523,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	markGeometricNBRPlus( GridBuilder );
 	
 	// 11) Build our NBR Minus
-	if ( !iAmCoarsest )
+	if ( !iAmFinest )
 	{
 		auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
 		auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
@@ -544,8 +544,6 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	Info.Bounds.yMax = Info.oy + Info.res * TNL::max( GridBuilder.IJK.jArray ) + 0.5f * Info.res;
 	Info.Bounds.zMin = Info.oz + Info.res * TNL::min( GridBuilder.IJK.kArray ) - 0.5f * Info.res;
 	Info.Bounds.zMax = Info.oz + Info.res * TNL::max( GridBuilder.IJK.kArray ) + 0.5f * Info.res;
-	
-	std::cout << "	Level " << level << " done, final cellCount " << Info.cellCount << std::endl;
 	
 	// 13) Recursion
 	if ( !iAmFinest ) deleteExcessCells( gridBuilders, voxelizers, level + 1 );
@@ -671,9 +669,53 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	// else std::cout << std::endl;
 }	
 
-void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
+void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, const IntArrayType &childMapArrayGlobal, 
+					const IntArrayType &jMinusArrayGlobal, const IntArrayType &kMinusArrayGlobal )
 {
-	const bool iAmCoarsest = ( GridBuilder.Info.gridID == 0 );
+	const int cellCountTotal = markerArray.getSize();
+	Interface.cellCount = TNL::sum( markerArray );
+	Interface.indexList.setSize( Interface.cellCount );
+	Interface.childMapArray.setSize( Interface.cellCount );
+	Interface.jMinusArray.setSize( Interface.cellCount );
+	Interface.kMinusArray.setSize( Interface.cellCount );
+	
+	IntArrayType scanArray( markerArray.getSize() );
+	intArrayFromBoolArray( scanArray, markerArray );
+	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, cellCountTotal, TNL::Plus{} );
+	
+	auto scanView = scanArray.getConstView();
+	auto indexListView = Interface.indexList.getView();
+	auto childMapView = Interface.childMapArray.getView();
+	auto jMinusView = Interface.jMinusArray.getView();
+	auto kMinusView = Interface.kMinusArray.getView();
+	auto markerView = markerArray.getConstView();
+	auto childMapGlobalView = childMapArrayGlobal.getConstView();
+	auto jMinusGlobalView = jMinusArrayGlobal.getConstView();
+	auto kMinusGlobalView = kMinusArrayGlobal.getConstView();
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( !markerView( cell ) ) return;
+		const int child = childMapGlobalView( cell );
+		const int jMinus = jMinusGlobalView( cell );
+		const int kMinus = kMinusGlobalView( cell );
+		const int index = scanView( cell );
+		indexListView( index ) = cell;
+		childMapView( index ) = child;
+		jMinusView( index ) = jMinus;
+		kMinusView( index ) = kMinus;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, cellLambda );
+}
+
+void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vector<GridStruct> &grids, const int level )
+{
+	if ( level == 0 ) std::cout << "Building compressed IJK & more for all grid levels" << std::endl; 
+	const bool iAmCoarsest = ( level == 0 );
+	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
+	
+	GridBuilderStruct &GridBuilder = gridBuilders[ level ];	
+	GridStruct &Grid = grids[ level ];	
 	
 	// 1) copy information that can be copied directly
 	Grid.Info = GridBuilder.Info;
@@ -794,6 +836,103 @@ void gridBuilderToGrid( GridBuilderStruct &GridBuilder, GridStruct &Grid )
 		wallDataView( index ) = make_uint4( packed[0], packed[1], packed[2], packed[3] );
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, wallAdjacentCellCount, wallDataLambda );
+	// allocate force tracker
+	Grid.WallForceTracker.gxArray.setSize( wallAdjacentCellCount );
+	Grid.WallForceTracker.gyArray.setSize( wallAdjacentCellCount );
+	Grid.WallForceTracker.gzArray.setSize( wallAdjacentCellCount );
+	
+	if ( !iAmFinest )
+	{
+		// 6) Build interface
+		// Build the lists we will loop over to pass information
+		// On wall cells, no information is exchanged so do not include wall cells even if they are marked as interface
+		// Build jMinus and kMinus arrays only for the interface (they are not needed elsewhere)
+		// First, prepare a full childMapArrayGlobal
+		IntArrayType childMapArrayGlobal( Info.cellCount );
+		childMapArrayGlobal.setValue( -1 );
+		auto childMapGlobalView = childMapArrayGlobal.getView();
+		// Fill it using information from the finer level
+		GridBuilderStruct &GridBuilderFiner = gridBuilders[ level + 1 ];
+		auto iFinerView = GridBuilderFiner.IJK.iArray.getConstView();
+		auto jFinerView = GridBuilderFiner.IJK.jArray.getConstView();
+		auto kFinerView = GridBuilderFiner.IJK.kArray.getConstView();
+		auto parentMapFinerView = GridBuilderFiner.parentMapArray.getConstView();
+		auto childFillLambda = [=] __cuda_callable__ ( const int cellFine ) mutable
+		{	
+			const int cellCoarse = parentMapFinerView( cellFine );
+			if ( cellCoarse < 0 ) return;
+			const int iCellFine = iFinerView( cellFine );
+			const int jCellFine = jFinerView( cellFine );
+			const int kCellFine = kFinerView( cellFine );
+			if ( iCellFine % 2 == 0 && jCellFine % 2 == 0 && kCellFine % 2 == 0 )
+			{
+				childMapGlobalView( cellCoarse ) = cellFine;
+			}
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridBuilderFiner.Info.cellCount, childFillLambda );
+		
+		BoolArrayType markerArray( Info.cellCount );
+		// Fine to coarse
+		markerArray = GridBuilder.fineToCoarseMarkerArray * !GridBuilder.wallMarkerArray;
+		fillInterface( Grid.FineToCoarseInterface, markerArray, childMapArrayGlobal, GridBuilder.NBR.jMinusArray, GridBuilder.NBR.kMinusArray );
+		// Coarse to fine
+		markerArray = GridBuilder.coarseToFineMarkerArray * !GridBuilder.wallMarkerArray;
+		fillInterface( Grid.CoarseToFineInterface, markerArray, childMapArrayGlobal, GridBuilder.NBR.jMinusArray, GridBuilder.NBR.kMinusArray );
+	}
+	
+	// 6) Build BCIndexList and allocate BCMemoryArray
+	BoolArrayType BCMarkerArray( Grid.Info.cellCount );
+	BCMarkerArray.setValue( false );
+	auto BCMarkerView = BCMarkerArray.getView();
+	auto BCMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		const int iCell = iBuilderView( cell );
+		const int jCell = jBuilderView( cell );
+		const int kCell = kBuilderView( cell );
+		if ( iCell == 0 || iCell == Info.cellCountX - 1 || jCell == 0 || jCell == Info.cellCountY - 1 || kCell == 0 || kCell == Info.cellCountZ - 1 )
+		{
+			BCMarkerView( cell ) = true;
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, BCMarkerLambda );
+	const int BCCount = TNL::sum( BCMarkerArray );
+	Grid.BCIndexList.setSize( BCCount );
+	Grid.BCMemoryArray.setSize( BCCount );
+	
+	IntArrayType BCScanArray( Grid.Info.cellCount );
+	intArrayFromBoolArray( BCScanArray, BCMarkerArray );
+	TNL::Algorithms::inplaceExclusiveScan( BCScanArray, 0, Info.cellCount, TNL::Plus{} );
+	auto BCScanView = BCScanArray.getConstView();
+	auto BCIndexListView = Grid.BCIndexList.getView();
+	
+	auto BCIndexListLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( !BCMarkerView( cell ) ) return;
+		const int index = BCScanView( cell );
+		BCIndexListView( index ) = cell;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, BCIndexListLambda );
+		
+	// 7) Recursion
+	if ( !iAmFinest ) gridBuilderToGrid( gridBuilders, grids, level + 1 );
+}
+
+void allocateFArray( GridStruct &Grid )
+{
+	InfoStruct &Info = Grid.Info;
+	std::cout << "	Level " << Info.gridID << " with " << Info.cellCount << " cells...";
+	Grid.fArray.setSizes( 27, Info.cellCount );
+	Info.gridMemoryBytes = 27LL * (long long)Info.cellCount * 4LL; // float has 4 bytes
+	Info.gridMemoryBytes += (long long)Grid.IJK.shifter.getSize() * 4LL;
+	Info.gridMemoryBytes += (long long)Grid.IJK.iArray.getSize() * 12LL;
+	Info.gridMemoryBytes += (long long)Grid.NBR.jPlusArray.getSize() * 8LL;
+	Info.gridMemoryBytes += (long long)Grid.wallMapArray.getSize() * 4LL;
+	Info.gridMemoryBytes += (long long)Grid.wallDataArray.getSize() * 16LL;
+	Info.gridMemoryBytes += (long long)Grid.WallForceTracker.gxArray.getSize() * 12LL;
+	Info.gridMemoryBytes += (long long)Grid.CoarseToFineInterface.indexList.getSize() * 16LL;
+	Info.gridMemoryBytes += (long long)Grid.FineToCoarseInterface.indexList.getSize() * 16LL;
+	Info.gridMemoryBytes += (long long)Grid.BCIndexList.getSize() * 8LL;
+	std::cout << "	Done, it takes " << Info.gridMemoryBytes / 1048576.0 << " MiB" << std::endl;
 }
 
 void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, BoundsStruct DomainBounds )
@@ -805,7 +944,11 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		initializeGridInfo( gridBuilders, DomainBounds, 0 );
 		
 		// Voxelizers
-		std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT );
+		std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT ); 
+		// I will redo this later when adding the rotor
+		// if the finest grid has a rotor, I need one more finer voxelizer
+		// then in all functions where I rely on voxelizer count (not sure if there are any?) 
+		// I need to refer strictly to GRID_LEVEL_COUNT rather than length of the voxelizers vector
 		initializeVoxelizers( voxelizers, gridBuilders, gridStaticSTLs, 0 );
 		
 		// Build grids
@@ -814,9 +957,20 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, 0 );
 		
 		// Pass the information to the actual grids, but in a compressed form
-		for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) 
-		{
-			gridBuilderToGrid( gridBuilders[level], grids[level] );
-		}
+		gridBuilderToGrid( gridBuilders, grids, 0 );
+	} // here GridBuilders and Voxelizers go out of scope
+	std::cout << "Allocating fArray for all grid levels" << std::endl;
+	long long totalMemoryBytes = 0LL;
+	long long totalCells = 0LL;
+	long long totalUpdatesPerIteration = 0LL;
+	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) 
+	{
+		allocateFArray( grids[level] );
+		totalMemoryBytes += grids[level].Info.gridMemoryBytes;
+		totalCells += grids[level].Info.cellCount;
+		totalUpdatesPerIteration += grids[level].Info.cellCount * std::pow( 2, grids[level].Info.gridID );
 	}
+	std::cout << "Total cells: " << totalCells << std::endl;
+	std::cout << "Total GPU memory: " << totalMemoryBytes / 1048576.0 << " MiB"  << std::endl;
+	std::cout << "Total updates per iteration: " << totalUpdatesPerIteration << std::endl;
 }

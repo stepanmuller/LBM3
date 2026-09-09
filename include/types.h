@@ -165,17 +165,18 @@ struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct 
 							BoolArrayType parentInterfaceMarkerArray;
 							SkeletonGridStruct SkeletonGrid; }; 
 
-struct InterfaceStruct { 	IntArrayType fineToCoarseList; IntArrayType coarseToFineList; 
-							IntArrayType jMinusArray; IntArrayType kMinusArray; 
-							IntArrayType childMapArray; };
-						
+struct InterfaceStruct { int cellCount = 0; IntArrayType indexList; IntArrayType jMinusArray; IntArrayType kMinusArray; IntArrayType childMapArray; };
+	
+struct ForceTrackerArrayStruct { FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
+					
 struct GridStruct { InfoStruct Info; 
 					FloatArray2DType fArray; 
 					bool esotwistFlipper = false; 
 					CompressedIJKArrayStruct IJK;
 					NBRArrayStruct NBR; 
-					IntArrayType wallMapArray; Uint4ArrayType wallDataArray;
-					InterfaceStruct Interface; }; 	
+					IntArrayType wallMapArray; Uint4ArrayType wallDataArray; ForceTrackerArrayStruct WallForceTracker;
+					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
+					IntArrayType BCIndexList; FloatArrayType BCMemoryArray; }; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 
