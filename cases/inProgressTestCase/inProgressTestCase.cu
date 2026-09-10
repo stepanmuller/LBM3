@@ -14,6 +14,7 @@ std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
 #include "../../include/cellFunctions.h"
+#include "../../include/updateInterface.h"
 
 __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCell, const int& kCell, 
 												bool & refinementMarker, const InfoStruct& Info )

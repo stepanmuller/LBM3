@@ -201,35 +201,6 @@ __host__ __device__ void getRhoUxUyUz( float &rho, float &ux, float &uy, float &
     uz = momentumZ * rhoInv;
 }
 
-/*
-__host__ __device__ void convertToPhysicalVelocity( float &ux, float &uy, float &uz, const InfoStruct &Info )
-{
-	ux = ux * (Info.res/1000.f) / Info.dtPhys;
-	uy = uy * (Info.res/1000.f) / Info.dtPhys;
-	uz = uz * (Info.res/1000.f) / Info.dtPhys;
-}
-
-__host__ __device__ void convertToPhysicalPressure( float &rho )
-{
-	// converts LBM rho to physical pressure, overwrites the variable (LBM rho -> physical p)
-	const float p = (rho - 1.f) * rhoNominalPhys * soundspeedPhys * soundspeedPhys;
-	rho = p;
-}
-
-__host__ __device__ void convertToPhysicalPressure( float &rho, const InfoStruct &Info )
-{
-	// converts LBM rho to physical pressure, overwrites the variable (LBM rho -> physical p)
-	const float p = (rho - 1.f) * rhoNominalPhys * soundspeedPhys * soundspeedPhys;
-	rho = p;
-}
-
-__host__ __device__ void convertToPhysicalForce( float &gx, float &gy, float &gz, const InfoStruct &Info )
-{
-	gx = gx * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
-	gy = gy * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
-	gz = gz * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
-}
-
 __host__ __device__ void getLocalDu( float (&f)[27], const float &nu, LocalDuStruct &localDu )
 {	
     // D3Q27 weight moments needed by the well-conditioned transformation.
@@ -362,5 +333,34 @@ __host__ __device__ void getLocalDu( float (&f)[27], const float &nu, LocalDuStr
 	localDu.duxdyCross = - (3.f * omega1) * C_110 / rho;
 	localDu.duydzCross = - (3.f * omega1) * C_011 / rho;
 	localDu.duxdzCross = - (3.f * omega1) * C_101 / rho;
+}
+
+/*
+__host__ __device__ void convertToPhysicalVelocity( float &ux, float &uy, float &uz, const InfoStruct &Info )
+{
+	ux = ux * (Info.res/1000.f) / Info.dtPhys;
+	uy = uy * (Info.res/1000.f) / Info.dtPhys;
+	uz = uz * (Info.res/1000.f) / Info.dtPhys;
+}
+
+__host__ __device__ void convertToPhysicalPressure( float &rho )
+{
+	// converts LBM rho to physical pressure, overwrites the variable (LBM rho -> physical p)
+	const float p = (rho - 1.f) * rhoNominalPhys * soundspeedPhys * soundspeedPhys;
+	rho = p;
+}
+
+__host__ __device__ void convertToPhysicalPressure( float &rho, const InfoStruct &Info )
+{
+	// converts LBM rho to physical pressure, overwrites the variable (LBM rho -> physical p)
+	const float p = (rho - 1.f) * rhoNominalPhys * soundspeedPhys * soundspeedPhys;
+	rho = p;
+}
+
+__host__ __device__ void convertToPhysicalForce( float &gx, float &gy, float &gz, const InfoStruct &Info )
+{
+	gx = gx * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
+	gy = gy * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
+	gz = gz * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
 }
 */

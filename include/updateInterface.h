@@ -390,34 +390,38 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	const InfoStruct &InfoCoarse = GridCoarse.Info;
 	auto fViewCoarse = GridCoarse.fArray.getView();
 	const bool &esotwistFlipperCoarse = GridCoarse.esotwistFlipper;
-	auto jPlusViewCoarse = GridCoarse.NBR.jPlusArray.getConstView();
-	auto kPlusViewCoarse = GridCoarse.NBR.kPlusArray.getConstView();
-	auto jMinusViewCoarse = GridCoarse.NBR.jMinusArray.getConstView();
-	auto kMinusViewCoarse = GridCoarse.NBR.kMinusArray.getConstView();
+	auto shifterViewCoarse = GridCoarse.IJKNBR.shifterArray.getConstView();
+	auto jPlusViewCoarse = GridCoarse.IJKNBR.jPlusArray.getConstView();
+	auto kPlusViewCoarse = GridCoarse.IJKNBR.kPlusArray.getConstView();
+	auto jkPlusViewCoarse = GridCoarse.IJKNBR.jkPlusArray.getConstView();
 	const float tauCoarse = 3.f * InfoCoarse.nu + 0.5f;
 	const float omega1Coarse =  1.f / tauCoarse;
 	
 	const InfoStruct &InfoFine = GridFine.Info;
 	auto fViewFine = GridFine.fArray.getView();
 	const bool &esotwistFlipperFine = GridFine.esotwistFlipper;
-	auto jPlusViewFine = GridFine.NBR.jPlusArray.getConstView();
-	auto kPlusViewFine = GridFine.NBR.kPlusArray.getConstView();
+	auto shifterViewFine = GridFine.IJKNBR.shifterArray.getConstView();
+	auto jPlusViewFine = GridFine.IJKNBR.jPlusArray.getConstView();
+	auto kPlusViewFine = GridFine.IJKNBR.kPlusArray.getConstView();
+	auto jkPlusViewFine = GridFine.IJKNBR.jkPlusArray.getConstView();
 	const float tauFine = 3.f * InfoFine.nu + 0.5f;
 	const float omega1Fine =  1.f / tauFine;
 	
-	auto coarseToFineIndexView = GridCoarse.coarseToFineIndexArray.getConstView();
-	auto childMapView = GridCoarse.childMapArray.getConstView();
+	auto indexView = GridCoarse.CoarseToFineInterface.indexArray.getConstView();
+	auto childMapView = GridCoarse.CoarseToFineInterface.childMapArray.getConstView();
+	auto iPlusStencilView = GridCoarse.CoarseToFineInterface.iPlusStencilArray.getConstView();
+	auto jPlusStencilView = GridCoarse.CoarseToFineInterface.jPlusStencilArray.getConstView();
+	auto kPlusStencilView = GridCoarse.CoarseToFineInterface.kPlusStencilArray.getConstView();
+	auto iMinusStencilView = GridCoarse.CoarseToFineInterface.iMinusStencilArray.getConstView();
+	auto jMinusStencilView = GridCoarse.CoarseToFineInterface.jMinusStencilArray.getConstView();
+	auto kMinusStencilView = GridCoarse.CoarseToFineInterface.kMinusStencilArray.getConstView();
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
 	{
-		const int cellCoarse = coarseToFineIndexView( index );
+		const int cellCoarse = indexView( index );
 		// get base data = center cell
 		NBRStruct NBR;
-		NBR.self = cellCoarse;
-		NBR.jPlus = jPlusViewCoarse( cellCoarse );
-		NBR.kPlus = kPlusViewCoarse( cellCoarse );
-		NBR.jkPlus = jPlusViewCoarse( NBR.kPlus );
-		finishNBRPlus( NBR, InfoCoarse );
+		getCompressedNBR( cellCoarse, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
 		int cellReadIndex[27], fReadIndex[27];
 		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse, InfoCoarse );
 		
@@ -464,23 +468,23 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		float axx = -uxBase, bxx = -uyBase, cxx = -uzBase;
 		float ayy = -uxBase, byy = -uyBase, cyy = -uzBase;
 		float azz = -uxBase, bzz = -uyBase, czz = -uzBase;
-
-		const int cellStencil[6] = { 
-			cellCoarse+1, cellCoarse-1, 
-			jPlusViewCoarse(cellCoarse), jMinusViewCoarse(cellCoarse), 
-			kPlusViewCoarse(cellCoarse), kMinusViewCoarse(cellCoarse) 
-		};
 		
+		bool incompleteStencil[6] = {false};
+		const int cellStencil[6] = { 
+			iPlusStencilView( index ), iMinusStencilView( index ),
+			jPlusStencilView( index ), jMinusStencilView( index ),
+			kPlusStencilView( index ), kMinusStencilView( index )
+		};
+
 		// Accumulate contributions for each neighbour
 		for ( int i = 0; i < 6; i++ )
 		{
 			const int nbr = cellStencil[i];
+			
+			if ( nbr == cellCoarse ) incompleteStencil[i] = true;
+			
 			NBRStruct NBRofNBR;
-			NBRofNBR.self = nbr;
-			NBRofNBR.jPlus = jPlusViewCoarse( nbr );
-			NBRofNBR.kPlus = kPlusViewCoarse( nbr );
-			NBRofNBR.jkPlus = jPlusViewCoarse( NBRofNBR.kPlus );
-			finishNBRPlus( NBRofNBR, InfoCoarse );
+			getCompressedNBR( nbr, NBRofNBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
 			int nbrCellReadIndex[27], nbrFReadIndex[27];
 			getPreCollisionIndex( nbrCellReadIndex, nbrFReadIndex, NBRofNBR, esotwistFlipperCoarse, InfoCoarse );
 			
@@ -549,20 +553,45 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		float bxz = 0.5f * ( K1 - K2 + K3 );
 		float cxy = 0.5f * ( -K1 + K2 + K3 );
 		
-		// linear version
-		// axy = 0.f; axz = 0.f; bxy = 0.f; byz = 0.f; cxz = 0.f; cyz = 0.f;
+		// linear version: If the stencil is not complete, 
+		// turn off the quadratic terms whose calculation involved the cell that is missing
+		if ( incompleteStencil[0] || incompleteStencil[1] || incompleteStencil[2] || 
+			 incompleteStencil[3] || incompleteStencil[4] || incompleteStencil[5] ) // if any cell is missing, turn of all mixed terms
+		{
+			axy = 0.f; axz = 0.f; bxy = 0.f; 
+			byz = 0.f; cxz = 0.f; cyz = 0.f;
+			ayz = 0.f; bxz = 0.f; cxy = 0.f;
+		}
+		if ( incompleteStencil[0] || incompleteStencil[1] ) // if iPlus or iMinus is missing, also turn off the x terms
+		{
+			axx = 0.f; bxx = 0.f; cxx = 0.f;
+			ayy = 0.f; byy = 0.f; cyy = 0.f;
+			azz = 0.f; bzz = 0.f; czz = 0.f;
+		}
+		if ( incompleteStencil[2] || incompleteStencil[3] ) // if jPlus or jMinus is missing, also turn off the y terms
+		{
+			ayy = 0.f; byy = 0.f; cyy = 0.f;
+		}
+		if ( incompleteStencil[4] || incompleteStencil[5] ) // if kPlus or kMinus is missing, also turn off the z terms
+		{
+			azz = 0.f; bzz = 0.f; czz = 0.f;
+		}
 		
-		const int cellFine0 = childMapView( cellCoarse );
-
+		const int cellFine0 = childMapView( index );
+		
+		NBRStruct NBRCellFineList;
+		getCompressedNBR( cellFine0, NBRCellFineList, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
+				
 		int cellFineList[8];
-		cellFineList[0] = cellFine0;
-		cellFineList[1] = cellFine0 + 1; if ( cellFineList[1] >= InfoFine.cellCount ) cellFineList[1] = 0;
-		cellFineList[2] = jPlusViewFine( cellFine0 );
-		cellFineList[3] = cellFineList[2] + 1; if ( cellFineList[3] >= InfoFine.cellCount ) cellFineList[3] = 0;
-		cellFineList[4] = kPlusViewFine( cellFine0 );
-		cellFineList[5] = cellFineList[4] + 1; if ( cellFineList[5] >= InfoFine.cellCount ) cellFineList[5] = 0;
-		cellFineList[6] = jPlusViewFine( cellFineList[4] );
-		cellFineList[7] = cellFineList[6] + 1; if ( cellFineList[7] >= InfoFine.cellCount ) cellFineList[7] = 0;
+		cellFineList[0] = NBRCellFineList.self;
+		cellFineList[1] = NBRCellFineList.iPlus;
+		cellFineList[2] = NBRCellFineList.jPlus;
+		cellFineList[3] = NBRCellFineList.ijPlus;
+		cellFineList[4] = NBRCellFineList.kPlus;
+		cellFineList[5] = NBRCellFineList.ikPlus;
+		cellFineList[6] = NBRCellFineList.jkPlus;
+		cellFineList[7] = NBRCellFineList.ijkPlus;
+		
 		const float cellFineDx[8] = {-0.25f, 0.25f,-0.25f, 0.25f,-0.25f, 0.25f,-0.25f, 0.25f};
 		const float cellFineDy[8] = {-0.25f,-0.25f, 0.25f, 0.25f,-0.25f,-0.25f, 0.25f, 0.25f};
 		const float cellFineDz[8] = {-0.25f,-0.25f,-0.25f,-0.25f, 0.25f, 0.25f, 0.25f, 0.25f};		
@@ -570,11 +599,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		for ( int which = 0; which < 8; which++ )
 		{
 			const int cellFine = cellFineList[which];
-			NBR.self = cellFine;
-			NBR.jPlus = jPlusViewFine( cellFine );
-			NBR.kPlus = kPlusViewFine( cellFine );
-			NBR.jkPlus = jPlusViewFine( NBR.kPlus );
-			finishNBRPlus( NBR, InfoFine );
+			getCompressedNBR( cellFine, NBR, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
 			int cellWriteIndex[27];
 			int fWriteIndex[27];
 			getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperFine, InfoFine );
@@ -610,7 +635,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			for ( int direction = 0; direction < 27; direction++ ) fViewFine( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
 		}
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, InfoCoarse.coarseToFineCount, cellLambda );
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.interfaceCount, cellLambda );
 }
 
 void updateInterface( GridStruct &GridCoarse, GridStruct &GridFine )
