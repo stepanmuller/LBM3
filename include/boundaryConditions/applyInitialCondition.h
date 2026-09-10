@@ -3,58 +3,43 @@
 #include "../esotwistStreamingFunctions.h"
 #include "../cellFunctions.h"
 #include "../NBRFunctions.h"
+#include "../interpolatedBouncebackFunctions.h"
 
 void applyInitialCondition( GridStruct &Grid )
 {
 	const InfoStruct &Info = Grid.Info;
 	
 	auto fArrayView  = Grid.fArray.getView();
-	
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
-	
 	const bool &esotwistFlipper = Grid.esotwistFlipper;
-	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
-	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
-	
-	auto bouncebackMarkerView = Grid.bouncebackMarkerArray.getConstView();
-	auto movingBouncebackMarkerView = Grid.movingBouncebackMarkerArray.getConstView();
-	auto deepRefinementMarkerView = Grid.deepRefinementMarkerArray.getConstView();
-	
-	bool useBouncebackMarkerArray = ( Grid.bouncebackMarkerArray.getSize() > 0 );
-	bool useMovingBouncebackMarkerArray = ( Grid.movingBouncebackMarkerArray.getSize() > 0 );
-	bool useDeepRefinementMarkerArray = ( Grid.deepRefinementMarkerArray.getSize() > 0 );
+	auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
+	auto iView = Grid.IJKNBR.iArray.getConstView();
+	auto jView = Grid.IJKNBR.jArray.getConstView();
+	auto kView = Grid.IJKNBR.kArray.getConstView();
+	auto jPlusView = Grid.IJKNBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.IJKNBR.kPlusArray.getConstView();
+	auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
+	auto wallMapView = Grid.Wall.wallMapArray.getConstView();
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
-		const int iCell = iView( cell );
-		const int jCell = jView( cell );
-		const int kCell = kView( cell );
-		
+		int iCell, jCell, kCell;
 		NBRStruct NBR;
-		NBR.self = cell;
-		NBR.jPlus = jPlusView( cell );
-		NBR.kPlus = kPlusView( cell );
-		NBR.jkPlus = jPlusView( NBR.kPlus );
-		finishNBRPlus( NBR, Info );
-		
-		MarkerStruct Marker;
-		if ( useBouncebackMarkerArray ) Marker.bounceback = bouncebackMarkerView( cell );
-		if ( useMovingBouncebackMarkerArray ) Marker.movingBounceback = movingBouncebackMarkerView( cell );
-		if ( useDeepRefinementMarkerArray ) Marker.deepRefinement = deepRefinementMarkerView( cell );
-		getMarkers( iCell, jCell, kCell, Marker, Info );
-		
+		getCompressedIJKNBR( cell, iCell, jCell, kCell, NBR, 
+							shifterView, iView, jView, kView, jPlusView, kPlusView, jkPlusView,
+							Info );		
 		BCStruct BC;
-		getInitialRhoUG( BC, iCell, jCell, kCell, Info, Marker ); 
+		getInitialCondition( BC, iCell, jCell, kCell, Info ); 
 		
 		float f[27];
 		getFeq( BC.rho, BC.ux, BC.uy, BC.uz, f );
 		
 		int cellWriteIndex[27];
 		int fWriteIndex[27];
-		getPreviousPostCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
+		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
 		for ( int direction = 0; direction < 27; direction++ ) fArrayView( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );
+	
+	// To do: Also fill initial BC memory
+	
 }

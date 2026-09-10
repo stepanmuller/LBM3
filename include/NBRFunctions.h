@@ -1,7 +1,6 @@
 #pragma once
 
 #include "./types.h"
-//#include "./genericArrayFunctions.h"
 
 __host__ __device__ void finishNBRPlus( NBRStruct &NBR, const InfoStruct &Info )
 {

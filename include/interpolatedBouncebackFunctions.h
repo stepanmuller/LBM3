@@ -17,6 +17,32 @@
 // would need a rewrite. The link length evaluation below would require a serious rewrite
 // that would evaluate the link lengths using integer arithmetic.
 
+// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
+// Single node scheme eq (10)
+// Set l = gamma which also agrees with Martin Geier, 2015
+__cuda_callable__ void applyIBB( float (&fPre)[27], const float (&fPost)[27], const bool (&linkExists)[26], const float (&linkLength)[26], BCStruct &BC )
+{
+	float fPreOriginal[27];
+	for ( int direction = 0; direction < 27; direction++ ) fPreOriginal[direction] = fPre[direction];
+	for ( int direction = 1; direction < 27; direction++ ) // looping over the unknown distributions that will be pulled from walls next iteration
+	{
+		const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
+		// note that the links are ordered so that link[i-1] points to the neighbour at x + cx[i]
+		// distribution f[i] is pulled from x - cx[i], so
+		if ( !linkExists[ inverseDirection-1 ] ) continue; 
+		float gamma = linkLength[ inverseDirection-1 ];
+		if ( BC.overwriteIBBLinkLengths >= 0.f ) gamma = BC.overwriteIBBLinkLengths;
+		const float eiDotFi = (float)CX_DIRECTIONS[ direction ] * BC.ux 
+							+ (float)CY_DIRECTIONS[ direction ] * BC.uy 
+							+ (float)CZ_DIRECTIONS[ direction ] * BC.uz;
+		const float wallMovementTerm = ( 2.f / ( 1.f + gamma ) ) * DIRECTION_WEIGHTS[ direction ] * eiDotFi * 3.f; 
+		fPre[ direction ] = (( 1.f - gamma ) / ( 1.f + gamma )) * fPreOriginal[ inverseDirection ] 
+							+ ( gamma / ( 1.f + gamma ) ) * fPost[ direction ]
+							+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
+							+ wallMovementTerm;
+	}
+}
+
 int countOnesInBoolArray2D( const BoolArray2DType &boolArray )
 {
 	const int firstBound = boolArray.getSizes()[0];
@@ -388,46 +414,45 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 	else std::cout << "	Level " << GridBuilder.Info.gridID << " failed to find " << linksNotFoundCount << " IBB links out of " << linksTotalCount << std::endl;
 }
 
-__cuda_callable__ inline void packWallData( uint32_t (&packed)[4], 
-											const bool (&linkExists)[26], const float (&linkLength)[26], 
-											const int wallID, const bool parentInterfaceMarker )
+__cuda_callable__ inline void packWallData( uint32_t (&packed)[4],
+                                            const bool (&linkExists)[26], const float (&linkLength)[26],
+                                            const int wallID, const bool parentInterfaceMarker )
 {
     constexpr uint32_t divider = 23u;
-    uint32_t digits[28]; // 1 wallID, 26 links, 1 parentInterfaceMarker
+    uint32_t digits[28]; // 1 wallID, 1 parentInterfaceMarker, 26 links
     digits[0] = static_cast<uint32_t>( wallID );
-   
+    digits[1] = parentInterfaceMarker ? 1u : 0u;
+
     for( int i = 0; i < 26; ++i )
     {
         if( !linkExists[i] )
         {
-            digits[i + 1] = 0u;
+            digits[i + 2] = 0u;
             continue;
         }
         const float q = linkLength[i];
         // Round to nearest multiple of 0.05:
         // q = 0 -> code 1, q = 0.5 -> code 11, q = 1 -> code 21.
-        digits[i + 1] = 1u + static_cast<uint32_t>( q * 20.0f + 0.5f );
+        digits[i + 2] = 1u + static_cast<uint32_t>( q * 20.0f + 0.5f );
     }
-    
-    digits[27] = parentInterfaceMarker ? 1u : 0u;
-   
+
     for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
     {
         uint32_t value = 0u;
         for( int digitIndex = 6; digitIndex >= 0; digitIndex-- )
         {
             value = value * divider + digits[7 * packedIndex + digitIndex];
-		}
+        }
         packed[packedIndex] = value;
     }
 }
 
-__cuda_callable__ inline void unpackWallData( 	const uint32_t (&packed)[4],
-												bool (&linkExists)[26], float (&linkLength)[26],
-												int &wallID, bool &parentInterfaceMarker )
+__cuda_callable__ inline void unpackWallData( const uint32_t (&packed)[4],
+                                                bool (&linkExists)[26], float (&linkLength)[26],
+                                                int &wallID, bool &parentInterfaceMarker )
 {
     constexpr uint32_t divider = 23u;
-    uint32_t digits[28]; // 1 wallID, 26 links, 1 parentInterfaceMarker
+    uint32_t digits[28]; // 1 wallID, 1 parentInterfaceMarker, 26 links
 
     for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
     {
@@ -440,14 +465,23 @@ __cuda_callable__ inline void unpackWallData( 	const uint32_t (&packed)[4],
     }
 
     wallID = static_cast<int>( digits[0] );
+    parentInterfaceMarker = ( digits[1] == 1u );
 
     for( int i = 0; i < 26; ++i )
     {
-        const uint32_t code = digits[i + 1];
+        const uint32_t code = digits[i + 2];
         linkExists[i] = ( code != 0u );
         if ( !linkExists[i] ) linkLength[i] = 0.f;
-        else linkLength[i] = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f); 
+        else linkLength[i] = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f);
     }
+}
 
-    parentInterfaceMarker = ( digits[27] == 1u );
+__cuda_callable__ inline void unpackWallID( const uint32_t (&packed)[4],
+                                            int &wallID, bool &parentInterfaceMarker )
+{
+    constexpr uint32_t divider = 23u;
+    uint32_t value = packed[0];
+    wallID = static_cast<int>( value % divider );
+    value /= divider;
+    parentInterfaceMarker = ( value % divider == 1u );
 }

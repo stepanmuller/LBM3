@@ -4,16 +4,161 @@
 #include "./esotwistStreamingFunctions.h"
 #include "./cellFunctions.h"
 #include "./NBRFunctions.h"
-#include "./markerFunctions.h"
-#include "./boundaryConditions/applyBounceback.h"
-#include "./boundaryConditions/applyMovingBounceback.h"
-#include "./boundaryConditions/restoreRho.h"
-#include "./boundaryConditions/restoreUxUyUz.h"
-#include "./boundaryConditions/applyMBBC.h"
-#include "./boundaryConditions/applyNonReflectiveOutlet.h"
-#include "./boundaryConditions/applyNonReflectiveInlet.h"
+#include "./interpolatedBouncebackFunctions.h"
 
-void solveInterpolatedBB( GridStruct &Grid )
+void updateGrid( GridStruct &Grid )
+{	
+	const InfoStruct &Info = Grid.Info;
+	
+	auto fArrayView  = Grid.fArray.getView();
+	const bool &esotwistFlipper = Grid.esotwistFlipper;
+	auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
+	auto iView = Grid.IJKNBR.iArray.getConstView();
+	auto jView = Grid.IJKNBR.jArray.getConstView();
+	auto kView = Grid.IJKNBR.kArray.getConstView();
+	auto jPlusView = Grid.IJKNBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.IJKNBR.kPlusArray.getConstView();
+	auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
+	auto wallMapView = Grid.Wall.wallMapArray.getConstView();
+	auto wallDataView = Grid.Wall.wallDataArray.getConstView();
+	auto gxWallView = Grid.Wall.gxArray.getView();
+	auto gyWallView = Grid.Wall.gyArray.getView();
+	auto gzWallView = Grid.Wall.gzArray.getView();
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		// read wallMap, early return if the cell itself is a wall
+		const int wallMap = wallMapView( cell );
+		if ( wallMap == -3 ) return; // this cell itself is a wall
+		
+		// decide if we track force for this cell. We dont track force if the cell is under a parent interface
+		bool trackForce = true;
+		if ( wallMap == -2 ) trackForce = false; // fluid cell under a parent interface -> dont track force
+		
+		// read wallData if this is a wall adjacent cell. So far only unpack wallID and parentInterfaceMarker
+		uint4 wallData;
+		uint32_t packed[4] = { wallData.x, wallData.y, wallData.z, wallData.w };
+		int wallID = -1; 
+		// here we dont want to allocate any more variables because it can still be a free fluid cell
+		// so dont waste memory by allocating 26 link lengths
+		if ( wallMap >= 0 )
+		{
+			bool parentInterfaceMarker;
+			wallData = wallDataView( cell );
+			// so far unpack only wallID and parentInterfaceMarker
+			unpackWallID( packed, wallID, parentInterfaceMarker );
+			if ( parentInterfaceMarker ) trackForce = false;
+		}
+		
+		// fill iCell, jCell, kCell and NBR
+		int iCell, jCell, kCell;
+		NBRStruct NBR;
+		getCompressedIJKNBR( cell, iCell, jCell, kCell, NBR, 
+							shifterView, iView, jView, kView, jPlusView, kPlusView, jkPlusView,
+							Info );
+							
+		// read pre collision fPre
+		float fPre[27];
+		int cellReadIndex[27];
+		int fReadIndex[27];
+		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
+		for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
+		
+		// setup BC struct and load the current state into it
+		// we will then pass the current state into the getLocalBC function so that BC can also be a function of the current state 
+		// example: get forcing for rotating domain as a function of rho, ux, uy, uz
+		BCStruct BC;
+		BC.wallID = wallID;
+		getRhoUxUyUz( BC.rho, BC.ux, BC.uy, BC.uz, fPre );
+		getLocalBC( BC, iCell, jCell, kCell, Info );
+		
+		// add the rotor processing here. 
+		// In case that gx, gy, gz is already non zero, for the rotor pretend that this forcing is already applied and results in shifted velocity
+		// This way the rotor compensates for the global forcing by adding enough of its own force
+		// the rotor only needs iCell, jCell, kCell, Info as input, we have that
+		// as output it gives gx, gy, gz
+		// in case of multiple rotors that could even overlap in the blurred area (gear pump!) gx, gy, gz should be averaged between all those
+		// write rotor force for each rotor if trackForce is true
+		// put the complete final gx, gy, gz ( combination of global forcing and all rotors ) back into the BC struct where collision will read it
+		
+		// now solve the shorter free fluid branch
+		if ( wallMap < 0 )
+		{
+			applyCollision( fPre, BC, Info.nu );
+			int cellWriteIndex[27];
+			int fWriteIndex[27];
+			getPostCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
+			// here fPre is just incorrectly named, we are writing fPost
+			for ( int direction = 0; direction < 27; direction++ ) fView( fWriteIndex[direction], cellWriteIndex[direction] ) = fPre[direction]; 
+			return;
+		}
+		
+		// if we got here, we are dealing with a wall adjacent fluid cell
+		bool linkExists[26];
+		float linkLength[26];
+		bool parentInterfaceMarker;
+		unpackWallData( packed, linkExists, linkLength, wallID, parentInterfaceMarker );
+		
+		// to apply interpolated bounceback we want to remember both fPre and fPost, so
+		float fPost[27];
+		for ( int direction = 0; direction < 27; direction++ ) fPost[direction] = fPre[direction];
+		applyCollision( fPost, BC, Info.nu );
+		
+		// now apply interpolated boundary condition, this will overwrite fPre
+		// fPre[direction] will then contain the value that should get pulled from the wall next iteration
+		applyIBB( fPre, fPost, linkExists, linkLength, BC );
+		
+		int cellWriteIndex[27];
+		int fWriteIndex[27];
+		getPostCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
+		int cellWriteIndexIBB[27];
+		int fWriteIndexIBB[27];
+		getNextPreollisionIndex( cellWriteIndexIBB, fWriteIndexIBB, NBR, esotwistFlipper, Info );
+		for ( int direction = 0; direction < 27; direction++ ) 
+		{
+			const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
+			if ( !linkExists[ inverseDirection-1 ] ) // link does not exist -> write fPost as a regular fluid cell
+			{
+				fView( fWriteIndex[direction], cellWriteIndex[direction] ) = fPost[direction]; 
+			}
+			else // link exists -> write fPre into the wall cell instead. Do not write fPost at all, it goes into the wall where we dont need it.
+			{
+				fView( fWriteIndexIBB[direction], cellWriteIndexIBB[direction] ) = fPre[direction]; 
+			}
+		}
+		
+		// last step: track force using momentum exchange method
+		// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
+		// Analysis on the force evaluation by the momentum exchange 
+		// method and a localized r­filling scheme for the lattice Boltzmann method, 2025
+		// eq (15)
+		float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
+		for ( int direction = 0; direction < 27; direction++ ) 
+		{
+			const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
+			if ( !linkExists[ inverseDirection-1 ] ) continue; // link does not exist -> no force
+			gxWall += fPost[ inverseDirection ] * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux ) - fPre[ direction ] * ( CX_DIRECTIONS[ direction ] - BC.ux );
+			gyWall += fPost[ inverseDirection ] * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy ) - fPre[ direction ] * ( CY_DIRECTIONS[ direction ] - BC.uy );
+			gzWall += fPost[ inverseDirection ] * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz ) - fPre[ direction ] * ( CZ_DIRECTIONS[ direction ] - BC.uz );
+		}
+		gxWallView( wallMap ) += gxWall;
+		gyWallView( wallMap ) += gyWall;
+		gzWallView( wallMap ) += gzWall;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );
+	
+	applyStreaming( Grid );
+	
+	applyOpenBC( Grid );
+	
+	Info.updatesSinceTrackerReset++; 
+	Info.iterationsFinished++;
+}
+
+
+
+/*
+ * void solveInterpolatedBB( GridStruct &Grid )
 {
 	InfoStruct &Info = Grid.Info;
 	const bool &esotwistFlipper = Grid.esotwistFlipper;
@@ -90,23 +235,18 @@ void solveInterpolatedBB( GridStruct &Grid )
 
 void updateGrid( GridStruct &Grid )
 {	
-	InfoStruct &Info = Grid.Info;
+	const InfoStruct &Info = Grid.Info;
+	
+	auto fArrayView  = Grid.fArray.getView();
 	const bool &esotwistFlipper = Grid.esotwistFlipper;
-	
-	auto fView  = Grid.fArray.getView();
-	
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
-
-	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
-	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
-	
-	auto bitPackedMarkerView = Grid.bitPackedMarkerArray.getConstView();
-	
-	applyNonReflectiveInlet(Grid);
-	applyNonReflectiveOutlet(Grid);
-	solveInterpolatedBB(Grid);
+	auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
+	auto iView = Grid.IJKNBR.iArray.getConstView();
+	auto jView = Grid.IJKNBR.jArray.getConstView();
+	auto kView = Grid.IJKNBR.kArray.getConstView();
+	auto jPlusView = Grid.IJKNBR.jPlusArray.getConstView();
+	auto kPlusView = Grid.IJKNBR.kPlusArray.getConstView();
+	auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
+	auto wallMapView = Grid.Wall.wallMapArray.getConstView();
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
@@ -306,3 +446,5 @@ void updateGrid( GridStruct &Grid )
 	Info.updatesSinceForcedVelocityUpdate++;
 	Info.iterationsFinished++;
 }
+
+*/

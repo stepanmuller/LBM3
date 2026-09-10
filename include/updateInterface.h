@@ -1,6 +1,5 @@
 #pragma once
 
-#include "./applyCollision.h"
 #include "./esotwistStreamingFunctions.h"
 #include "./cellFunctions.h"
 #include "./NBRFunctions.h"
@@ -565,16 +564,29 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		if ( incompleteStencil[0] || incompleteStencil[1] ) // if iPlus or iMinus is missing, also turn off the x terms
 		{
 			axx = 0.f; bxx = 0.f; cxx = 0.f;
-			ayy = 0.f; byy = 0.f; cyy = 0.f;
-			azz = 0.f; bzz = 0.f; czz = 0.f;
+			// if at least one x cell is available, double the slope -> this gives same result falling to backward / forward difference 
+			if ( !incompleteStencil[0] || !incompleteStencil[1] )
+			{
+				dRhodx *= 2.f; ax *= 2.f; bx *= 2.f; cx *= 2.f;
+			}
 		}
 		if ( incompleteStencil[2] || incompleteStencil[3] ) // if jPlus or jMinus is missing, also turn off the y terms
 		{
 			ayy = 0.f; byy = 0.f; cyy = 0.f;
+			// if at least one y cell is available, double the slope -> this gives same result falling to backward / forward difference 
+			if ( !incompleteStencil[2] || !incompleteStencil[3] )
+			{
+				dRhody *= 2.f; ay *= 2.f; by *= 2.f; cy *= 2.f;
+			}
 		}
 		if ( incompleteStencil[4] || incompleteStencil[5] ) // if kPlus or kMinus is missing, also turn off the z terms
 		{
 			azz = 0.f; bzz = 0.f; czz = 0.f;
+			// if at least one z cell is available, double the slope -> this gives same result falling to backward / forward difference 
+			if ( !incompleteStencil[4] || !incompleteStencil[5] )
+			{
+				dRhodz *= 2.f; az *= 2.f; bz *= 2.f; cz *= 2.f;
+			}
 		}
 		
 		const int cellFine0 = childMapView( index );

@@ -91,7 +91,8 @@ using IntTripleType = TNL::Containers::StaticArray< 3, int >;
 struct BoundsStruct { float xMin = 0.f; float yMin = 0.f; float zMin = 0.f; float xMax = 0.f; float yMax = 0.f; float zMax = 0.f; 
 						float rxMax = 0.f; float ryMax = 0.f; float rzMax = 0.f; }; 
 
-struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL; int iterationsFinished = 0;
+struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL; 
+					int iterationsFinished = 0; int updatesSinceTrackerReset = 0;
 					float res = 1.f; float ox = 0.f; float oy = 0.f; float oz = 0.f; 
 					BoundsStruct Bounds;
 					float nu = 1.f; float dtPhys = 1.f; 
@@ -99,12 +100,13 @@ struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL; 
 					int cellCount = 0; 
 					bool esotwistFlipper = 0; 
 					float iRegulatorInlet = 0.f; float iRegulatorOutlet = 0.f; };
-
-struct MarkerStruct { 	bool fluid = 0; bool bounceback = 0; bool movingBounceback = 0; bool forcedVelocity = 0;
-						bool BCRho = 0; bool BCU = 0; bool nonReflectiveOutlet = 0; bool nonReflectiveInlet = 0;
-						bool refinement = 0; bool deepRefinement = 0; bool fineToCoarse = 0; };
-						
-struct BCStruct { float rho = 1.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; float gx = 0.f; float gy = 0.f; float gz = 0.f; float nuMultiplier = 1.f; float collisionLimiter = 0.01f; };
+					
+struct BCStruct { 	float rho = 1.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; 
+					float gx = 0.f; float gy = 0.f; float gz = 0.f; 
+					int wallID = -1; float overwriteIBBLinkLengths = -1.f;
+					bool dirichletU = false; bool dirichletRho = false; 
+					float rhoReflectionTolerance = 0.0001f; int openBCID = 0; 
+					float collisionLimiter = 0.01f; float nuMultiplier = 1.f; };
 					
 // IJK holds cell indexes on X, Y, Z axes within the Grid that owns it
 struct IJKArrayStructCPU; // just declaring first
@@ -172,14 +174,17 @@ struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntAr
 							IntArrayType iMinusStencilArray; IntArrayType jMinusStencilArray; IntArrayType kMinusStencilArray; };
 	
 struct WallStruct{ int wallCount = 0; IntArrayType wallMapArray; Uint4ArrayType wallDataArray; FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
-					
+// wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
+
+struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; IntArrayType indexArray; FloatArrayType BCMemoryArray; FloatArrayType rhoTrackerArray; FloatArrayType uNormalTrackerArray; };
+		
 struct GridStruct { InfoStruct Info; 
 					FloatArray2DType fArray; 
 					bool esotwistFlipper = false; 
 					CompressedIJKNBRStruct IJKNBR;
 					WallStruct Wall;
 					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
-					IntArrayType BCIndexArray; FloatArrayType BCMemoryArray; }; 	
+					std::vector<OpenBCArrayStruct> openBCs; }; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 

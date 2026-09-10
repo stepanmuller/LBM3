@@ -126,8 +126,8 @@ __cuda_callable__ void getPostCollisionIndex( int (&cellIndex)[27], int (&fIndex
     }
 }
 
-__cuda_callable__ void getFuturePreCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper, const InfoStruct &Info ) 
+__cuda_callable__ void getNextPreCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper, const InfoStruct &Info ) 
 { 
-	const bool futureEsotwistFlipper = !esotwistFlipper;
-	getPreCollisionIndex( cellIndex, fIndex, NBR, futureEsotwistFlipper, Info ); 
+	const bool nextEsotwistFlipper = !esotwistFlipper;
+	getPreCollisionIndex( cellIndex, fIndex, NBR, nextEsotwistFlipper, Info ); 
 }

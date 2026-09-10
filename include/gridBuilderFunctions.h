@@ -3,6 +3,7 @@
 #include "./types.h"
 #include "./markerFunctions.h"
 #include "./interpolatedBouncebackFunctions.h"
+#include "./boundaryConditions/applyInitialCondition.h"
 
 void initializeGridInfo( std::vector<GridBuilderStruct> &gridBuilders, const BoundsStruct &Bounds, const int level )
 {
@@ -950,38 +951,60 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		fillInterface( Grid.CoarseToFineInterface, markerArray, childMapArrayGlobal, GridBuilder, fineToCoarse );
 	}
 	
-	// 6) Build BCIndexArray and allocate BCMemoryArray
-	BoolArrayType BCMarkerArray( Grid.Info.cellCount );
-	BCMarkerArray.setValue( false );
-	auto BCMarkerView = BCMarkerArray.getView();
-	auto BCMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	// 6) Build OpenBCs
+	IntArrayType BCIDArray( Grid.Info.cellCount );
+	BCIDArray.setValue( -1 );
+	auto BCIDView = BCIDArray.getView();
+	auto BCIDLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{	
+		if ( wallMarkerView( cell ) ) return;
 		const int iCell = iBuilderView( cell );
 		const int jCell = jBuilderView( cell );
 		const int kCell = kBuilderView( cell );
 		if ( iCell == 0 || iCell == Info.cellCountX - 1 || jCell == 0 || jCell == Info.cellCountY - 1 || kCell == 0 || kCell == Info.cellCountZ - 1 )
 		{
-			BCMarkerView( cell ) = true;
+			BCStruct BC;
+			getOpenBC( BC, iCell, jCell, kCell, Info );
+			BCIDView( cell ) = BC.openBCID;
 		}
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, BCMarkerLambda );
-	const int BCCount = TNL::sum( BCMarkerArray );
-	Grid.BCIndexArray.setSize( BCCount );
-	Grid.BCMemoryArray.setSize( BCCount );
-	
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, BCIDLambda );
+	const int BCIDMax = TNL::max( BCIDArray );
+	const int BCIDCount = BCIDMax+1;
+	// Now we know how long the openBCList should be
 	scanArray.resize( Info.cellCount );
-	intArrayFromBoolArray( scanArray, BCMarkerArray );
-	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
-	auto scanView2 = scanArray.getConstView();
-	auto BCIndexView = Grid.BCIndexArray.getView();
-	
-	auto BCIndexArrayLambda = [=] __cuda_callable__ ( const int cell ) mutable
-	{	
-		if ( !BCMarkerView( cell ) ) return;
-		const int index = scanView2( cell );
-		BCIndexView( index ) = cell;
-	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, BCIndexArrayLambda );
+	BoolArrayType BCIDMarkerArray( Grid.Info.cellCount );
+	auto BCIDMarkerView = BCIDMarkerArray.getView();
+	Grid.openBCs.resize( BCIDCount );
+	for ( int BCID = 0; BCID < BCIDCount; BCID++ )
+	{
+		Grid.openBCs[ BCID ].openBCID = BCID;
+		BCIDMarkerArray.setValue( false );
+		auto BCIDMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			if ( BCIDView( cell ) == BCID ) BCIDMarkerView( cell ) = true;
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, BCIDMarkerLambda );
+		Grid.openBCs[ BCID ].openBCCount = TNL::sum( BCIDMarkerArray );
+		Grid.openBCs[ BCID ].indexArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+		Grid.openBCs[ BCID ].BCMemoryArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+		Grid.openBCs[ BCID ].rhoTrackerArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+		Grid.openBCs[ BCID ].rhoTrackerArray.setValue( 0.f );
+		Grid.openBCs[ BCID ].uNormalTrackerArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+		Grid.openBCs[ BCID ].uNormalTrackerArray.setValue( 0.f );
+		intArrayFromBoolArray( scanArray, BCIDMarkerArray );
+		TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
+		auto scanView2 = scanArray.getConstView();
+		auto indexView = Grid.openBCs[ BCID ].indexArray.getView();
+		
+		auto indexArrayLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			if ( !BCIDMarkerView( cell ) ) return;
+			const int index = scanView2( cell );
+			indexView( index ) = cell;
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, indexArrayLambda );
+	}
 		
 	// 7) Recursion
 	if ( !iAmFinest ) gridBuilderToGrid( gridBuilders, grids, level + 1 );
@@ -1034,8 +1057,10 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		Info.gridMemoryBytes += 7LL * (long long)Grid.Wall.wallCount * 4LL; // wall data + wall force tracker
 		Info.gridMemoryBytes += 8LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap, stencil arrays
 		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
-		Info.gridMemoryBytes += 2LL * (long long)Grid.BCIndexArray.getSize() * 4LL; // cellList, BCMemory
-		
+		for ( int openBCID = 0; openBCID < (int)Grid.openBCs.size(); openBCID++ )
+		{
+			Info.gridMemoryBytes += 4LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // indexList, BCMemory, rhoTracker, uNormalTracker
+		}
 		std::cout << "	Level " << level << " with " << Info.cellCount << "	cells requires	" << Info.gridMemoryBytes / 1048576.0 << "	MiB ... " << std::flush;;
 		
 		allocateFArray( Grid );
@@ -1050,5 +1075,8 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 	std::cout << "Total cells: " << totalCells << std::endl;
 	std::cout << "Total GPU memory: " << totalMemoryBytes / 1048576.0 << " MiB"  << std::endl;
 	std::cout << "Total updates per iteration: " << totalUpdatesPerIteration << std::endl;
+	std::cout << std::endl;
+	std::cout << "Applying initial condition" << std::endl;
+	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) applyInitialCondition( grids[ level ] );
 	std::cout << std::endl;
 }

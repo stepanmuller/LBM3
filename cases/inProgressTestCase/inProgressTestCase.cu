@@ -44,6 +44,35 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	}
 }
 
+__cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
+											const InfoStruct& Info )
+{
+	return; // this leaves default zero velocity, zero pressure
+}
+
+__cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
+									const InfoStruct& Info )
+{
+	float x, y, z;
+	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+	if ( kCell == Info.cellCountZ-1 ) // Inlet
+	{
+		BC.openBCID = 0;
+	}
+	else if ( jCell == Info.cellCountY-1 ) // Oultet
+	{
+		BC.openBCID = 1;
+	}
+}
+
+__cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
+									const InfoStruct& Info )
+{
+	float x, y, z;
+	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+	return;
+}
+
 #include "../../include/gridBuilderFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 
