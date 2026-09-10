@@ -553,7 +553,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		float bxz = 0.5f * ( K1 - K2 + K3 );
 		float cxy = 0.5f * ( -K1 + K2 + K3 );
 		
-		// linear version: If the stencil is not complete, 
+		// If the stencil is not complete, 
 		// turn off the quadratic terms whose calculation involved the cell that is missing
 		if ( incompleteStencil[0] || incompleteStencil[1] || incompleteStencil[2] || 
 			 incompleteStencil[3] || incompleteStencil[4] || incompleteStencil[5] ) // if any cell is missing, turn of all mixed terms
