@@ -9,7 +9,7 @@ void applyInitialCondition( GridStruct &Grid )
 {
 	const InfoStruct &Info = Grid.Info;
 	
-	auto fArrayView  = Grid.fArray.getView();
+	auto fView  = Grid.fArray.getView();
 	const bool &esotwistFlipper = Grid.esotwistFlipper;
 	auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
 	auto iView = Grid.IJKNBR.iArray.getConstView();
@@ -36,7 +36,7 @@ void applyInitialCondition( GridStruct &Grid )
 		int cellWriteIndex[27];
 		int fWriteIndex[27];
 		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
-		for ( int direction = 0; direction < 27; direction++ ) fArrayView( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
+		for ( int direction = 0; direction < 27; direction++ ) fView( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );
 	
