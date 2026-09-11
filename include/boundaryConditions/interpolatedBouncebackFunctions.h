@@ -1,8 +1,8 @@
 #pragma once
 
-#include "./types.h"
-#include "./D3Q27Directions.h"
-#include "./cellFunctions.h"
+#include "../types.h"
+#include "../D3Q27Directions.h"
+#include "../cellFunctions.h"
 
 // TO DO:
 // The current issue is that during voxelization, x and y coordinates of the STL get snapped to an integer grid

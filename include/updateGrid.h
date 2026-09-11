@@ -4,7 +4,12 @@
 #include "./esotwistStreamingFunctions.h"
 #include "./cellFunctions.h"
 #include "./NBRFunctions.h"
-#include "./interpolatedBouncebackFunctions.h"
+
+#include "./boundaryConditions/interpolatedBouncebackFunctions.h"
+#include "./boundaryConditions/restoreRho.h"
+#include "./boundaryConditions/restoreUxUyUz.h"
+#include "./boundaryConditions/applyMBBC.h"
+#include "./boundaryConditions/getNonReflectiveRho.h"
 
 void updateGrid( GridStruct &Grid )
 {	
@@ -152,87 +157,108 @@ void updateGrid( GridStruct &Grid )
 	
 	applyStreaming( Grid );
 	
-	applyOpenBC( Grid );
+	// Now apply open boundary conditions
+	for ( int openBCID = 0; openBCID < Grid.openBCs.size(); openBCID++ )
+	{
+		OpenBCArrayStruct &OpenBC = Grid.openBCs[ openBCID ];
+		auto indexView = OpenBC.indexArray.getConstView();
+		auto rhoPrevView = OpenBC.rhoPrevArray.getView();
+		auto uNormalPrevView = OpenBC.uNormalPrevArray.getView();
+		auto rhoCumulativeView = OpenBC.rhoCumulativeArray.getView();
+		auto uNormalCumulativeView = OpenBC.uNormalCumulativeArray.getView();
+		// loop over open boundary cells
+		auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
+		{
+			const int cell = indexView( index );
+			
+			// fill iCell, jCell, kCell and NBR
+			int iCell, jCell, kCell;
+			NBRStruct NBR;
+			getCompressedIJKNBR( cell, iCell, jCell, kCell, NBR, 
+								shifterView, iView, jView, kView, jPlusView, kPlusView, jkPlusView,
+								Info );
+			
+			// identify outer normal
+			int outerNormalX, outerNormalY, outerNormalZ;
+			getOuterNormal( iCell, jCell, kCell, outerNormalX, outerNormalY, outerNormalZ, Info ); 
+			
+			// identify known directions
+							
+			// read f
+			float f[27];
+			int cellIndex[27];
+			int fIndex[27];
+			getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper, Info );
+			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fIndex[direction], cellIndex[direction]);
+			// open boundary conditions are not well conditioned -> compensate
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] += DIRECTION_WEIGHTS[direction];
+			
+			// get BC
+			BCStruct BC;
+			getOpenBC( BC, iCell, jCell, kCell, Info );
+			
+			
+			float rhoZ, rhoImp;
+			
+			getNonReflectiveInletValue( f, cxArray, cyArray, czArray, outerNormalX, outerNormalY, outerNormalZ, BC, rhoZ, rhoImp );
+			
+			// Boundary conditions are not well conditioned yet -> compensate
+			const float weights[27] = { 8.f/27.f, 
+				2.f/27.f, 2.f/27.f, 2.f/27.f, 2.f/27.f, 2.f/27.f, 2.f/27.f, 
+				1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 1.f/54.f, 
+				1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f, 1.f/216.f };
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] += weights[direction];
+			
+			if ( Marker.nonReflectiveOutlet )
+			{
+				const float dRhoMax = 0.f; //0.0001f;
+				const float rhoMin = Info.nonReflectiveOutletRho - dRhoMax;
+				const float rhoMax = Info.nonReflectiveOutletRho + dRhoMax;
+				//const float rhoMin = rhoImp - dRhoMax;
+				//const float rhoMax = rhoImp + dRhoMax;
+				BC.rho = std::clamp( BC.rho, rhoMin, rhoMax );
+				BC.collisionLimiter = 0.f;
+			}
+			else if ( Marker.nonReflectiveInlet )
+			{
+				// Schlaffer 2013 eq (7.1) - (7.6)
+				const float dRhoMax = 0.0001f;
+				float uMin = 1.f - ( Info.nonReflectiveInletRhoZ / (Info.nonReflectiveInletRhoImp - dRhoMax) );
+				float uMax = 1.f - ( Info.nonReflectiveInletRhoZ / (Info.nonReflectiveInletRhoImp + dRhoMax) );
+				//float uMin = 1.f - ( rhoZ / (rhoImp - dRhoMax) );
+				//float uMax = 1.f - ( rhoZ / (rhoImp + dRhoMax) );
+				if ( outerNormalX + outerNormalY + outerNormalZ > 0 ) // right boundary -> inlet velocity is negative
+				{
+					float temp = uMax;
+					uMax = - uMin;
+					uMin = - temp;
+				}
+				if (outerNormalX != 0) BC.ux = std::clamp( BC.ux, uMin, uMax );
+				else if (outerNormalY != 0) BC.uy = std::clamp( BC.uy, uMin, uMax );
+				else if (outerNormalZ != 0) BC.uz = std::clamp( BC.uz, uMin, uMax );
+			}
+			if ( Marker.BCRho || Marker.nonReflectiveOutlet )
+			{
+				restoreUxUyUz( outerNormalX, outerNormalY, outerNormalZ, BC, f );				
+			}
+			else if ( Marker.BCU || Marker.nonReflectiveInlet )
+			{
+				restoreRho( outerNormalX, outerNormalY, outerNormalZ, BC, f );
+			}
+			applyMBBC( outerNormalX, outerNormalY, outerNormalZ, BC, f );
+						
+			// subtract the weights again for WC after BC is done
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] -= weights[direction];
+			
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );
+	}
 	
 	Info.updatesSinceTrackerReset++; 
 	Info.iterationsFinished++;
 }
 
 /*
- * void solveInterpolatedBB( GridStruct &Grid )
-{
-	InfoStruct &Info = Grid.Info;
-	const bool &esotwistFlipper = Grid.esotwistFlipper;
-	
-	auto fView  = Grid.fArray.getView();
-	
-	auto iView = Grid.IJK.iArray.getConstView();
-	auto jView = Grid.IJK.jArray.getConstView();
-	auto kView = Grid.IJK.kArray.getConstView();
-
-	auto jPlusView = Grid.NBR.jPlusArray.getConstView();
-	auto kPlusView = Grid.NBR.kPlusArray.getConstView();
-	
-	auto bitPackedMarkerView = Grid.bitPackedMarkerArray.getConstView();
-	auto indexList = Grid.interpolatedBBCellList.getConstView();
-	auto interpolatedBBLinkLengthsView = Grid.interpolatedBBLinkLengths.getConstView();
-	
-	const float omega1 = 1.f / (3.f * (Info.nu) + 0.5f);
-	const int inverseDirection[27] = { 0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15, 18, 17, 20, 19, 22, 21, 24, 23, 26, 25 };
-	
-	auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
-	{
-		const int cell = indexList( index );
-		
-		NBRStruct NBR;
-		NBR.self = cell;
-		NBR.jPlus = jPlusView( cell );
-		NBR.kPlus = kPlusView( cell );
-		NBR.jkPlus = jPlusView( NBR.kPlus );
-		finishNBRPlus( NBR, Info );
-		
-		float fStar[27];
-		int cellReadIndex[27];
-		int fReadIndex[27];
-		getPreviousPostCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
-		for ( int direction = 0; direction < 27; direction++ ) fStar[direction] =  fView( fReadIndex[direction], cellReadIndex[direction] );
-		
-		float rho, ux, uy, uz;
-		getRhoUxUyUz( rho, ux, uy, uz, fStar );
-		float fEq[27];
-		getFeq( rho, ux, uy, uz, fEq );
-		
-		int cellWriteIndex[27];
-		int fWriteIndex[27];
-		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
-		
-		const int bitPackedMarkerInt = bitPackedMarkerView( cell );
-		bool bitPackedMarkerBits[32];
-		intToBools( bitPackedMarkerInt, bitPackedMarkerBits );
-		for ( int direction = 1; direction < 27; direction++ )
-		{
-			if ( !bitPackedMarkerBits[direction] ) // this means there is no fluid coming from this direction
-			{
-				float q = interpolatedBBLinkLengthsView( direction, index );
-				float fStarMinus = fStar[direction];
-				float fStarPlus = fStar[inverseDirection[direction]];
-				float fEqMinus = fEq[direction];
-				float fEqPlus = fEq[inverseDirection[direction]];
-				// Geier 2015 (E.4)
-				float fPlus = 0.5f * ( fStarPlus - fStarMinus ) + ( fStarPlus + fStarMinus - omega1 * ( fEqPlus + fEqMinus ) ) / ( 2.f - 2.f * omega1 );
-				// Geier 2015 (E.3)
-				float fWallPlus = ( 1.f - q ) * fPlus + q * fStarPlus;
-				// Geier 2015 (E.2)
-				float fWallMinus = fWallPlus; // we dont use MBB here
-				// Geier 2015 (E.1)
-				float fResult = (1.f / ( q + 1.f )) * fWallMinus + (q / ( q + 1.f )) * fStarMinus;				
-				//float fResult = fStar[inverseDirection[direction]];
-				fView( fWriteIndex[direction], cellWriteIndex[direction] ) = fResult;
-			}
-		}
-	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.interpolatedBBCellList.getSize(), cellLambda );
-}
 
 void updateGrid( GridStruct &Grid )
 {	

@@ -3,7 +3,7 @@
 #include "../esotwistStreamingFunctions.h"
 #include "../cellFunctions.h"
 #include "../NBRFunctions.h"
-#include "../interpolatedBouncebackFunctions.h"
+#include "./interpolatedBouncebackFunctions.h"
 
 void applyInitialCondition( GridStruct &Grid )
 {

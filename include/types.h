@@ -176,7 +176,9 @@ struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntAr
 struct WallStruct{ int wallCount = 0; IntArrayType wallMapArray; Uint4ArrayType wallDataArray; FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
-struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; IntArrayType indexArray; FloatArrayType BCMemoryArray; FloatArrayType rhoTrackerArray; FloatArrayType uNormalTrackerArray; };
+struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; IntArrayType indexArray; 
+							FloatArrayType rhoPrevArray; FloatArrayType uNormalPrevArray; 
+							FloatArrayType rhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
 		
 struct GridStruct { InfoStruct Info; 
 					FloatArray2DType fArray; 
