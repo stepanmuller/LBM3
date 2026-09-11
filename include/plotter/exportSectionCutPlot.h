@@ -84,6 +84,8 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		if ( level > imageLevel ) downsample = std::pow( 2, ( level - imageLevel ) );
 		else if ( level < imageLevel ) upsample = std::pow( 2, ( imageLevel - level ) );
 			
+		auto fView  = Grid.fArray.getView();
+		const bool &esotwistFlipper = Grid.esotwistFlipper;
 		auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
 		auto iView = Grid.IJKNBR.iArray.getConstView();
 		auto jView = Grid.IJKNBR.jArray.getConstView();
@@ -149,10 +151,17 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			const int wallMap = wallMapView( cell );
 			if ( wallMap == -3 ) marker = 1.f;
 			
-			// PLACEHOLDER SECTION START
+			// here we also need to browse through rotors and find rotor fraction,
+			// if marker was zero till here set it to rotor fraction
+			
+			// read f
+			float f[27];
+			int cellReadIndex[27];
+			int fReadIndex[27];
+			getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
+			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
 			float rho, ux, uy, uz;
-			rho = 1.f; ux = 0.f; uy = 0.f; uz = 0.f; // placeholder values
-			// PLACEHOLDER SECTION END
+			getRhoUxUyUz( rho, ux, uy, uz, f );
 			
 			for ( int shiftVertical = 0; shiftVertical < upsample; shiftVertical++ )
 			{

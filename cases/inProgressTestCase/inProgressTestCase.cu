@@ -59,7 +59,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	{
 		BC.openBCID = 0;
 	}
-	else if ( jCell == Info.cellCountY-1 ) // Oultet
+	else if ( jCell == Info.cellCountY-1 ) // Outlet
 	{
 		BC.openBCID = 1;
 	}
@@ -74,6 +74,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 }
 
 #include "../../include/gridBuilderFunctions.h"
+#include "../../include/updateGrid.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 
 int main(int argc, char **argv)
