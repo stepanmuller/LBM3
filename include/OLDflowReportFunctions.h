@@ -155,7 +155,7 @@ void getFlowReportGeneral( std::vector<GridStruct> &grids, const int &cutIndex, 
 			float f[27];
 			int cellReadIndex[27];
 			int fReadIndex[27];
-			getPreviousPostCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
+			getPreviousPostCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper );
 			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fArrayView(fReadIndex[direction], cellReadIndex[direction]);
 			
 			float rho, ux, uy, uz;

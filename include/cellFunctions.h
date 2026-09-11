@@ -171,6 +171,14 @@ __host__ __device__ void getFeq(
 	feq[26] = w3 * (dRho + (3.f*cu26 + 4.5f*cu26*cu26 - 1.5f*u2) * (dRho + 1.f));	
 }
 
+__host__ __device__ inline float getFeqSingle( const float &rho, const float &ux, const float &uy, const float &uz, const int direction )
+{
+    const float dRho = rho - 1.f;
+    const float u2 = ux*ux + uy*uy + uz*uz;
+    const float cu = CX_DIRECTIONS[direction] * ux + CY_DIRECTIONS[direction] * uy + CZ_DIRECTIONS[direction] * uz;
+    return DIRECTION_WEIGHTS[direction] * (dRho + (3.f*cu + 4.5f*cu*cu - 1.5f*u2) * (dRho + 1.f));
+}
+
 __host__ __device__ void getFneq(const float (&f)[27], const float (&feq)[27], float (&fneq)[27])
 {
 	for ( int i = 0; i < 27; i++ ) fneq[i] = f[i] - feq[i];

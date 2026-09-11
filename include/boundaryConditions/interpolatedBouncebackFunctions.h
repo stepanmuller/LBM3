@@ -20,6 +20,7 @@
 // Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
 // Single node scheme eq (10)
 // Set l = gamma which also agrees with Martin Geier, 2015
+/*
 __cuda_callable__ void applyIBB( float (&fPre)[27], const float (&fPost)[27], const bool (&linkExists)[26], const float (&linkLength)[26], BCStruct &BC )
 {
 	float fPreOriginal[27];
@@ -41,6 +42,112 @@ __cuda_callable__ void applyIBB( float (&fPre)[27], const float (&fPost)[27], co
 							+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
 							+ wallMovementTerm;
 	}
+}
+
+__cuda_callable__ inline void unpackWallData( const uint32_t (&packed)[4] )
+{
+    constexpr uint32_t divider = 23u;
+    uint32_t digits[28]; // 1 wallID, 1 parentInterfaceMarker, 26 links
+
+    for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
+    {
+        uint32_t value = packed[packedIndex];
+        for( int digitIndex = 0; digitIndex < 7; digitIndex++ )
+        {
+            digits[7 * packedIndex + digitIndex] = value % divider;
+            value /= divider;
+        }
+    }
+
+    wallID = static_cast<int>( digits[0] );
+    parentInterfaceMarker = ( digits[1] == 1u );
+
+    for( int i = 0; i < 26; ++i )
+    {
+        const uint32_t code = digits[i + 2];
+        linkExists[i] = ( code != 0u );
+        if ( !linkExists[i] ) linkLength[i] = 0.f;
+        else linkLength[i] = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f);
+    }
+}
+*/
+
+// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
+// Single node scheme eq (10)
+// Set l = gamma which also agrees with Martin Geier, 2015
+__cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &nu, uint32_t (&packed)[4], uint32_t &wallLinkMarker, float &gxWall, float &gyWall, float &gzWall )
+{
+	constexpr uint32_t divider = 23u;
+	int direction = -1; // -1 is wallID, 0 is parentInterfaceMarker, from 1 we start using the link data
+	bool writeBuffer = false;
+	float fBuffer; 
+	// we use this to hold resulting fResult[inverseDirection] until we can overwrite fPost[inverseDirection]
+	// this is to avoid allocating all 26 floats for fResult
+	float rho, ux, uy, uz;
+	getRhoUxUyUz( rho, ux, uy, uz, fPost ); // we will need this to reconstruct fPre
+	const float omega1 = 1.f / (3.f * (nu * BC.nuMultiplier) + 0.5f);
+	for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
+    {
+        for( int codeIndex = 0; codeIndex < 7; codeIndex++ )
+        {
+            if ( direction >= 1 )
+            {
+				const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
+				const int code = packed[packedIndex] % divider;
+				const bool linkExists = ( code != 0u );
+				if ( !linkExists ) 
+				{
+					if ( writeBuffer ) fPost[ inverseDirection ] = fBuffer;
+					writeBuffer = false;
+					packed[packedIndex] /= divider;
+					direction++;
+					continue;
+				}
+				wallLinkMarker |= (1u << direction);
+				float gamma = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f);
+				// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
+				// from this wall we will be pulling f[inverseDirection] so that is what we need to calculate
+				if ( BC.overwriteIBBLinkLengths >= 0.f ) gamma = BC.overwriteIBBLinkLengths;
+				// need to restore fPreOriginal[ direction ] from fPost
+				// Geier 2015 (E.4) 
+				float feqDirection = getFeqSingle( rho, ux, uy, uz, direction );
+				float feqInverseDirection = getFeqSingle( rho, ux, uy, uz, inverseDirection );
+				float fPreDirection = 0.5f * ( fPost[ direction ] - fPost[ inverseDirection ] ) 
+								+ ( fPost[ direction ] + fPost[ inverseDirection ] - omega1 * ( feqDirection + feqInverseDirection ) ) / ( 2.f - 2.f * omega1 );
+				// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017, single node scheme eq (10)
+				const float eiDotFi = (float)CX_DIRECTIONS[ inverseDirection ] * BC.ux 
+									+ (float)CY_DIRECTIONS[ inverseDirection ] * BC.uy 
+									+ (float)CZ_DIRECTIONS[ inverseDirection ] * BC.uz;
+				const float wallMovementTerm = ( 2.f / ( 1.f + gamma ) ) * DIRECTION_WEIGHTS[ inverseDirection ] * eiDotFi * 3.f; 
+				const float fResultInverseDirection = (( 1.f - gamma ) / ( 1.f + gamma )) * fPreDirection 
+													+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
+													+ ( gamma / ( 1.f + gamma ) ) * fPost[ direction ]
+													+ wallMovementTerm;
+				// track force using momentum exchange method
+				// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
+				// Analysis on the force evaluation by the momentum exchange 
+				// method and a localized r­filling scheme for the lattice Boltzmann method, 2025
+				// eq (15)
+				gxWall += fResultInverseDirection * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux ) - fResultInverseDirection[ direction ] * ( CX_DIRECTIONS[ direction ] - BC.ux );
+				gyWall += fResultInverseDirection * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy ) - f[ direction ] * ( CY_DIRECTIONS[ direction ] - BC.uy );
+				gzWall += fResultInverseDirection * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz ) - f[ direction ] * ( CZ_DIRECTIONS[ direction ] - BC.uz );																	
+				
+				if ( direction%2 == 0 ) // this means the opposite direction was already processed -> we can overwrite fPost
+				{
+					fPost[ direction ] = fResultInverseDirection;
+					if ( writeBuffer ) fPost[ inverseDirection ] = fBuffer;
+					writeBuffer = false;
+				}
+				else // the opposite direction has not been processed yet -> we cannot overwrite fPost yet
+				{	 // and so we use a buffer
+					fBuffer = fResultInverseDirection;
+					writeBuffer = true; // this is a message for the next direction
+				}
+			}
+            packed[packedIndex] /= divider;
+            direction++;
+        }
+    }
 }
 
 int countOnesInBoolArray2D( const BoolArray2DType &boolArray )

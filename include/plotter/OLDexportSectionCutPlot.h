@@ -127,7 +127,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 			float f[27];
 			int cellReadIndex[27];
 			int fReadIndex[27];
-			getPreviousPostCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
+			getPreviousPostCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper );
 			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fArrayView(fReadIndex[direction], cellReadIndex[direction]);
 			
 			float rho, ux, uy, uz;
@@ -356,7 +356,7 @@ void exportSectionCutPlotToiletPaperZ( std::vector<GridStruct> &grids, const flo
 			float f[27];
 			int cellReadIndex[27];
 			int fReadIndex[27];
-			getPreviousPostCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
+			getPreviousPostCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper );
 			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fArrayView(fReadIndex[direction], cellReadIndex[direction]);
 			
 			float rho, ux, uy, uz;

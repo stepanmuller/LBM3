@@ -158,7 +158,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			float f[27];
 			int cellReadIndex[27];
 			int fReadIndex[27];
-			getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
+			getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper );
 			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
 			float rho, ux, uy, uz;
 			getRhoUxUyUz( rho, ux, uy, uz, f );

@@ -35,7 +35,7 @@ void applyInitialCondition( GridStruct &Grid )
 		
 		int cellWriteIndex[27];
 		int fWriteIndex[27];
-		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
+		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper );
 		for ( int direction = 0; direction < 27; direction++ ) fView( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );
@@ -67,7 +67,7 @@ void applyInitialCondition( GridStruct &Grid )
 			float f[27];
 			int cellIndex[27];
 			int fIndex[27];
-			getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper, Info );
+			getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper );
 			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fIndex[direction], cellIndex[direction]);
 			
 			// get rho, ux, uy, uz

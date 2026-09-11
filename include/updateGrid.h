@@ -43,13 +43,10 @@ void updateSingleGrid( GridStruct &Grid )
 		// read wallData if this is a wall adjacent cell. So far only unpack wallID and parentInterfaceMarker
 		uint32_t packed[4];
 		int wallID = -1; 
-		// here we dont want to allocate any more variables because it can still be a free fluid cell
-		// so dont waste memory by allocating 26 link lengths
 		if ( wallMap >= 0 )
 		{
 			const uint4 wallData = wallDataView( wallMap );
 			packed[0] = wallData.x; packed[1] = wallData.y; packed[2] = wallData.z;	packed[3] = wallData.w;
-			// so far unpack only wallID and parentInterfaceMarker
 			bool parentInterfaceMarker;
 			unpackWallID( packed, wallID, parentInterfaceMarker );
 			if ( parentInterfaceMarker ) trackForce = false;
@@ -62,19 +59,19 @@ void updateSingleGrid( GridStruct &Grid )
 							shifterView, iView, jView, kView, jPlusView, kPlusView, jkPlusView,
 							Info );
 							
-		// read pre collision fPre
-		float fPre[27];
+		// read pre collision f
+		float f[27];
 		int cellReadIndex[27];
 		int fReadIndex[27];
-		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper, Info );
-		for ( int direction = 0; direction < 27; direction++ )	fPre[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
+		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper );
+		for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
 		
 		// setup BC struct and load the current state into it
 		// we will then pass the current state into the getLocalBC function so that BC can also be a function of the current state 
 		// example: get forcing for rotating domain as a function of rho, ux, uy, uz
 		BCStruct BC;
 		BC.wallID = wallID;
-		getRhoUxUyUz( BC.rho, BC.ux, BC.uy, BC.uz, fPre );
+		getRhoUxUyUz( BC.rho, BC.ux, BC.uy, BC.uz, f );
 		getLocalBC( BC, iCell, jCell, kCell, Info );
 		
 		// add the rotor processing here. 
@@ -86,50 +83,45 @@ void updateSingleGrid( GridStruct &Grid )
 		// write rotor force for each rotor if trackForce is true
 		// put the complete final gx, gy, gz ( combination of global forcing and all rotors ) back into the BC struct where collision will read it
 		
-		// now solve the shorter free fluid branch
+		applyCollision( f, BC, Info.nu );
+		
+		// do writes for the fluid branch
 		if ( wallMap < 0 )
 		{
-			applyCollision( fPre, BC, Info.nu );
-			int cellWriteIndex[27];
+			int cellWriteIndex[27]; 
 			int fWriteIndex[27];
-			getPostCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
-			// here fPre is just incorrectly named, we are writing fPost
-			for ( int direction = 0; direction < 27; direction++ ) fView( fWriteIndex[direction], cellWriteIndex[direction] ) = fPre[direction]; 
+			getPostCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper );
+			for ( int direction = 0; direction < 27; direction++ ) fView( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction]; 
 			return;
 		}
 		
 		// if we got here, we are dealing with a wall adjacent fluid cell
-		bool linkExists[26];
-		float linkLength[26];
-		bool parentInterfaceMarker;
-		unpackWallData( packed, linkExists, linkLength, wallID, parentInterfaceMarker );
+		// apply IBB. f[direction] which would get streamed into a wall get overwritten.
+		// In their place, we will find f[inverseDirection] that we need to receive from the wall next round.
+		// use bit packed wallLinkMarker to remember which directions the walls are, also track the forces
+		uint32_t wallLinkMarker = 0u;
+		float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
+		if ( wallMap >= 0 ) applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall );
 		
-		// to apply interpolated bounceback we want to remember both fPre and fPost, so
-		float fPost[27];
-		for ( int direction = 0; direction < 27; direction++ ) fPost[direction] = fPre[direction];
-		applyCollision( fPost, BC, Info.nu );
-		
-		// now apply interpolated boundary condition, this will overwrite fPre
-		// fPre[direction] will then contain the value that should get pulled from the wall next iteration
-		applyIBB( fPre, fPost, linkExists, linkLength, BC );
-		
-		// write post collision distributions except for those that would run into a wall (we do not need those anymore)
-		int cellWriteIndex[27];
-		int fWriteIndex[27];
-		getPostCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
-		for ( int direction = 0; direction < 27; direction++ ) 
+		// write all directions. If there is a wall, switch the writing index to next pre-collision
+		int cellWriteIndex = 0; 
+		int fWriteIndex = 0;
+		for ( int direction = 0; direction < 27; direction++ )
 		{
-			if ( direction > 0 && linkExists[ direction-1 ] ) continue; // this one would hit a wall
-			fView( fWriteIndex[direction], cellWriteIndex[direction] ) = fPost[direction]; 
-		}
-		
-		// write distributions which will be pulled from walls the next iteration
-		getNextPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, Info );
-		for ( int direction = 1; direction < 27; direction++ ) 
-		{
-			const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
-			if ( !linkExists[ inverseDirection-1 ] ) continue; // link does not exist
-			fView( fWriteIndex[direction], cellWriteIndex[direction] ) = fPre[direction]; 
+			const bool linkExists = (wallLinkMarker & (1u << direction)) != 0u;
+			if ( linkExists ) 
+			{
+				// f[direction] would point into a wall, so instead we write the incoming distribution from the wall
+				const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
+				getNextPreCollisionIndexSingle( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, inverseDirection );
+				fView( fWriteIndex, cellWriteIndex ) = f[direction]; 
+			}
+			else
+			{
+				// regular post collision write of f[direction]
+				getPostCollisionIndexSingle( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper, direction );
+				fView( fWriteIndex, cellWriteIndex ) = f[direction]; 
+			}
 		}
 		
 		// last step: track force using momentum exchange method
@@ -143,10 +135,12 @@ void updateSingleGrid( GridStruct &Grid )
 			for ( int direction = 1; direction < 27; direction++ ) 
 			{
 				const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
-				if ( !linkExists[ inverseDirection-1 ] ) continue; // link does not exist -> no force
-				gxWall += fPost[ inverseDirection ] * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux ) - fPre[ direction ] * ( CX_DIRECTIONS[ direction ] - BC.ux );
-				gyWall += fPost[ inverseDirection ] * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy ) - fPre[ direction ] * ( CY_DIRECTIONS[ direction ] - BC.uy );
-				gzWall += fPost[ inverseDirection ] * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz ) - fPre[ direction ] * ( CZ_DIRECTIONS[ direction ] - BC.uz );
+				const bool linkExists = (wallLinkMarker & (1u << direction)) != 0u;
+				if ( !linkExists ) continue; // link does not exist -> no force
+				// so we have a problem here that we no longer have fPre.. gonna solve this later by integrating this into the IBB
+				gxWall += f[ inverseDirection ] * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux ) - f[ direction ] * ( CX_DIRECTIONS[ direction ] - BC.ux );
+				gyWall += f[ inverseDirection ] * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy ) - f[ direction ] * ( CY_DIRECTIONS[ direction ] - BC.uy );
+				gzWall += f[ inverseDirection ] * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz ) - f[ direction ] * ( CZ_DIRECTIONS[ direction ] - BC.uz );
 			}
 			gxWallView( wallMap ) += gxWall;
 			gyWallView( wallMap ) += gyWall;
@@ -186,7 +180,7 @@ void updateSingleGrid( GridStruct &Grid )
 			float f[27];
 			int cellIndex[27];
 			int fIndex[27];
-			getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper, Info );
+			getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper );
 			float rhoZ = 0.f;
 			for ( int direction = 0; direction < 27; direction++ )
 			{

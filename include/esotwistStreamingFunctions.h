@@ -14,7 +14,7 @@ void applyStreaming( GridStruct& Grid )
 // fIndex informs from which memory position in that cell should it be loaded
 // note that the opposing distributions swap memory positions each iteration
 
-__cuda_callable__ void getPreCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper, const InfoStruct &Info )
+__cuda_callable__ void getPreCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper )
 {
     cellIndex[OOO] = NBR.self;
     cellIndex[POO] = NBR.self;
@@ -70,7 +70,7 @@ __cuda_callable__ void getPreCollisionIndex( int (&cellIndex)[27], int (&fIndex)
     }
 }
 
-__cuda_callable__ void getPostCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper, const InfoStruct &Info )
+__cuda_callable__ void getPostCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper )
 {
     cellIndex[OOO] = NBR.self;
     cellIndex[POO] = NBR.iPlus;
@@ -126,8 +126,136 @@ __cuda_callable__ void getPostCollisionIndex( int (&cellIndex)[27], int (&fIndex
     }
 }
 
-__cuda_callable__ void getNextPreCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper, const InfoStruct &Info ) 
+__cuda_callable__ void getNextPreCollisionIndex( int (&cellIndex)[27], int (&fIndex)[27], const NBRStruct &NBR, const bool &esotwistFlipper ) 
 { 
 	const bool nextEsotwistFlipper = !esotwistFlipper;
-	getPreCollisionIndex( cellIndex, fIndex, NBR, nextEsotwistFlipper, Info ); 
+	getPreCollisionIndex( cellIndex, fIndex, NBR, nextEsotwistFlipper ); 
+}
+
+__cuda_callable__ inline void getPreCollisionIndexSingle( int &cellIndex, int &fIndex, const NBRStruct &NBR, const bool esotwistFlipper, const int &direction )
+{
+    switch (direction)
+    {
+        case OOO:
+        case POO:
+        case OOP:
+        case OPO:
+        case POP:
+        case PPO:
+        case OPP:
+        case PPP:
+            cellIndex = NBR.self;
+            break;
+
+        case MOO:
+        case MOP:
+        case MPO:
+        case MPP:
+            cellIndex = NBR.iPlus;
+            break;
+
+        case OMO:
+        case OMP:
+        case PMO:
+        case PMP:
+            cellIndex = NBR.jPlus;
+            break;
+
+        case OOM:
+        case POM:
+        case OPM:
+        case PPM:
+            cellIndex = NBR.kPlus;
+            break;
+
+        case MMO:
+        case MMP:
+            cellIndex = NBR.ijPlus;
+            break;
+
+        case MOM:
+        case MPM:
+            cellIndex = NBR.ikPlus;
+            break;
+
+        case OMM:
+        case PMM:
+            cellIndex = NBR.jkPlus;
+            break;
+
+        case MMM:
+            cellIndex = NBR.ijkPlus;
+            break;
+    }
+
+    fIndex = esotwistFlipper
+        ? INVERSE_DIRECTIONS[direction]
+        : direction;
+}
+
+__cuda_callable__ inline void getPostCollisionIndexSingle( int &cellIndex, int &fIndex, const NBRStruct &NBR, const bool esotwistFlipper, const int &direction )
+{
+    switch (direction)
+    {
+        case OOO:
+        case MOO:
+        case OOM:
+        case OMO:
+        case MOM:
+        case MMO:
+        case OMM:
+        case MMM:
+            cellIndex = NBR.self;
+            break;
+
+        case POO:
+        case POM:
+        case PMO:
+        case PMM:
+            cellIndex = NBR.iPlus;
+            break;
+
+        case OPO:
+        case OPM:
+        case MPO:
+        case MPM:
+            cellIndex = NBR.jPlus;
+            break;
+
+        case OOP:
+        case MOP:
+        case OMP:
+        case MMP:
+            cellIndex = NBR.kPlus;
+            break;
+
+        case PPO:
+        case PPM:
+            cellIndex = NBR.ijPlus;
+            break;
+
+        case POP:
+        case PMP:
+            cellIndex = NBR.ikPlus;
+            break;
+
+        case OPP:
+        case MPP:
+            cellIndex = NBR.jkPlus;
+            break;
+
+        case PPP:
+            cellIndex = NBR.ijkPlus;
+            break;
+    }
+
+    fIndex = esotwistFlipper
+        ? direction
+        : INVERSE_DIRECTIONS[direction];
+}
+
+__cuda_callable__ void getNextPreCollisionIndexSingle( int &cellIndex, int &fIndex, const NBRStruct NBR, const bool &esotwistFlipper, const int &direction ) 
+{ 
+	const bool nextEsotwistFlipper = !esotwistFlipper;
+	getPreCollisionIndexSingle( cellIndex, fIndex, NBR, nextEsotwistFlipper, direction ); 
 }

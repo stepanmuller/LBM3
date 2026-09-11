@@ -204,7 +204,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			NBRStruct NBRofNBR;
 			getCompressedNBR( nbr, NBRofNBR, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
 			int nbrCellReadIndex[27], nbrFReadIndex[27];
-			getPreCollisionIndex( nbrCellReadIndex, nbrFReadIndex, NBRofNBR, esotwistFlipperFine, InfoFine );
+			getPreCollisionIndex( nbrCellReadIndex, nbrFReadIndex, NBRofNBR, esotwistFlipperFine );
 			float fNbr[27];
 			for ( int direction = 0; direction < 27; direction++ ) fNbr[direction] = fViewFine( nbrFReadIndex[direction], nbrCellReadIndex[direction] );
 			
@@ -377,7 +377,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		getCompressedNBR( cellCoarse, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
 		int cellWriteIndex[27];
 		int fWriteIndex[27];
-		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperCoarse, InfoCoarse );
+		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperCoarse );
 		for ( int direction = 0; direction < 27; direction++ ) fViewCoarse( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
 	};
 	
@@ -422,7 +422,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		NBRStruct NBR;
 		getCompressedNBR( cellCoarse, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
 		int cellReadIndex[27], fReadIndex[27];
-		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse, InfoCoarse );
+		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
 		
 		float fBase[27];
 		for ( int direction = 0; direction < 27; direction++ ) fBase[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
@@ -485,7 +485,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			NBRStruct NBRofNBR;
 			getCompressedNBR( nbr, NBRofNBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
 			int nbrCellReadIndex[27], nbrFReadIndex[27];
-			getPreCollisionIndex( nbrCellReadIndex, nbrFReadIndex, NBRofNBR, esotwistFlipperCoarse, InfoCoarse );
+			getPreCollisionIndex( nbrCellReadIndex, nbrFReadIndex, NBRofNBR, esotwistFlipperCoarse );
 			
 			float fNbr[27];
 			for ( int direction = 0; direction < 27; direction++ ) fNbr[direction] = fViewCoarse( nbrFReadIndex[direction], nbrCellReadIndex[direction] );
@@ -614,7 +614,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			getCompressedNBR( cellFine, NBR, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
 			int cellWriteIndex[27];
 			int fWriteIndex[27];
-			getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperFine, InfoFine );
+			getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperFine );
 			
 			const float dx = cellFineDx[which];
 			const float dy = cellFineDy[which];
