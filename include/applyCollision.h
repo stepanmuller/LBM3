@@ -302,20 +302,24 @@ __host__ __device__ void applyCollision(float (&f)[27], const BCStruct& BC, cons
         Cs_021 = 0.5f * (-Eq122 + Eq119);
         Cs_111 = (1.f - omega111) * C_111;
 
-        // omega6 = omega7 = omega8 = 1.
         const float Eq43RHS =
-            (2.f / 3.f) * (1.f / omega1 - 0.5f) * omega6 * A * rho * (Dxu - 2.f * Dyv + Dzw) +
-            (1.f - omega6) * (C_220 - 2.f * C_202 + C_022);
-        const float Eq44RHS =
-            (2.f / 3.f) * (1.f / omega1 - 0.5f) * omega6 * A * rho * (Dxu + Dyv - 2.f * Dzw) +
-            (1.f - omega6) * (C_220 + C_202 - 2.f * C_022);
-        const float Eq45RHS =
-            -(4.f / 3.f) * (1.f / omega1 - 0.5f) * omega7 * A * rho * (Dxu + Dyv + Dzw) +
-            (1.f - omega7) * (C_220 + C_202 + C_022);
+			(2.f / 3.f) * (1.f / omega1 - 0.5f) * omega6 * A * rho
+				* (Dxu - 2.f * Dyv + Dzw)
+			+ (1.f - omega6) * (C_220 - 2.f * C_202 + C_022);
 
-        Cs_220 = (Eq43RHS + Eq44RHS + Eq45RHS) / 3.f;
-        Cs_202 = (-Eq43RHS + Eq45RHS) / 3.f;
-        Cs_022 = (-Eq44RHS + Eq45RHS) / 3.f;
+		const float Eq44RHS =
+			(2.f / 3.f) * (1.f / omega1 - 0.5f) * omega6 * A * rho
+				* (-2.f * Dxu + Dyv + Dzw)
+			+ (1.f - omega6) * (C_220 + C_202 - 2.f * C_022);
+
+		const float Eq45RHS =
+			-(4.f / 3.f) * (1.f / omega1 - 0.5f) * omega7 * A * rho
+				* (Dxu + Dyv + Dzw)
+			+ (1.f - omega7) * (C_220 + C_202 + C_022);
+
+		Cs_220 = (Eq43RHS + Eq44RHS + Eq45RHS) / 3.f;
+		Cs_202 = (-Eq43RHS + Eq45RHS) / 3.f;
+		Cs_022 = (-Eq44RHS + Eq45RHS) / 3.f;
         Cs_211 = -(1.f / 3.f) * (1.f / omega1 - 0.5f) * omega8 * B * rho * DywDzv + (1.f - omega8) * C_211;
         Cs_121 = -(1.f / 3.f) * (1.f / omega1 - 0.5f) * omega8 * B * rho * DxwDzu + (1.f - omega8) * C_121;
         Cs_112 = -(1.f / 3.f) * (1.f / omega1 - 0.5f) * omega8 * B * rho * DxvDyu + (1.f - omega8) * C_112;

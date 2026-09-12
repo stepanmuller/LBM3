@@ -797,6 +797,10 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	Grid.Info = GridBuilder.Info;
 	InfoStruct &Info = Grid.Info;
 	
+	// TEMPORARY START
+	Grid.linkLengthArray = GridBuilder.linkLengthArray;
+	// TEMPORARY END
+	
 	// 2) build scans to be able to build compressed IJKNBR
 	IntArrayType firstInRowArray( Info.cellCount );
 	IntArrayType scanArray( Info.cellCount );
@@ -931,6 +935,9 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	Grid.Wall.gxArray.setSize( Grid.Wall.wallCount );
 	Grid.Wall.gyArray.setSize( Grid.Wall.wallCount );
 	Grid.Wall.gzArray.setSize( Grid.Wall.wallCount );
+	Grid.Wall.gxArray.setValue( 0.f );
+	Grid.Wall.gyArray.setValue( 0.f );
+	Grid.Wall.gzArray.setValue( 0.f );
 	
 	if ( !iAmFinest )
 	{

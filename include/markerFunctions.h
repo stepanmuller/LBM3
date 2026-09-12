@@ -80,6 +80,7 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 				const int rayIndex = ( cellCountX * downsample ) * jFine + iFine;
 				const long long startingPoint = hitCounterScanView( rayIndex );
 				const long long endingPoint = hitCounterScanView( rayIndex + 1 );
+				if (startingPoint == endingPoint) return; // No solid intervals: fluid exists
 				for ( long long startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2LL )
 				{
 					kEnd = rayMapView( startIndex + 1LL );
@@ -138,6 +139,7 @@ void markSingleFinerFluid( BoolArrayType &markerArray, const RayMapStruct &rayMa
 				const int rayIndex = ( cellCountX * downsample ) * jFine + iFine;
 				const long long startingPoint = hitCounterScanView( rayIndex );
 				const long long endingPoint = hitCounterScanView( rayIndex + 1 );
+				if (startingPoint == endingPoint) return; // No solid intervals: fluid exists
 				for ( long long startIndex = startingPoint; startIndex < endingPoint; startIndex = startIndex + 2LL )
 				{
 					kEnd = rayMapView( startIndex + 1 );

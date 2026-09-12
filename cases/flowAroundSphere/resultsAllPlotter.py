@@ -1,0 +1,273 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator, AutoMinorLocator
+
+achenbach = np.reshape(np.array([46074.52813775765, 0.49815816771577437,
+	50851.19396976338, 0.48227881611045637,
+	53021.817683989735, 0.4796878905336419,
+	57920.58097114729, 0.4843362758837092,
+	62195.79483823301, 0.5022486381611619,
+	65174.98530239113, 0.5154732248700795,
+	69779.11820784914, 0.5128659998925196,
+	69757.29776075356, 0.5043156059181829,
+	74846.48324922624, 0.5004244635610771,
+	82845.33715932553, 0.5033546204159044,
+	88135.01812227066, 0.5075917854680003,
+	94163.58472873222, 0.5079785566648537,
+	103079.26913198289, 0.5096329458405078,
+	107507.86623113943, 0.5143098551418794,
+	108187.52443313845, 0.5057553863173564,
+	112884.61222088203, 0.5038884540878856,
+	117850.11405668933, 0.5086122618964946,
+	122580.5991878125, 0.4961184127892802,
+	126073.18051574561, 0.5106489795503961,
+	133448.08304687592, 0.5159580754471125,
+	139109.48961906086, 0.5215734925470727,
+	146052.56595023716, 0.5135273141206776,
+	164105.86887242142, 0.5182058458161051,
+	163550.7873505093, 0.5093010719308869,
+	180438.86729070926, 0.5166629207715898,
+	191218.1353484576, 0.5121737469870208,
+	203240.7967770833, 0.5047137999010911,
+	209620.3152972674, 0.5124140405252083,
+	220111.33059422002, 0.507930526254787,
+	222727.4228767125, 0.49604743304934457,
+	237142.887607405, 0.49422742762468186,
+	260066.36066022742, 0.5051557136307903,
+	279812.4721140465, 0.49650066580733915,
+	281225.96385011834, 0.5086702719165084,
+	296254.6480883734, 0.5086382013363382,
+	294292.2468429322, 0.4943913177218755,
+	308139.5706758132, 0.49555057486979487,
+	301945.15379297326, 0.48457795600286285,
+	316413.60725385713, 0.4664385057202339,
+	311504.0768578398, 0.4575412778538793,
+	323536.65314049314, 0.4471265927566742,
+	335206.6692931965, 0.4530426715457307,
+	329933.8756273225, 0.43820767008608674,
+	335166.6293927189, 0.4079146489843736,
+	338054.42007665394, 0.3912832234090156,
+	342035.1573669714, 0.37643124340692863,
+	346416.21144380706, 0.3476245522082536,
+	345822.3346491138, 0.3425783879063156,
+	345173.24476427655, 0.33307889340941055,
+	349419.9006354035, 0.29061532294617,
+	350925.7813410331, 0.2825964988381554,
+	350822.90181274887, 0.2745805044872148,
+	353734.16828801495, 0.24933930720158726,
+	361508.8784668327, 0.21577673761413318,
+	364184.37559655734, 0.2080529156810672,
+	359613.7568451337, 0.1976693579116744,
+	371300.63167397695, 0.15103708365247792,
+	375098.0663672194, 0.13618604690274894,
+	388315.7307073224, 0.12013236339663469,
+	363410.0406465635, 0.10800048738178336,
+	379799.49036197405, 0.09995713871246215,
+	383446.4205524435, 0.11004569430690636,
+	395173.3041362262, 0.09636994999518178,
+	402348.5532112887, 0.0859675271786301,
+	379601.56747267337, 0.08570648208856768,
+	353680.3926432146, 0.0777338773460926,
+	380042.9119655036, 0.07561132372761781,
+	404679.77073209244, 0.0764633164199352,
+	364532.5726617549, 0.0667301311513483,
+	379824.23797802173, 0.05987622370540091,  
+	392901.1167421944, 0.06430880234849301,
+	420256.7075623241, 0.06248596716675647,
+	422953.41119741934, 0.06990441114893631,
+	457937.4228880931, 0.06569892051102055,
+	487639.79804025317, 0.0674415792423314,
+	504538.202898458, 0.0778119314787129,
+	547059.9514003539, 0.07123038815112326,
+	582580.8798656663, 0.07475437896042103,
+	602612.2419838912, 0.0779994028848553,
+	632812.8317353092, 0.07529722069242073,
+	643778.4027694907, 0.08449039398608182,
+	682370.5615986714, 0.0853452164354731,
+	725565.4497408275, 0.08887015049712887,
+	747057.2861376383, 0.09152422681930805,
+	800295.3422970026, 0.08970044838521352,
+	788451.2787646463, 0.10069476205637817,
+	892563.8385147711, 0.10061835861538437,
+	948950.8530418518, 0.10087751720073102,
+	966779.4117866278, 0.10739774912505384,
+	984900.1439030403, 0.11273042633071895,
+	1010698.497834817, 0.10796417216600229,
+	1059841.9775250521, 0.10823182002257026,
+	1182085.745425804, 0.12033728497139917,
+	1286255.8062735389, 0.12681695704433027,
+	1371991.357874572, 0.1327151140385857,
+	1509148.0841283156, 0.1421570701416559,
+	1587571.2225191342, 0.14568860696981722,
+	1672683.2998609294, 0.150109866584614,
+	1700818.217814965, 0.1456461606137095,
+	1841999.081674307, 0.14886288696740524,
+	2032488.8588903705, 0.16008428864374635,
+	2228137.034407002, 0.16091835954126277,
+	2469342.408507393, 0.1661991578672407,
+	2495247.5775078926, 0.15847344942945885,
+	2653055.730625605, 0.16051394009279218,
+	2703076.5395616116, 0.16881550409510193,
+	2990852.793562917, 0.17172213623612198,
+	3214167.977934396, 0.1728653580939562,
+	3421304.995824241, 0.1639200243573462,
+	3632232.815504986, 0.1668521243120309,
+	4051839.978354149, 0.18341091945582677,
+	4508793.041717227, 0.17443823140083625,
+	4884276.995539041, 0.18448339738681485,
+	5297067.136883549, 0.18383962765251471,
+	5924743.715197603, 0.18941165514400926]), (-1, 2))
+
+cliftX = np.logspace(np.log10(1000), np.log10(10000), num=100, endpoint=True, base=10)
+cliftY = 1.0357 * 10**(-2.4571 + 2.5558 * np.log10(cliftX) - 0.9295 * np.log10(cliftX)**2 + 0.1049 * np.log10(cliftX)**3)
+
+MikhailovX = np.logspace(np.log10(100), np.log10(118300), num=200, endpoint=True, base=10)
+MikhailovY1 = 1.0357 * 777 * ( 669806/875 + MikhailovX * 114976/1155 + MikhailovX**2 * 707/1380 ) / ( 646 * MikhailovX * ( 32869/952 + MikhailovX * 924/643 + MikhailovX**2 / 385718 ) )
+MikhailovY2 = 1.0357 * (3808 * ((1617933/2030) + (178861/1063)*MikhailovX + (1219/1084)*MikhailovX**2)) / (681*MikhailovX * ((77531/422) + (13529/976)*MikhailovX - (1/71154)*MikhailovX**2))
+
+MorrisonX = np.logspace(np.log10(100), np.log10(1000000), num=100, endpoint=True, base=10)
+MorrisonY = 1.0357 * (24/MorrisonX) + ((26/50)*MorrisonX) / (1 + (MorrisonX/5)**1.52) + (0.411 * (MorrisonX/263000)**-7.94) / (1 + (MorrisonX/263000)**-8) + (MorrisonX**0.8 / 461000)
+
+# ==========================================
+# 1. DATA DEFINITION
+# ==========================================
+filename = "resultsAll"
+supTitle = r"\textbf{Sphere drag coefficient vs Reynolds number}"
+xLabel = r"Re [1]"
+yLabel = r"$C_D$ [1]"
+
+xMin = 50
+xMax = 20000000
+yMin = 0
+yMax = 1.2
+
+# Grouping for easy iteration
+xList = []
+yList = []
+yLegendList = []
+yColorList = []
+yStyleList = []
+
+# achenbach 1
+xList.append(achenbach[:, 0])
+yList.append(achenbach[:, 1])
+yLegendList.append("Achenbach")
+yColorList.append("gray")
+yStyleList.append(".")
+
+#Mikhailov 2
+xList.append(MikhailovX)
+yList.append(MikhailovY2)
+yLegendList.append("Mikhailov 2")
+yColorList.append("gray")
+yStyleList.append("-")
+
+#Morrison
+xList.append(MorrisonX)
+yList.append(MorrisonY)
+yLegendList.append("Morrison")
+yColorList.append("gray")
+yStyleList.append(".-")
+
+"""
+# Cumulant AllOne, D/res = 160
+xList.append(np.array([100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000]))
+yList.append(np.array([1.149, 0.829, 0.612, 0.508, 0.455, 0.451, 0.487, 0.540, 0.565, 0.579, 0.587, 0.571, 0.584, 0.581, 0.591, 0.583]))
+yLegendList.append("Cumulant AllOne, D/res = 160")
+yColorList.append("black")
+yStyleList.append("X") 
+
+# Cumulant AllOne, D/res = 320
+xList.append(np.array([1000000]))
+yList.append(np.array([0.575]))
+yLegendList.append("Cumulant AllOne, D/res = 320")
+yColorList.append("purple")
+yStyleList.append("X") 
+"""
+# Cumulant AllOne, D/res = 160, LES Sm 0.1
+xList.append(np.array([100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000]))
+yList.append(np.array([1.150, 0.832, 0.624, 0.514, 0.467, 0.468, 0.481, 0.5, 0.501, 0.507, 0.504, 0.503, 0.505, 0.519, 0.523, 0.519]))
+yLegendList.append("Cumulant AllOne, D/res = 160, LES 0.1")
+yColorList.append("black")
+yStyleList.append("X") 
+
+# DIAD Cumulant AllOne, D/res = 640, LES Sm 0.1
+xList.append(np.array([1000000]))
+yList.append(np.array([0.210]))
+yLegendList.append("DIAD Cumulant AllOne, D/res = 640, LES 0.1")
+yColorList.append("red")
+yStyleList.append("X") 
+
+# Metacentrum, DIAD Cumulant AllOne, D/res = 800, LES Sm 0.1
+xList.append(np.array([50000, 100000, 200000, 300000, 400000, 500000, 600000, 800000, 1000000]))
+yList.append(np.array([0.442, 0.363, 0.3, 0.293, 0.320, 0.295, 0.278, 0.312, 0.316]))
+yLegendList.append("Metacentrum, DIAD Cumulant AllOne, D/res = 800, LES 0.1")
+yColorList.append("purple")
+yStyleList.append("X") 
+
+# LBM3, D/res = 400, 20 IBB link steps
+xList.append(np.array([100000]))
+yList.append(np.array([0.376]))
+yLegendList.append("LBM3, D/res = 400, 20 IBB link step")
+yColorList.append("Orange")
+yStyleList.append("X") 
+
+# ==========================================
+# 2. PLOT STYLING (LaTeX Enabled)
+# ==========================================
+plt.rcParams.update({
+    "text.usetex": True,
+    "font.family": "serif",
+    "font.serif": ["Computer Modern Roman"],
+    "font.size": 20,
+    "axes.titlesize": 20,
+    "axes.labelsize": 20,
+    "xtick.labelsize": 20,
+    "ytick.labelsize": 20,
+    "legend.fontsize": 20,
+})
+
+
+# ==========================================
+# 3. PLOT GENERATION
+# ==========================================
+# Single subplot, maintaining the 16:9 aspect ratio
+fig, ax = plt.subplots(1, 1, figsize=(12, 9))
+
+# Loop through all datasets and plot them
+for i in range(len(yList)):
+    ax.plot(xList[i], yList[i], yStyleList[i], color=yColorList[i], label=yLegendList[i], linewidth=2.0, markersize=8, alpha=0.8)
+
+# Apply limits
+ax.set_xlim(xMin, xMax)
+ax.set_ylim(yMin, yMax)
+
+ax.set_xscale('log')
+
+# Set labels and title
+ax.set_xlabel(xLabel)
+ax.set_ylabel(yLabel)
+ax.set_title(supTitle)
+
+# Visual grid and locators
+# 1. Y-axis Locators: Increase major bins slightly and enable minor ticks
+ax.yaxis.set_major_locator(MaxNLocator(nbins=10)) 
+ax.yaxis.set_minor_locator(AutoMinorLocator(5)) # Divides each major y-interval into 5 minor intervals
+# 2. Denser, highly visible grid
+# Major grid lines (solid, darker)
+ax.grid(which='major', color='black', linestyle='-', linewidth=0.8, alpha=0.6)
+# Minor grid lines (dashed, lighter, fills in the log scale and new y-axis minor ticks)
+ax.grid(which='minor', color='dimgray', linestyle='--', linewidth=0.5, alpha=0.4)
+
+# Add a legend, mimicking the style of the old square bbox
+ax.legend(loc='upper right', frameon=True, fancybox=False, edgecolor='black', framealpha=0.8, borderpad=0.5)
+
+# Clean layout
+plt.tight_layout()
+
+# Save the plot
+plt.savefig(filename, dpi=300)
+plt.close()
+
+print(f"Successfully plotted and saved to: {filename}")

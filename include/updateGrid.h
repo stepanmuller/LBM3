@@ -30,6 +30,10 @@ void updateSingleGrid( GridStruct &Grid )
 	auto gyWallView = Grid.Wall.gyArray.getView();
 	auto gzWallView = Grid.Wall.gzArray.getView();
 	
+	// TEMPORARY START
+	auto linkLengthView = Grid.linkLengthArray.getConstView();
+	// TEMPORARY END
+	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
 		// read wallMap, early return if the cell itself is a wall
@@ -101,7 +105,7 @@ void updateSingleGrid( GridStruct &Grid )
 		// use bit packed wallLinkMarker to remember which directions the walls are, also track the forces
 		uint32_t wallLinkMarker = 0u;
 		float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
-		applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall );
+		applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall, wallMap, linkLengthView );
 		
 		// write all directions. If there is a wall, switch the writing index to next pre-collision and inverse direction
 		int cellWriteIndex = 0; 
@@ -221,6 +225,9 @@ void updateSingleGrid( GridStruct &Grid )
 				rhoNonReflective = getNonReflectiveRho( rhoZ, rhoPrev, uNormalPrev );
 			}
 			else useNonReflective = false;
+			
+			// also disable non reflectivity if BC.rhoReflectionTolerance >= 1.f
+			if ( BC.rhoReflectionTolerance >= 1.f ) useNonReflective = false;
 			
 			// adjust rho, ux, uy, uz by combining Dirichlet with non reflectivity
 			const float &dRhoMax = BC.rhoReflectionTolerance;

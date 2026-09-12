@@ -20,7 +20,8 @@
 // Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
 // Single node scheme eq (10)
 // Set l = gamma which also agrees with Martin Geier, 2015
-__cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &nu, uint32_t (&packed)[4], uint32_t &wallLinkMarker, float &gxWall, float &gyWall, float &gzWall )
+__cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &nu, uint32_t (&packed)[4], uint32_t &wallLinkMarker, float &gxWall, float &gyWall, float &gzWall,
+									const int &wallMap, FloatConstView2DType linkLengthView )
 {
 	constexpr uint32_t divider = 23u;
 	int direction = -1; // -1 is wallID, 0 is interfaceOverlapMarker, from 1 we start using the link data
@@ -50,6 +51,10 @@ __cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &
 				}
 				wallLinkMarker |= (1u << direction);
 				float gamma = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f);
+				
+				// TEMPORARY START
+				gamma = std::clamp( linkLengthView( direction, wallMap ), 0.00001f, 1.f);
+				// TEMPORARY END
 				// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
 				// from this wall we will be pulling f[inverseDirection] so that is what we need to calculate
 				if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;

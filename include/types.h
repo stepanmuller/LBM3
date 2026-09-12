@@ -32,7 +32,7 @@ using BoolArrayType = TNL::Containers::Vector< bool, TNL::Devices::Cuda, size_t 
 using BoolArrayTypeCPU = TNL::Containers::Vector< bool, TNL::Devices::Host, size_t >;
 												
 using IntArrayType = TNL::Containers::Vector< int, TNL::Devices::Cuda, size_t >;
-using IntConstViewType = TNL::Containers::VectorView< const int, TNL::Devices::Cuda, size_t >;
+using IntConstViewType = IntArrayType::ConstViewType;
 using IntArrayTypeCPU = TNL::Containers::Vector< int, TNL::Devices::Host, size_t >;
 
 using LongLongArrayType = TNL::Containers::Vector< long long, TNL::Devices::Cuda, size_t >;
@@ -63,6 +63,8 @@ using FloatArray2DType = TNL::Containers::NDArray< float,
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
 												std::index_sequence< 0, 1 >,
 												TNL::Devices::Cuda >;
+using FloatConstView2DType = FloatArray2DType::ConstViewType;
+
 using FloatArray2DTypeCPU = TNL::Containers::NDArray< float, 
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
 												std::index_sequence< 0, 1 >,
@@ -186,7 +188,9 @@ struct GridStruct { InfoStruct Info;
 					CompressedIJKNBRStruct IJKNBR;
 					WallStruct Wall;
 					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
-					std::vector<OpenBCArrayStruct> openBCs; }; 	
+					std::vector<OpenBCArrayStruct> openBCs; 
+					FloatArray2DType linkLengthArray; // Temporary to find out what is happening
+					}; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 
