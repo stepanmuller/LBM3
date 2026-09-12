@@ -1,9 +1,9 @@
-constexpr float RES_GLOBAL = 1.0f; 	
-constexpr int GRID_LEVEL_COUNT = 1;
+constexpr float RES_GLOBAL = 2.0f; 	
+constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
 int reportChunk = 31;
-int plotterChunk = 1000;
+int plotterChunk = 20;
 constexpr int iterationCount = 20000;
 
 constexpr float uzInlet = 0.01f; 														// also works as nominal LBM Mach number	
@@ -19,10 +19,10 @@ constexpr float dtPhysGlobal = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 		
 constexpr float angularVelocity = -198.967f;											// rad/s
 const float boundaryLayerThickness = 2.f;												// mm
 
-
 #include "../../include/types.h"
 
 std::string STLPathStator = "../../../../ns300/ns300_STATOR_ENLARGED_TIP_GAP.STL";
+//std::string STLPathStator = "../../../../ns300/ns300_STATOR.STL";
 std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
 std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
 
@@ -104,7 +104,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
-	if ( BC.wallID == 1 ) 
+	if ( BC.wallID == 1 || BC.wallID == 2 ) 
 	{
 		BC.ux = - vt * (y / r);
 		BC.uy = vt * (x / r);

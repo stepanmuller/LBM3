@@ -103,7 +103,7 @@ struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL;
 					
 struct BCStruct { 	float rho = 1.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; 
 					float gx = 0.f; float gy = 0.f; float gz = 0.f; 
-					int wallID = -1; float overwriteIBBLinkLengths = -1.f;
+					int wallID = -1; float overwriteIBBLinks = -1.f;
 					bool dirichletU = false; bool dirichletRho = false; 
 					float rhoReflectionTolerance = 0.0001f; int openBCID = 0; 
 					float collisionLimiter = 0.01f; float nuMultiplier = 1.f; };

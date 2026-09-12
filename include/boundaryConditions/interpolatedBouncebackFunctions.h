@@ -107,7 +107,7 @@ __cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &
 				float gamma = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f);
 				// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
 				// from this wall we will be pulling f[inverseDirection] so that is what we need to calculate
-				if ( BC.overwriteIBBLinkLengths >= 0.f ) gamma = BC.overwriteIBBLinkLengths;
+				if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;
 				// need to restore fPreOriginal[ direction ] from fPost
 				// Geier 2015 (E.4) 
 				float feqDirection = getFeqSingle( rho, ux, uy, uz, direction );
