@@ -1,10 +1,10 @@
-constexpr float RES_GLOBAL = 1.f; //2.0f; 	
-constexpr int GRID_LEVEL_COUNT = 1; //3;
+constexpr float RES_GLOBAL = 1.0f; 	
+constexpr int GRID_LEVEL_COUNT = 1;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
 int reportChunk = 31;
-int plotterChunk = 200;
-constexpr int iterationCount = 100000;
+int plotterChunk = 1000;
+constexpr int iterationCount = 20000;
 
 constexpr float uzInlet = 0.01f; 														// also works as nominal LBM Mach number	
 constexpr float nuPhys = 1e-6;															// m2/s water
@@ -98,13 +98,19 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	const float r = std::sqrt( x * x + y * y );
 	const float vtPhys = angularVelocity * (r / 1000.f);
 	const float vt = vtPhys * ( uzInlet / uzInletPhys );
+	if ( BC.wallID == 0 ) 
+	{
+		BC.ux = 0.f;
+		BC.uy = 0.f;
+		BC.uz = 0.f;
+	}
 	if ( BC.wallID == 1 ) 
 	{
 		BC.ux = - vt * (y / r);
 		BC.uy = vt * (x / r);
 		BC.uz = 0.f;
 	}
-	if ( kCell == Info.cellCountZ-1 || jCell == Info.cellCountY-1 ) BC.collisionLimiter = 0.f;
+	if ( kCell >= Info.cellCountZ-20 || jCell >= Info.cellCountY-20 ) BC.collisionLimiter = 0.f;
 }
 
 #include "../../include/gridBuilderFunctions.h"

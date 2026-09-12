@@ -124,24 +124,9 @@ void updateSingleGrid( GridStruct &Grid )
 			}
 		}
 		
-		// last step: track force using momentum exchange method
-		// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
-		// Analysis on the force evaluation by the momentum exchange 
-		// method and a localized r­filling scheme for the lattice Boltzmann method, 2025
-		// eq (15)
+		// last step: write force
 		if ( trackForce )
 		{
-			float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
-			for ( int direction = 1; direction < 27; direction++ ) 
-			{
-				const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
-				const bool linkExists = (wallLinkMarker & (1u << direction)) != 0u;
-				if ( !linkExists ) continue; // link does not exist -> no force
-				// so we have a problem here that we no longer have fPre.. gonna solve this later by integrating this into the IBB
-				gxWall += f[ inverseDirection ] * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux ) - f[ direction ] * ( CX_DIRECTIONS[ direction ] - BC.ux );
-				gyWall += f[ inverseDirection ] * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy ) - f[ direction ] * ( CY_DIRECTIONS[ direction ] - BC.uy );
-				gzWall += f[ inverseDirection ] * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz ) - f[ direction ] * ( CZ_DIRECTIONS[ direction ] - BC.uz );
-			}
 			gxWallView( wallMap ) += gxWall;
 			gyWallView( wallMap ) += gyWall;
 			gzWallView( wallMap ) += gzWall;
