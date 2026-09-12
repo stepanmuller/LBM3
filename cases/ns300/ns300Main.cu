@@ -3,7 +3,7 @@ constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
 int reportChunk = 31;
-int plotterChunk = 20;
+int plotterChunk = 200;
 constexpr int iterationCount = 20000;
 
 constexpr float uzInlet = 0.01f; 														// also works as nominal LBM Mach number	

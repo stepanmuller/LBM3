@@ -187,10 +187,7 @@ __cuda_callable__ inline void getPreCollisionIndexSingle( int &cellIndex, int &f
             cellIndex = NBR.ijkPlus;
             break;
     }
-
-    fIndex = esotwistFlipper
-        ? INVERSE_DIRECTIONS[direction]
-        : direction;
+    fIndex = esotwistFlipper ? INVERSE_DIRECTIONS[direction] : direction;
 }
 
 __cuda_callable__ inline void getPostCollisionIndexSingle( int &cellIndex, int &fIndex, const NBRStruct &NBR, const bool esotwistFlipper, const int &direction )
@@ -248,10 +245,7 @@ __cuda_callable__ inline void getPostCollisionIndexSingle( int &cellIndex, int &
             cellIndex = NBR.ijkPlus;
             break;
     }
-
-    fIndex = esotwistFlipper
-        ? direction
-        : INVERSE_DIRECTIONS[direction];
+    fIndex = esotwistFlipper ? direction : INVERSE_DIRECTIONS[direction];
 }
 
 __cuda_callable__ void getNextPreCollisionIndexSingle( int &cellIndex, int &fIndex, const NBRStruct NBR, const bool &esotwistFlipper, const int &direction ) 

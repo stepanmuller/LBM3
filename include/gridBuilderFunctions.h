@@ -517,6 +517,8 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	GridBuilder.NBR.kMinusArray.resize( Info.cellCount );
 	GridBuilder.NBR.isGeometricBitPackedMarkerArray.resize( Info.cellCount );
 	GridBuilder.wallMarkerArray.resize( Info.cellCount );
+	GridBuilder.interfaceOverlapMarkerArray.setSize( Info.cellCount );
+	GridBuilder.interfaceOverlapMarkerArray.setValue( false );
 	if (!iAmCoarsest) GridBuilder.parentMapArray.resize( Info.cellCount );
 	if (!iAmFinest) GridBuilder.fineToCoarseMarkerArray.resize( Info.cellCount );
 	if (!iAmFinest) GridBuilder.coarseToFineMarkerArray.resize( Info.cellCount );
@@ -671,6 +673,27 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	GridBuilder.linkLengthArray.setSizes( 27, wallAdjacentCellCount );
 	buildLinkLengthArray( GridBuilder, gridStaticSTLs );
 	
+	// 7) Fill interfaceOverlapMarker
+	// mark our fineToCoarse interface if applicable
+	if ( !iAmFinest ) GridBuilder.interfaceOverlapMarkerArray += GridBuilder.fineToCoarseMarkerArray;
+	// mark the parent interface but only the coarseToFine part
+	if ( !iAmCoarsest )
+	{
+		auto interfaceOverlapMarkerView = GridBuilder.interfaceOverlapMarkerArray.getView();
+		auto parentMapView = GridBuilder.parentMapArray.getConstView();
+		auto coarseCoarseToFineMarkerView = GridBuilderCoarse.coarseToFineMarkerArray.getConstView();
+		auto overlapLambda = [=] __cuda_callable__ ( const int cell ) mutable
+		{	
+			const int parentCell = parentMapView( cell );
+			if ( parentCell >= 0 ) 
+			{
+				const bool coarseToFineParentMarker = coarseCoarseToFineMarkerView( parentCell );
+				if ( coarseToFineParentMarker ) interfaceOverlapMarkerView( cell ) = true;
+			}
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, overlapLambda );
+	}
+	
 	// std::cout << "	Level " << level << " done" << std::endl;
 	// 3) Recursion
 	if ( !iAmFinest ) buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, level + 1 );
@@ -765,7 +788,6 @@ void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray
 void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vector<GridStruct> &grids, const int level )
 {
 	if ( level == 0 ) std::cout << "Passing grid data from GridBuilder to Grid for all levels" << std::endl; 
-	const bool iAmCoarsest = ( level == 0 );
 	const bool iAmFinest = ( level == GRID_LEVEL_COUNT - 1 );
 	
 	GridBuilderStruct &GridBuilder = gridBuilders[ level ];	
@@ -866,11 +888,11 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	auto wallMapView = Grid.Wall.wallMapArray.getView();
 	auto wallMarkerView = GridBuilder.wallMarkerArray.getConstView();
 	auto wallAdjacentCellListView = GridBuilder.wallAdjacentCellList.getConstView();
-	auto parentMapView = GridBuilder.parentMapArray.getConstView();
+	auto interfaceOverlapView = GridBuilder.interfaceOverlapMarkerArray.getConstView();
 	auto wallMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{	
 		if ( wallMarkerView( cell ) ) wallMapView( cell ) = -3; // overwrite where wall is
-		else if ( !iAmCoarsest && parentMapView( cell ) >= 0 ) wallMapView( cell ) = -2; // free fluid under a parent interface -> dont track force
+		else if ( interfaceOverlapView( cell ) ) wallMapView( cell ) = -2; // free fluid under a parent interface -> dont track force
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallMarkerLambda );
 	auto wallAdjacentLambda = [=] __cuda_callable__ ( const int index ) mutable
@@ -889,7 +911,7 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	auto wallDataLambda = [=] __cuda_callable__ ( const int index ) mutable
 	{	
 		const int cell = wallAdjacentCellListView( index );
-		bool parentInterfaceMarker = false; if ( !iAmCoarsest && parentMapView( cell ) >= 0 ) parentInterfaceMarker = true;
+		bool interfaceOverlapMarker = interfaceOverlapView( cell );
 		bool linkExistenceMarker[26];
 		float linkLength[26];
 		for ( int direction = 1; direction < 27; direction++ ) 
@@ -901,7 +923,7 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		// now take linkExistenceMarker, linkLength, wallID and parentInterfaceMarker and pack it into 4 uints
 		uint32_t packed[4];
 		// call the packing function
-		packWallData( packed, linkExistenceMarker, linkLength, wallID, parentInterfaceMarker );
+		packWallData( packed, linkExistenceMarker, linkLength, wallID, interfaceOverlapMarker );
 		wallDataView( index ) = make_uint4( packed[0], packed[1], packed[2], packed[3] );
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallCount, wallDataLambda );
@@ -1005,6 +1027,33 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 			indexView( index ) = cell;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, indexArrayLambda );
+		
+		// identify how many cells are tracked
+		BoolArrayType trackFlowMarkerArray( Grid.openBCs[ BCID ].openBCCount );
+		auto trackFlowMarkerView = trackFlowMarkerArray.getView();
+		auto flowTrackerLambda = [=] __cuda_callable__ ( const int index ) mutable
+		{	
+			const int cell = indexView( index );
+			// read wallMap, this is to find if we should track flow through this cell
+			// we dont track flow if the cell is under an interface overlap
+			const int wallMap = wallMapView( cell );
+			bool trackFlow = true;
+			if ( wallMap == -2 ) trackFlow = false; // fluid cell under an interface overlap -> dont track flow
+			// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
+			uint32_t packed[4];
+			int wallID = -1; 
+			if ( wallMap >= 0 )
+			{
+				const uint4 wallData = wallDataView( wallMap );
+				packed[0] = wallData.x; packed[1] = wallData.y; packed[2] = wallData.z;	packed[3] = wallData.w;
+				bool interfaceOverlapMarker;
+				unpackWallID( packed, wallID, interfaceOverlapMarker );
+				if ( interfaceOverlapMarker ) trackFlow = false; // turn off flow tracker for a wall adjacent cell under an interface overlap
+			}
+			trackFlowMarkerView( index ) = trackFlow;
+		};
+		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.openBCs[ BCID ].openBCCount, flowTrackerLambda );
+		Grid.openBCs[ BCID ].trackFlowCount = TNL::sum( trackFlowMarkerArray );
 	}
 		
 	// 7) Recursion

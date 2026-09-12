@@ -166,7 +166,7 @@ struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct 
 							BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray; 
 							BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
 							BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
-							BoolArrayType parentInterfaceMarkerArray;
+							BoolArrayType parentInterfaceMarkerArray; BoolArrayType interfaceOverlapMarkerArray;
 							SkeletonGridStruct SkeletonGrid; }; 
 
 struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntArrayType childMapArray; 
@@ -176,7 +176,7 @@ struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntAr
 struct WallStruct{ int wallCount = 0; IntArrayType wallMapArray; Uint4ArrayType wallDataArray; FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
-struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; IntArrayType indexArray; 
+struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
 							FloatArrayType rhoPrevArray; FloatArrayType uNormalPrevArray; 
 							FloatArrayType rhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
 		

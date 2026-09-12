@@ -36,20 +36,20 @@ void updateSingleGrid( GridStruct &Grid )
 		const int wallMap = wallMapView( cell );
 		if ( wallMap == -3 ) return; // this cell itself is a wall
 		
-		// decide if we track force for this cell. We dont track force if the cell is under a parent interface
+		// decide if we track force for this cell. We dont track force if the cell is under a an interface overlap
 		bool trackForce = true;
-		if ( wallMap == -2 ) trackForce = false; // fluid cell under a parent interface -> dont track force
+		if ( wallMap == -2 ) trackForce = false; // fluid cell under an interface overlap -> dont track force
 		
-		// read wallData if this is a wall adjacent cell. So far only unpack wallID and parentInterfaceMarker
+		// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
 		uint32_t packed[4];
 		int wallID = -1; 
 		if ( wallMap >= 0 )
 		{
 			const uint4 wallData = wallDataView( wallMap );
 			packed[0] = wallData.x; packed[1] = wallData.y; packed[2] = wallData.z;	packed[3] = wallData.w;
-			bool parentInterfaceMarker;
-			unpackWallID( packed, wallID, parentInterfaceMarker );
-			if ( parentInterfaceMarker ) trackForce = false;
+			bool interfaceOverlapMarker;
+			unpackWallID( packed, wallID, interfaceOverlapMarker );
+			if ( interfaceOverlapMarker ) trackForce = false;
 		}
 		
 		// fill iCell, jCell, kCell and NBR
@@ -85,7 +85,7 @@ void updateSingleGrid( GridStruct &Grid )
 		
 		applyCollision( f, BC, Info.nu );
 		
-		// do writes for the fluid branch
+		// do writes for the fluid branch and exit
 		if ( wallMap < 0 )
 		{
 			int cellWriteIndex[27]; 
@@ -101,9 +101,9 @@ void updateSingleGrid( GridStruct &Grid )
 		// use bit packed wallLinkMarker to remember which directions the walls are, also track the forces
 		uint32_t wallLinkMarker = 0u;
 		float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
-		if ( wallMap >= 0 ) applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall );
+		applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall );
 		
-		// write all directions. If there is a wall, switch the writing index to next pre-collision
+		// write all directions. If there is a wall, switch the writing index to next pre-collision and inverse direction
 		int cellWriteIndex = 0; 
 		int fWriteIndex = 0;
 		for ( int direction = 0; direction < 27; direction++ )
@@ -123,7 +123,7 @@ void updateSingleGrid( GridStruct &Grid )
 				fView( fWriteIndex, cellWriteIndex ) = f[direction]; 
 			}
 		}
-		
+	
 		// last step: write force
 		if ( trackForce )
 		{
@@ -149,6 +149,24 @@ void updateSingleGrid( GridStruct &Grid )
 		auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
 		{
 			const int cell = indexView( index );
+			
+			// read wallMap, this is to find if we should track flow through this cell
+			// we dont track flow if the cell is under an interface overlap
+			const int wallMap = wallMapView( cell );
+			bool trackFlow = true;
+			if ( wallMap == -2 ) trackFlow = false; // fluid cell under an interface overlap -> dont track flow
+			
+			// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
+			uint32_t packed[4];
+			int wallID = -1; 
+			if ( wallMap >= 0 )
+			{
+				const uint4 wallData = wallDataView( wallMap );
+				packed[0] = wallData.x; packed[1] = wallData.y; packed[2] = wallData.z;	packed[3] = wallData.w;
+				bool interfaceOverlapMarker;
+				unpackWallID( packed, wallID, interfaceOverlapMarker );
+				if ( interfaceOverlapMarker ) trackFlow = false; // turn off flow tracker for a wall adjacent cell under an interface overlap
+			}
 			
 			// fill iCell, jCell, kCell and NBR
 			int iCell, jCell, kCell;
@@ -252,9 +270,12 @@ void updateSingleGrid( GridStruct &Grid )
 			// track previous and cumulative values
 			const float uNormal = (float)outerNormalX * BC.ux + (float)outerNormalY * BC.uy + (float)outerNormalZ * BC.uz;
 			rhoPrevView( index ) = BC.rho;
-			rhoCumulativeView( index ) += BC.rho;
 			uNormalPrevView( index ) = uNormal;
-			uNormalCumulativeView( index ) += uNormal;
+			if ( trackFlow )
+			{
+				rhoCumulativeView( index ) += BC.rho;
+				uNormalCumulativeView( index ) += uNormal;
+			}
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, OpenBC.openBCCount, cellLambda );
 	}
