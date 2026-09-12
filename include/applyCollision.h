@@ -262,7 +262,6 @@ __host__ __device__ void applyCollision(float (&f)[27], const BCStruct& BC, cons
             (3.f * (omega1 - omega2) * (omega2 * (2.f + 3.f * omega1) - 8.f * omega1));
 
         const float lambda = BC.collisionLimiter;
-        const float rhoLambda = rho * lambda;
 
         const float C_120p102 = C_120 + C_102;
         const float C_210p012 = C_210 + C_012;
@@ -279,13 +278,13 @@ __host__ __device__ void applyCollision(float (&f)[27], const BCStruct& BC, cons
         const float abs201m021 = TNL::abs(C_201m021);
         const float abs111 = TNL::abs(C_111);
 
-        const float omega120p102 = omega3 + (1.f - omega3) * abs120p102 / (rhoLambda + abs120p102);
-        const float omega210p012 = omega3 + (1.f - omega3) * abs210p012 / (rhoLambda + abs210p012);
-        const float omega201p021 = omega3 + (1.f - omega3) * abs201p021 / (rhoLambda + abs201p021);
-        const float omega120m102 = omega4 + (1.f - omega4) * abs120m102 / (rhoLambda + abs120m102);
-        const float omega210m012 = omega4 + (1.f - omega4) * abs210m012 / (rhoLambda + abs210m012);
-        const float omega201m021 = omega4 + (1.f - omega4) * abs201m021 / (rhoLambda + abs201m021);
-        const float omega111 = omega5 + (1.f - omega5) * abs111 / (rhoLambda + abs111);
+        const float omega120p102 = omega3 + (1.f - omega3) * abs120p102 / (lambda + abs120p102);
+        const float omega210p012 = omega3 + (1.f - omega3) * abs210p012 / (lambda + abs210p012);
+        const float omega201p021 = omega3 + (1.f - omega3) * abs201p021 / (lambda + abs201p021);
+        const float omega120m102 = omega4 + (1.f - omega4) * abs120m102 / (lambda + abs120m102);
+        const float omega210m012 = omega4 + (1.f - omega4) * abs210m012 / (lambda + abs210m012);
+        const float omega201m021 = omega4 + (1.f - omega4) * abs201m021 / (lambda + abs201m021);
+        const float omega111 = omega5 + (1.f - omega5) * abs111 / (lambda + abs111);
 
         const float Eq117 = (1.f - omega120p102) * C_120p102;
         const float Eq118 = (1.f - omega210p012) * C_210p012;

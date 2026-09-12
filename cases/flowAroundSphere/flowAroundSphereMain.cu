@@ -1,8 +1,8 @@
 constexpr float reynoldsNumber = 100000.f;
-constexpr int cellsPerSphereDiameter = 400;
+constexpr int cellsPerSphereDiameter = 512.f;
 
 constexpr float sphereDiameterPhys = 1000.f;											// mm
-constexpr float uxInlet = 0.015625f; 													// also works as nominal LBM Mach number
+constexpr float uxInlet = 0.015625f * 5.f; 												// also works as nominal LBM Mach number
 constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
 
 constexpr int GRID_LEVEL_COUNT = 6;
@@ -13,7 +13,7 @@ constexpr float NU_PHYS = uxInletPhys * (sphereDiameterPhys / 1000.f) / reynolds
 constexpr float RHO_PHYS = 1.225f;														// kg/m3 air
 constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 			// s
 
-constexpr int ITERATION_COUNT = 50000;
+constexpr int ITERATION_COUNT = 60000 / 5;
 constexpr int PLOTTER_PERIOD = 500;
 
 #include "../../include/types.h"
@@ -30,42 +30,50 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 {
 	float x, y, z;
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
-	const float r2 = x * x + y * y + z * z;
-	const float axialDistance = y * y + z * z;
+	const float r2 = y * y + z * z;
+	const float xTransition = 1300.f;
+	float xStart = 0.f; float xEnd = 0.f; float rLimit = 0.f;
 	if ( Info.gridID == 0 )
 	{
-		const float widthHalf = 1.5f * sphereDiameterPhys;
-		const float length = 4.f * sphereDiameterPhys;
-		if (x > 0 && x < length	&& axialDistance < widthHalf * widthHalf ) refinementMarker = true;
-		else if ( r2 < widthHalf * widthHalf ) refinementMarker = true;
+		xStart = -1300.f;
+		xEnd = 3300.f;
+		rLimit = 1500.f;
 	}
 	else if ( Info.gridID == 1 )
 	{
-		const float widthHalf = 1.f * sphereDiameterPhys;
-		const float length = 2.5f * sphereDiameterPhys;
-		if (x > 0 && x < length	&& axialDistance < widthHalf * widthHalf ) refinementMarker = true;
-		else if ( r2 < widthHalf * widthHalf ) refinementMarker = true;
+		xStart = -950.f;
+		xEnd = 3000.f;
+		rLimit = 1100.f;
 	}
 	else if ( Info.gridID == 2 )
 	{
-		const float widthHalf = 0.7f * sphereDiameterPhys;
-		const float length = 1.0f * sphereDiameterPhys;
-		if (x > 0 && x < length	&& axialDistance < widthHalf * widthHalf ) refinementMarker = true;
-		else if ( r2 < widthHalf * widthHalf ) refinementMarker = true;
+		xStart = -750.f;
+		xEnd = 2900.f;
+		rLimit = 950.f;
 	}
 	else if ( Info.gridID == 3 )
 	{
-		const float widthHalf = 0.6f * sphereDiameterPhys;
-		const float length = 0.6f * sphereDiameterPhys;
-		if (x > 0 && x < length	&& axialDistance < widthHalf * widthHalf ) refinementMarker = true;
-		else if ( r2 < widthHalf * widthHalf ) refinementMarker = true;
+		xStart = -640.f;
+		xEnd = 1300.f;
+		rLimit = 850.f;
+	}
+	if ( Info.gridID < 4 )
+	{
+		refinementMarker = false;
+		float r2Limit = rLimit * rLimit;
+		if (x < xTransition)
+		{
+			const float s = (x - xTransition) / (xTransition - xStart);
+			r2Limit *= 1.f - s * s;
+		}
+		if ( r2 < r2Limit && x > xStart && x < xEnd ) refinementMarker = true;
 	}
 }
 
 __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 											const InfoStruct& Info )
 {
-	BC.ux = uxInlet;
+	//BC.ux = uxInlet;
 }
 
 __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
@@ -76,6 +84,16 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.dirichletRho = true;
 		BC.rho = 1.f;
 		BC.openBCID = 1;
+		BC.rhoReflectionTolerance = 0.00001f;
+	}
+	else if ( iCell == 0 && jCell != 0 && jCell != Info.cellCountY-1 && kCell != 0 && kCell != Info.cellCountZ-1  ) // Inlet
+	{
+		BC.dirichletU = true;
+		BC.ux = uxInlet;
+		BC.uy = 0.f;
+		BC.uz = 0.f;
+		BC.rhoReflectionTolerance = 1.f;
+		BC.openBCID = 0;
 	}
 	else // Every other boundary cell is strict dirichlet velocity
 	{
@@ -84,7 +102,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 		BC.rhoReflectionTolerance = 1.f;
-		BC.openBCID = 0;
+		BC.openBCID = 2;
 	}
 }
 
@@ -98,7 +116,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.uz = 0.f;
 	}
 	if ( Info.gridID == 0 ) BC.collisionLimiter = 0.f; // use more stable K15 collision for grid 0 where open BC happen
-	BC.collisionLimiter = 0.f;
+	//BC.collisionLimiter = 0.f;
 }
 
 void exportHistoryData( const std::vector<float>& historyDragCoefficient, 
@@ -119,6 +137,7 @@ void exportHistoryData( const std::vector<float>& historyDragCoefficient,
 
 int main(int argc, char **argv)
 {
+	std::cout << RES_GLOBAL << std::endl;
 	// STLs
 	std::vector<STLStruct> gridStaticSTLs( 1 );
 	readSTL( gridStaticSTLs[0], STLPathSphere );
@@ -157,7 +176,17 @@ int main(int argc, char **argv)
 		const float drag = - gxSum;
 		const float dragCoefficient = - (8 * drag) / (RHO_PHYS * uxInletPhys * uxInletPhys * 3.14159f * (sphereDiameterPhys / 1000.f) * (sphereDiameterPhys / 1000.f));
 		historyDragCoefficient[iteration] = dragCoefficient;
+		/*
+		OpenBCReportStruct InletReport;
+		InletReport.uNormalPhys = TNL::sum( grids[0].openBCs[0].uNormalCumulativeArray ) / (float)grids[0].openBCs[0].openBCCount;
+		grids[0].openBCs[0].uNormalCumulativeArray.setValue( 0.f );
+		//historyDragCoefficient[iteration] = InletReport.uNormalPhys;
 		
+		OpenBCReportStruct OutletReport;
+		OutletReport.rhoPhys = TNL::sum( grids[0].openBCs[1].rhoCumulativeArray ) / (float)grids[0].openBCs[1].openBCCount;
+		grids[0].openBCs[1].rhoCumulativeArray.setValue( 0.f );
+		historyDragCoefficient[iteration] = OutletReport.rhoPhys;
+		*/		
 		if ( iteration % PLOTTER_PERIOD == 0 )
 		{
 			lapTimer.stop();
@@ -175,12 +204,17 @@ int main(int argc, char **argv)
 			exportSectionCutPlotXY( grids, kCut, iteration );
 			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
 			// Detail 1
-			exportSectionCutPlotXY( grids, grids[1].Info.Bounds, kCut, iteration + 1 );
-			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+			if ( GRID_LEVEL_COUNT > 1 )
+			{
+				exportSectionCutPlotXY( grids, grids[1].Info.Bounds, kCut, iteration + 1 );
+				if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+			}
 			// Detail 2
-			exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 2 );
-			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
-			
+			if ( GRID_LEVEL_COUNT > 2 )
+			{
+				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 2 );
+				if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+			}
 			lapTimer.reset();
 			lapTimer.start();
 		}

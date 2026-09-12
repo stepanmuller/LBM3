@@ -29,9 +29,9 @@ def set_smart_ylim(ax, data):
     ax.set_ylim(y_min - padding, y_max + padding)
 
 def add_average_diagnostics(ax, iterations, data, unit_str="", fmt=".3f"):
-    """Calculates last 20% average, draws the line, and returns the formatted string."""
+    """Calculates last third average, draws the line, and returns the formatted string."""
     count = len(data)
-    window = max(1, count // 5)
+    window = max(1, count // 3)
     avg_val = np.mean(data[-window:])
     
     ax.hlines(y=avg_val, xmin=iterations[-window], xmax=iterations[-1], 

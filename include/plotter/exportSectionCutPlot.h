@@ -144,8 +144,9 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 				indexHorizontal = kImage; 
 			}
 			// refuse out of bounds indexes
-			if ( indexHorizontal < startHorizontal || indexHorizontal >= startHorizontal + pixelsHorizontal ) return;
-			if ( indexVertical < startVertical || indexVertical >= startVertical + pixelsVertical ) return;
+			if (indexHorizontal + upsample <= startHorizontal || indexHorizontal >= startHorizontal + pixelsHorizontal)	return;
+
+			if (indexVertical + upsample <= startVertical || indexVertical >= startVertical + pixelsVertical) return;
 			
 			float marker = 0.f; 
 			const int wallMap = wallMapView( cell );
@@ -166,11 +167,11 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			for ( int shiftVertical = 0; shiftVertical < upsample; shiftVertical++ )
 			{
 				const int y = indexVertical + shiftVertical - startVertical;
-				if ( y >= pixelsVertical ) continue;
+				if (y < 0 || y >= pixelsVertical) continue;
 				for ( int shiftHorizontal = 0; shiftHorizontal < upsample; shiftHorizontal++ )
 				{
 					const int x = indexHorizontal + shiftHorizontal - startHorizontal;
-					if ( x >= pixelsHorizontal ) continue;
+					if (x < 0 || x >= pixelsHorizontal) continue;
 					rhoArrayView( y, x ) = rho;
 					uxArrayView( y, x ) = ux;
 					uyArrayView( y, x ) = uy;

@@ -221,6 +221,8 @@ struct STLStruct { 	static constexpr int threadsToTrianglesRatio = 4;
 					}
 				};
 
+struct OpenBCReportStruct { int openBCID = 0; float uNormalPhys = 0.f; float pPhys = 0.f; float rhoPhys = 0.f; float areamm2 = 0.f; float massFlowPhys = 0.f; };
+
 struct FlowReportStruct { float uxPhys = 0.f; float uyPhys = 0.f; float uzPhys = 0.f; float pPhys = 0.f; float areamm2 = 0.f; 
 							float massFlowPhys = 0.f; float normalDirectionMomentumFlowPhys = 0.f; float normalDirectionKineticEnergyFlowPhys = 0.f; };
 
