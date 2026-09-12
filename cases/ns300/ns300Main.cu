@@ -2,22 +2,21 @@ constexpr float RES_GLOBAL = 2.0f;
 constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 
-int reportChunk = 31;
-int plotterChunk = 200;
-constexpr int iterationCount = 20000;
+constexpr int ITERATION_COUNT = 10000;
+constexpr int PLOTTER_PERIOD = 1000;
+
+constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
+constexpr float NU_PHYS = 1e-6;		// m2/s water
 
 constexpr float uzInlet = 0.01f; 														// also works as nominal LBM Mach number	
-constexpr float nuPhys = 1e-6;															// m2/s water
-constexpr float rhoNominalPhys = 997.0f;												// kg/m3 water
 constexpr float massFlowPhys = 335.f;													// kg/s
 constexpr float RInlet = 150.f;															// mm
-// constexpr float ROutlet = 175.f;														// mm
 constexpr float inletAreamm2 = 3.14159f * RInlet * RInlet;								// mm2
-constexpr float uzInletPhys = massFlowPhys / ( rhoNominalPhys * ( inletAreamm2 / 1000000.f) );	// m/s
-constexpr float dtPhysGlobal = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 			// s
-// constexpr float soundspeedPhys = 0.577350269f * (RES_GLOBAL/1000.f) / dtPhysGlobal; 		// m/s (0.577350269f is 1/sqrt(3))
+constexpr float uzInletPhys = massFlowPhys / ( RHO_PHYS * ( inletAreamm2 / 1000000.f) );	// m/s
 constexpr float angularVelocity = -198.967f;											// rad/s
 const float boundaryLayerThickness = 2.f;												// mm
+
+constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
 #include "../../include/types.h"
 
@@ -141,17 +140,17 @@ int main(int argc, char **argv)
 	lapTimer.reset();
 	lapTimer.start();
 	
-	for ( int iteration = 0; iteration <= iterationCount; iteration++ )
+	for ( int iteration = 0; iteration <= ITERATION_COUNT; iteration++ )
 	{
 		updateAllGrids( grids, 0 );
 		
-		if ( iteration % plotterChunk == 0 )
+		if ( iteration % PLOTTER_PERIOD == 0 )
 		{
 			lapTimer.stop();
 			std::cout << std::endl;
 			std::cout << "Finished iteration " << iteration << std::endl;
 			auto lapTime = lapTimer.getRealTime();
-			const float updateCount = (float)totalUpdatesPerIteration * (float)plotterChunk;
+			const float updateCount = (float)totalUpdatesPerIteration * (float)PLOTTER_PERIOD;
 			const float glups = updateCount / lapTime / 1000000000.f;
 			if ( iteration > 0) std::cout << "GLUPS: " << glups << std::endl;
 			

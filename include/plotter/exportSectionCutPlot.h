@@ -208,8 +208,8 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			float p = rho;
 			
 			// Use the actual gridID to scale physical parameters properly
-			//convertToPhysicalVelocity( ux, uy, uz, grids[gridID].Info );
-			//convertToPhysicalPressure( p, grids[gridID].Info );
+			convertToPhysicalVelocity( ux, uy, uz, grids[gridID].Info );
+			convertToPhysicalPressure( p, grids[gridID].Info );
 			
 			float uHorizontal, uVertical, uNormal;
 			if ( plane == XY ) 		{ uHorizontal = ux; uVertical = uy; uNormal = uz; }

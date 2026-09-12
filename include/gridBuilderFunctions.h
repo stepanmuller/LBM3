@@ -40,8 +40,8 @@ void initializeGridInfo( std::vector<GridBuilderStruct> &gridBuilders, const Bou
 		Info.oy = SkeletonInfo.oy - Info.res * 0.5f;
 		Info.oz = SkeletonInfo.oz - Info.res * 0.5f;
 		
-		Info.dtPhys = dtPhysGlobal;
-		Info.nu = (Info.dtPhys * nuPhys) / ((Info.res/1000.f) * (Info.res/1000.f));
+		Info.dtPhys = DT_PHYS_GLOBAL;
+		Info.nu = (Info.dtPhys * NU_PHYS) / ((Info.res/1000.f) * (Info.res/1000.f));
 	}
 	
 	else
@@ -56,7 +56,7 @@ void initializeGridInfo( std::vector<GridBuilderStruct> &gridBuilders, const Bou
 		Info.oy = GridBuilderCoarse.Info.oy - Info.res * 0.5f;
 		Info.oz = GridBuilderCoarse.Info.oz - Info.res * 0.5f;
 		Info.dtPhys = GridBuilderCoarse.Info.dtPhys * 0.5f;
-		Info.nu = (Info.dtPhys * nuPhys) / ((Info.res/1000.f) * (Info.res/1000.f));
+		Info.nu = (Info.dtPhys * NU_PHYS) / ((Info.res/1000.f) * (Info.res/1000.f));
 	}
 	
 	if ( !iAmFinest ) initializeGridInfo( gridBuilders, Bounds, level+1 );

@@ -343,7 +343,6 @@ __host__ __device__ void getLocalDu( float (&f)[27], const float &nu, LocalDuStr
 	localDu.duxdzCross = - (3.f * omega1) * C_101 / rho;
 }
 
-/*
 __host__ __device__ void convertToPhysicalVelocity( float &ux, float &uy, float &uz, const InfoStruct &Info )
 {
 	ux = ux * (Info.res/1000.f) / Info.dtPhys;
@@ -351,24 +350,17 @@ __host__ __device__ void convertToPhysicalVelocity( float &ux, float &uy, float 
 	uz = uz * (Info.res/1000.f) / Info.dtPhys;
 }
 
-__host__ __device__ void convertToPhysicalPressure( float &rho )
-{
-	// converts LBM rho to physical pressure, overwrites the variable (LBM rho -> physical p)
-	const float p = (rho - 1.f) * rhoNominalPhys * soundspeedPhys * soundspeedPhys;
-	rho = p;
-}
-
 __host__ __device__ void convertToPhysicalPressure( float &rho, const InfoStruct &Info )
 {
 	// converts LBM rho to physical pressure, overwrites the variable (LBM rho -> physical p)
-	const float p = (rho - 1.f) * rhoNominalPhys * soundspeedPhys * soundspeedPhys;
+	float soundspeedPhys = INVSQRT3 * (Info.res/1000.f) / Info.dtPhys;
+	const float p = (rho - 1.f) * RHO_PHYS * soundspeedPhys * soundspeedPhys;
 	rho = p;
 }
 
 __host__ __device__ void convertToPhysicalForce( float &gx, float &gy, float &gz, const InfoStruct &Info )
 {
-	gx = gx * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
-	gy = gy * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
-	gz = gz * rhoNominalPhys * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
+	gx = gx * RHO_PHYS * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
+	gy = gy * RHO_PHYS * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
+	gz = gz * RHO_PHYS * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) * (Info.res/1000.f) / (Info.dtPhys * Info.dtPhys);
 }
-*/
