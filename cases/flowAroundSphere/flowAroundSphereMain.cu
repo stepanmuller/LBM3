@@ -2,7 +2,7 @@ constexpr float reynoldsNumber = 100000.f;
 constexpr int cellsPerSphereDiameter = 512.f;
 
 constexpr float sphereDiameterPhys = 1000.f;											// mm
-constexpr float uxInlet = 0.015625f * 5.f; 												// also works as nominal LBM Mach number
+constexpr float uxInlet = 0.0125f; 														// also works as nominal LBM Mach number
 constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
 
 constexpr int GRID_LEVEL_COUNT = 6;
@@ -13,7 +13,7 @@ constexpr float NU_PHYS = uxInletPhys * (sphereDiameterPhys / 1000.f) / reynolds
 constexpr float RHO_PHYS = 1.225f;														// kg/m3 air
 constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 			// s
 
-constexpr int ITERATION_COUNT = 60000 / 5;
+constexpr int ITERATION_COUNT = 60000;
 constexpr int PLOTTER_PERIOD = 500;
 
 #include "../../include/types.h"
@@ -84,7 +84,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.dirichletRho = true;
 		BC.rho = 1.f;
 		BC.openBCID = 1;
-		BC.rhoReflectionTolerance = 0.00001f;
+		BC.rhoReflectionTolerance = 0.00001f * 0.2f;
 	}
 	else if ( iCell == 0 && jCell != 0 && jCell != Info.cellCountY-1 && kCell != 0 && kCell != Info.cellCountZ-1  ) // Inlet
 	{
