@@ -169,11 +169,11 @@ struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct 
 							BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
 							BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
 							BoolArrayType parentInterfaceMarkerArray; BoolArrayType interfaceOverlapMarkerArray;
+							BoolArrayType parentFineToCoarseMarkerArray; BoolArrayType needValuesFromCoarseMarkerArray;
 							SkeletonGridStruct SkeletonGrid; }; 
 
 struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntArrayType childMapArray; 
-							IntArrayType iPlusStencilArray; IntArrayType jPlusStencilArray; IntArrayType kPlusStencilArray; 
-							IntArrayType iMinusStencilArray; IntArrayType jMinusStencilArray; IntArrayType kMinusStencilArray; };
+							IntArrayType lefoverFineIndexArray; IntArrayType leftoverParentMapArray; };
 	
 struct WallStruct{ int wallCount = 0; IntArrayType wallMapArray; Uint4ArrayType wallDataArray; FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid

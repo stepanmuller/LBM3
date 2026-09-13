@@ -429,6 +429,9 @@ void markRefinementCells( GridBuilderStruct &GridBuilder, const std::vector<Voxe
 	GridBuilder.coarseToFineMarkerArray = GridBuilder.fineToCoarseMarkerArray;
 	GridBuilder.coarseToFineMarkerArray.swap( markerBuffer );
 	spreadMarkers( GridBuilder.coarseToFineMarkerArray, markerBuffer, GridBuilder );
+	// CoarseToFine has two layers -> do one more spread
+	GridBuilder.coarseToFineMarkerArray.swap( markerBuffer );
+	spreadMarkers( GridBuilder.coarseToFineMarkerArray, markerBuffer, GridBuilder );
 	GridBuilder.coarseToFineMarkerArray = GridBuilder.coarseToFineMarkerArray * GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray * !GridBuilder.fineToCoarseMarkerArray;
 	// mark refinement all together
 	GridBuilder.refinementMarkerArray = GridBuilder.deepRefinementMarkerArray + GridBuilder.fineToCoarseMarkerArray + GridBuilder.coarseToFineMarkerArray;

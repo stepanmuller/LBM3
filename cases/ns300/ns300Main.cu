@@ -1,9 +1,9 @@
-constexpr float RES_GLOBAL = 2.0f; 	
+constexpr float RES_GLOBAL = 12.0f; 	
 constexpr int GRID_LEVEL_COUNT = 3;
-constexpr int WALL_REFINEMENT_COUNT = 6;
+constexpr int WALL_REFINEMENT_COUNT = 3;
 
-constexpr int ITERATION_COUNT = 10000;
-constexpr int PLOTTER_PERIOD = 1000;
+constexpr int ITERATION_COUNT = 1;
+constexpr int PLOTTER_PERIOD = 10;
 
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
@@ -38,7 +38,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	const float rz = std::sqrt( x*x + y*y );
 	if ( Info.gridID == 0 )
 	{
-		refinementMarker = false;
+		if ( x < -355 ) refinementMarker = false;
 		if ( y <= 400.f && z <= 200.f ) refinementMarker = true;
 	}
 	if ( Info.gridID == 1 )
@@ -157,6 +157,19 @@ int main(int argc, char **argv)
 			int iCut, jCut, kCut;
 			const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;
 			
+			// XY section cut shows the rotor and the outlet pipe
+			float zCut = 32.5f;
+			getIJKCellIndexFromXYZ( iCut, jCut, kCut, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
+			exportSectionCutPlotXY( grids[0], grids.back().Info, kCut, 0 );
+			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+			
+			exportSectionCutPlotXY( grids[1], grids.back().Info, kCut, 1 );
+			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+			
+			exportSectionCutPlotXY( grids[2], grids.back().Info, kCut, 2 );
+			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+			
+			/*
 			// ZY section cut shows the inlet pipe
 			float xCut = 0.f;
 			getIJKCellIndexFromXYZ( iCut, jCut, kCut, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info);
@@ -181,6 +194,7 @@ int main(int argc, char **argv)
 				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 3 );
 				if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
 			}
+			*/
 			lapTimer.reset();
 			lapTimer.start();
 		}
