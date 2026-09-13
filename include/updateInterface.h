@@ -694,7 +694,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		
 		// Initialize the accumulation variables for fine cell rho and k
 		// these will be interpolated linearly in the following way:
-		// dRho_child = r0 + I*rx + J*ry + K*rz
+		// dRho_child = 1/4 r0 + I*rx + J*ry + K*rz
 		// where
 		// r0 = dRho(O) + 1/2 * ( dRho(I+) + dRho(I-) + dRho(J+) + dRho(J-) + dRho(K+) + dRho(K-) )
 		// rx = 1/2 * ( dRho(I+) - dRho(I-) )
@@ -742,6 +742,31 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			kxy_0 += kxy;
 			kxxMyy_0 += kxxMyy;
 			kxxMzz_0 += kxxMzz;
+			
+			uxFine[0] += (1.f / 64.f) * (44.f * ux + 6.f * uy + 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz - 4.f * Dxy - 4.f * Dxz - 2.f * Dyz);
+			uyFine[0] += (1.f / 64.f) * (6.f * ux + 44.f * uy + 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz - 4.f * Dxy - 2.f * Dxz - 4.f * Dyz);
+			uzFine[0] += (1.f / 64.f) * (6.f * ux + 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz - 2.f * Dxy - 4.f * Dxz - 4.f * Dyz);
+			uxFine[1] += (1.f / 64.f) * (44.f * ux - 6.f * uy - 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz - 4.f * Dxy - 4.f * Dxz + 2.f * Dyz);
+			uyFine[1] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy + 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz + 4.f * Dxy + 2.f * Dxz - 4.f * Dyz);
+			uzFine[1] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz + 2.f * Dxy + 4.f * Dxz - 4.f * Dyz);
+			uxFine[2] += (1.f / 64.f) * (44.f * ux - 6.f * uy + 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz + 4.f * Dxy - 4.f * Dxz + 2.f * Dyz);
+			uyFine[2] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy - 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz - 4.f * Dxy + 2.f * Dxz - 4.f * Dyz);
+			uzFine[2] += (1.f / 64.f) * (6.f * ux - 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz + 2.f * Dxy - 4.f * Dxz + 4.f * Dyz);
+			uxFine[3] += (1.f / 64.f) * (44.f * ux + 6.f * uy - 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz + 4.f * Dxy - 4.f * Dxz - 2.f * Dyz);
+			uyFine[3] += (1.f / 64.f) * (6.f * ux + 44.f * uy - 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz + 4.f * Dxy - 2.f * Dxz - 4.f * Dyz);
+			uzFine[3] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz - 2.f * Dxy + 4.f * Dxz + 4.f * Dyz);
+			uxFine[4] += (1.f / 64.f) * (44.f * ux + 6.f * uy - 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz - 4.f * Dxy + 4.f * Dxz + 2.f * Dyz);
+			uyFine[4] += (1.f / 64.f) * (6.f * ux + 44.f * uy - 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz - 4.f * Dxy + 2.f * Dxz + 4.f * Dyz);
+			uzFine[4] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz + 2.f * Dxy - 4.f * Dxz - 4.f * Dyz);
+			uxFine[5] += (1.f / 64.f) * (44.f * ux - 6.f * uy + 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz - 4.f * Dxy + 4.f * Dxz - 2.f * Dyz);
+			uyFine[5] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy - 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz + 4.f * Dxy - 2.f * Dxz + 4.f * Dyz);
+			uzFine[5] += (1.f / 64.f) * (6.f * ux - 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz - 2.f * Dxy + 4.f * Dxz - 4.f * Dyz);
+			uxFine[6] += (1.f / 64.f) * (44.f * ux - 6.f * uy - 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz + 4.f * Dxy + 4.f * Dxz - 2.f * Dyz);
+			uyFine[6] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy + 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz - 4.f * Dxy - 2.f * Dxz + 4.f * Dyz);
+			uzFine[6] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz - 2.f * Dxy - 4.f * Dxz + 4.f * Dyz);
+			uxFine[7] += (1.f / 64.f) * (44.f * ux + 6.f * uy + 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz + 4.f * Dxy + 4.f * Dxz + 2.f * Dyz);
+			uyFine[7] += (1.f / 64.f) * (6.f * ux + 44.f * uy + 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz + 4.f * Dxy + 2.f * Dxz + 4.f * Dyz);
+			uzFine[7] += (1.f / 64.f) * (6.f * ux + 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz + 2.f * Dxy + 4.f * Dxz + 4.f * Dyz);
 		}
 		
 		{ // 1) I+ cell scope
@@ -776,7 +801,20 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			kxz_0 += 0.5f * kxz;			kxz_x += 0.5f * kxz;
 			kxy_0 += 0.5f * kxy;			kxy_x += 0.5f * kxy;
 			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_x += 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x += 0.5f * kxxMzz;		
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x += 0.5f * kxxMzz;	
+			
+			uxFine[1] += (1.f / 64.f) * (6.f * uy + 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz - 3.f * Dxy - 3.f * Dxz - 2.f * Dyz);
+			uyFine[1] += (1.f / 64.f) * (10.f * uy - Ny - 3.f * Dxy - 2.f * Dyz);
+			uzFine[1] += (1.f / 64.f) * (10.f * uz - Nz - 3.f * Dxz - 2.f * Dyz);
+			uxFine[3] += (1.f / 64.f) * (- 6.f * uy + 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz + 3.f * Dxy - 3.f * Dxz + 2.f * Dyz);
+			uyFine[3] += (1.f / 64.f) * (10.f * uy + Ny - 3.f * Dxy - 2.f * Dyz);
+			uzFine[3] += (1.f / 64.f) * (10.f * uz - Nz - 3.f * Dxz + 2.f * Dyz);
+			uxFine[5] += (1.f / 64.f) * (6.f * uy - 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz - 3.f * Dxy + 3.f * Dxz + 2.f * Dyz);
+			uyFine[5] += (1.f / 64.f) * (10.f * uy - Ny - 3.f * Dxy + 2.f * Dyz);
+			uzFine[5] += (1.f / 64.f) * (10.f * uz + Nz - 3.f * Dxz - 2.f * Dyz);
+			uxFine[7] += (1.f / 64.f) * (- 6.f * uy - 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz + 3.f * Dxy + 3.f * Dxz - 2.f * Dyz);
+			uyFine[7] += (1.f / 64.f) * (10.f * uy + Ny - 3.f * Dxy + 2.f * Dyz);
+			uzFine[7] += (1.f / 64.f) * (10.f * uz + Nz - 3.f * Dxz + 2.f * Dyz);	
 		}
 		
 		{ // 2) I- cell scope
@@ -811,7 +849,20 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			kxz_0 += 0.5f * kxz;			kxz_x -= 0.5f * kxz;
 			kxy_0 += 0.5f * kxy;			kxy_x -= 0.5f * kxy;
 			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_x -= 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x -= 0.5f * kxxMzz;		
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x -= 0.5f * kxxMzz;
+			
+			uxFine[0] += (1.f / 64.f) * (- 6.f * uy - 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz - 3.f * Dxy - 3.f * Dxz + 2.f * Dyz);
+			uyFine[0] += (1.f / 64.f) * (10.f * uy - Ny + 3.f * Dxy - 2.f * Dyz);
+			uzFine[0] += (1.f / 64.f) * (10.f * uz - Nz + 3.f * Dxz - 2.f * Dyz);
+			uxFine[2] += (1.f / 64.f) * (6.f * uy - 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz + 3.f * Dxy - 3.f * Dxz - 2.f * Dyz);
+			uyFine[2] += (1.f / 64.f) * (10.f * uy + Ny + 3.f * Dxy - 2.f * Dyz);
+			uzFine[2] += (1.f / 64.f) * (10.f * uz - Nz + 3.f * Dxz + 2.f * Dyz);
+			uxFine[4] += (1.f / 64.f) * (- 6.f * uy + 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz - 3.f * Dxy + 3.f * Dxz - 2.f * Dyz);
+			uyFine[4] += (1.f / 64.f) * (10.f * uy - Ny + 3.f * Dxy + 2.f * Dyz);
+			uzFine[4] += (1.f / 64.f) * (10.f * uz + Nz + 3.f * Dxz - 2.f * Dyz);
+			uxFine[6] += (1.f / 64.f) * (6.f * uy + 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz + 3.f * Dxy + 3.f * Dxz + 2.f * Dyz);
+			uyFine[6] += (1.f / 64.f) * (10.f * uy + Ny + 3.f * Dxy + 2.f * Dyz);
+			uzFine[6] += (1.f / 64.f) * (10.f * uz + Nz + 3.f * Dxz + 2.f * Dyz);		
 		}
 		
 		{ // 3) J+ cell scope
@@ -846,7 +897,20 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			kxz_0 += 0.5f * kxz;			kxz_y += 0.5f * kxz;
 			kxy_0 += 0.5f * kxy;			kxy_y += 0.5f * kxy;
 			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_y += 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_y += 0.5f * kxxMzz;		
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_y += 0.5f * kxxMzz;	
+			
+			uxFine[2] += (1.f / 64.f) * (10.f * ux - Nx - 3.f * Dxy - 2.f * Dxz);
+			uyFine[2] += (1.f / 64.f) * (6.f * ux + 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz - 3.f * Dxy - 2.f * Dxz - 3.f * Dyz);
+			uzFine[2] += (1.f / 64.f) * (10.f * uz - Nz - 2.f * Dxz - 3.f * Dyz);
+			uxFine[3] += (1.f / 64.f) * (10.f * ux + Nx - 3.f * Dxy - 2.f * Dxz);
+			uyFine[3] += (1.f / 64.f) * (- 6.f * ux + 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz + 3.f * Dxy + 2.f * Dxz - 3.f * Dyz);
+			uzFine[3] += (1.f / 64.f) * (10.f * uz - Nz + 2.f * Dxz - 3.f * Dyz);
+			uxFine[6] += (1.f / 64.f) * (10.f * ux - Nx - 3.f * Dxy + 2.f * Dxz);
+			uyFine[6] += (1.f / 64.f) * (6.f * ux - 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz - 3.f * Dxy + 2.f * Dxz + 3.f * Dyz);
+			uzFine[6] += (1.f / 64.f) * (10.f * uz + Nz - 2.f * Dxz - 3.f * Dyz);
+			uxFine[7] += (1.f / 64.f) * (10.f * ux + Nx - 3.f * Dxy + 2.f * Dxz);
+			uyFine[7] += (1.f / 64.f) * (- 6.f * ux - 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz + 3.f * Dxy - 2.f * Dxz + 3.f * Dyz);
+			uzFine[7] += (1.f / 64.f) * (10.f * uz + Nz + 2.f * Dxz - 3.f * Dyz);	
 		}
 		
 		{ // 4) J- cell scope
@@ -882,6 +946,19 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			kxy_0 += 0.5f * kxy;			kxy_y -= 0.5f * kxy;
 			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_y -= 0.5f * kxxMyy;
 			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_y -= 0.5f * kxxMzz;		
+			
+			uxFine[0] += (1.f / 64.f) * (10.f * ux - Nx + 3.f * Dxy - 2.f * Dxz);
+			uyFine[0] += (1.f / 64.f) * (- 6.f * ux - 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz - 3.f * Dxy + 2.f * Dxz - 3.f * Dyz);
+			uzFine[0] += (1.f / 64.f) * (10.f * uz - Nz - 2.f * Dxz + 3.f * Dyz);
+			uxFine[1] += (1.f / 64.f) * (10.f * ux + Nx + 3.f * Dxy - 2.f * Dxz);
+			uyFine[1] += (1.f / 64.f) * (6.f * ux - 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz + 3.f * Dxy - 2.f * Dxz - 3.f * Dyz);
+			uzFine[1] += (1.f / 64.f) * (10.f * uz - Nz + 2.f * Dxz + 3.f * Dyz);
+			uxFine[4] += (1.f / 64.f) * (10.f * ux - Nx + 3.f * Dxy + 2.f * Dxz);
+			uyFine[4] += (1.f / 64.f) * (- 6.f * ux + 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz - 3.f * Dxy - 2.f * Dxz + 3.f * Dyz);
+			uzFine[4] += (1.f / 64.f) * (10.f * uz + Nz - 2.f * Dxz + 3.f * Dyz);
+			uxFine[5] += (1.f / 64.f) * (10.f * ux + Nx + 3.f * Dxy + 2.f * Dxz);
+			uyFine[5] += (1.f / 64.f) * (6.f * ux + 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz + 3.f * Dxy + 2.f * Dxz + 3.f * Dyz);
+			uzFine[5] += (1.f / 64.f) * (10.f * uz + Nz + 2.f * Dxz + 3.f * Dyz);
 		}
 		
 		{ // 5) K+ cell scope
@@ -917,6 +994,19 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			kxy_0 += 0.5f * kxy;			kxy_z += 0.5f * kxy;
 			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_z += 0.5f * kxxMyy;
 			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_z += 0.5f * kxxMzz;		
+			
+			uxFine[4] += (1.f / 64.f) * (10.f * ux - Nx - 2.f * Dxy - 3.f * Dxz);
+			uyFine[4] += (1.f / 64.f) * (10.f * uy - Ny - 2.f * Dxy - 3.f * Dyz);
+			uzFine[4] += (1.f / 64.f) * (6.f * ux + 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz - 2.f * Dxy - 3.f * Dxz - 3.f * Dyz);
+			uxFine[5] += (1.f / 64.f) * (10.f * ux + Nx - 2.f * Dxy - 3.f * Dxz);
+			uyFine[5] += (1.f / 64.f) * (10.f * uy - Ny + 2.f * Dxy - 3.f * Dyz);
+			uzFine[5] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz + 2.f * Dxy + 3.f * Dxz - 3.f * Dyz);
+			uxFine[6] += (1.f / 64.f) * (10.f * ux - Nx + 2.f * Dxy - 3.f * Dxz);
+			uyFine[6] += (1.f / 64.f) * (10.f * uy + Ny - 2.f * Dxy - 3.f * Dyz);
+			uzFine[6] += (1.f / 64.f) * (6.f * ux - 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz + 2.f * Dxy - 3.f * Dxz + 3.f * Dyz);
+			uxFine[7] += (1.f / 64.f) * (10.f * ux + Nx + 2.f * Dxy - 3.f * Dxz);
+			uyFine[7] += (1.f / 64.f) * (10.f * uy + Ny + 2.f * Dxy - 3.f * Dyz);
+			uzFine[7] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz - 2.f * Dxy + 3.f * Dxz + 3.f * Dyz);
 		}
 		
 		{ // 6) K- cell scope
@@ -951,7 +1041,20 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			kxz_0 += 0.5f * kxz;			kxz_z -= 0.5f * kxz;
 			kxy_0 += 0.5f * kxy;			kxy_z -= 0.5f * kxy;
 			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_z -= 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_z -= 0.5f * kxxMzz;		
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_z -= 0.5f * kxxMzz;
+			
+			uxFine[0] += (1.f / 64.f) * (10.f * ux - Nx - 2.f * Dxy + 3.f * Dxz);
+			uyFine[0] += (1.f / 64.f) * (10.f * uy - Ny - 2.f * Dxy + 3.f * Dyz);
+			uzFine[0] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz + 2.f * Dxy - 3.f * Dxz - 3.f * Dyz);
+			uxFine[1] += (1.f / 64.f) * (10.f * ux + Nx - 2.f * Dxy + 3.f * Dxz);
+			uyFine[1] += (1.f / 64.f) * (10.f * uy - Ny + 2.f * Dxy + 3.f * Dyz);
+			uzFine[1] += (1.f / 64.f) * (6.f * ux - 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz - 2.f * Dxy + 3.f * Dxz - 3.f * Dyz);
+			uxFine[2] += (1.f / 64.f) * (10.f * ux - Nx + 2.f * Dxy + 3.f * Dxz);
+			uyFine[2] += (1.f / 64.f) * (10.f * uy + Ny - 2.f * Dxy + 3.f * Dyz);
+			uzFine[2] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz - 2.f * Dxy - 3.f * Dxz + 3.f * Dyz);
+			uxFine[3] += (1.f / 64.f) * (10.f * ux + Nx + 2.f * Dxy + 3.f * Dxz);
+			uyFine[3] += (1.f / 64.f) * (10.f * uy + Ny + 2.f * Dxy + 3.f * Dyz);
+			uzFine[3] += (1.f / 64.f) * (6.f * ux + 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz + 2.f * Dxy + 3.f * Dxz + 3.f * Dyz);		
 		}
 		
 		const int cellFine0 = childMapView( index );
@@ -976,6 +1079,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		for ( int which = 0; which < 8; which++ )
 		{
 			const int cellFine = cellFineList[which];
+			NBRStruct NBR;
 			getCompressedNBR( cellFine, NBR, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
 			int cellWriteIndex[27];
 			int fWriteIndex[27];
@@ -984,27 +1088,26 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			const float dx = cellFineDx[which];
 			const float dy = cellFineDy[which];
 			const float dz = cellFineDz[which];
-			const float rho = rhoBase + dRhodx * dx + dRhody * dy + dRhodz * dz;
-			const float dRho = rho - 1.f;
-			const float ux = uxBase + ax * dx + ay * dy + az * dz + axy * dx * dy + axz * dx * dz + ayz * dy * dz + axx * dx * dx + ayy * dy * dy + azz * dz * dz;
-			const float uy = uyBase + bx * dx + by * dy + bz * dz + bxy * dx * dy + bxz * dx * dz + byz * dy * dz + bxx * dx * dx + byy * dy * dy + bzz * dz * dz;
-			const float uz = uzBase + cx * dx + cy * dy + cz * dz + cxy * dx * dy + cxz * dx * dz + cyz * dy * dz + cxx * dx * dx + cyy * dy * dy + czz * dz * dz;
+			const float dRho 	= 0.25f * r_0   + dx * r_x 	+ dy * r_y 	 + dz * r_z;
+			const float kyz  	= 0.25f * kyz_0 + dx * kyz_x 	+ dy * kyz_y + dz * kyz_z;
+			const float kxz	   	= 0.25f * kxz_0 + dx * kxz_x 	+ dy * kxz_y + dz * kxz_z;
+			const float kxy	   	= 0.25f * kxy_0 + dx * kxy_x 	+ dy * kxy_y + dz * kxy_z;
+			const float kxxMyy 	= 0.25f * kxxMyy_0 + dx * kxxMyy_x + dy * kxxMyy_y + dz * kxxMyy_z;
+			const float kxxMzz 	= 0.25f * kxxMzz_0 + dx * kxxMzz_x + dy * kxxMzz_y + dz * kxxMzz_z;
+			const float rho = dRho + 1.f;
+			const float ux = uxFine[which];
+			const float uy = uyFine[which];
+			const float uz = uzFine[which];
 			
 			// calculate second order central moments
 			// eq Schönherr 2015 (7.38 - 7.43) - with base gradients mathematically cancelled
 			const float sigma = 0.5f; // coarse to fine
-			const float A011 = bxz * dx + cxy * dx + byz * dy + 2.f * cyy * dy + 2.f * bzz * dz + cyz * dz;
-			const float A101 = axz * dx + 2.f * cxx * dx + ayz * dy + cxy * dy + 2.f * azz * dz + cxz * dz;
-			const float A110 = axy * dx + 2.f * bxx * dx + 2.f * ayy * dy + bxy * dy + ayz * dz + bxz * dz;
-			const float B = 2.f * axx * dx - bxy * dx + axy * dy - 2.f * byy * dy + axz * dz - byz * dz;
-			const float C = 2.f * axx * dx - cxz * dx + axy * dy - cyz * dy + axz * dz - 2.f * czz * dz;
-            
-			const float k_011 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * ( kyzBase + A011 );
-			const float k_101 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * ( kxzBase + A101 );
-			const float k_110 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * ( kxyBase + A110 );
-			const float k_200 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyyBase + B + kxxMzzBase + C );
-			const float k_020 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( - 2.f * ( kxxMyyBase + B ) + kxxMzzBase + C );
-			const float k_002 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyyBase + B - 2.f * ( kxxMzzBase + C ) );
+			const float k_011 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * kyz;
+			const float k_101 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * kxz;
+			const float k_110 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * kxy;
+			const float k_200 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyy + kxxMzz );
+			const float k_020 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( - 2.f * ( kxxMyy ) + kxxMzz );
+			const float k_002 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyy - 2.f * ( kxxMzz ) );
 			
 			float f[27];
 			reconstructInterpolatedF( f, rho, ux, uy, uz, k_011, k_101, k_110, k_200, k_020, k_002 );

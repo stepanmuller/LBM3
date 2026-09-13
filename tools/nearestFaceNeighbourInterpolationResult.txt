@@ -1,0 +1,139 @@
+EXACT CHILD-VELOCITY ACCUMULATION STATEMENTS
+
+u_x_children = M_x * S; u_y_children = M_y * S; u_z_children = M_z * S.
+Each underlying M is 8 x 63. The statements already include their 1/64 weights.
+These weights include evaluation at (I/4,J/4,K/4). Do not apply another 1/4.
+Nx,Ny,Nz use coarse-spacing-normalized coordinates.
+Dxy,Dxz,Dyz are derivative SUMS, not half-sums.
+
+Source order (matching the seven gathering scopes):
+  O, I+, I-, J+, J-, K+, K-
+Each source contributes nine consecutive columns, in this exact order:
+  ux, uy, uz, Nx, Ny, Nz, Dxy, Dxz, Dyz
+All column and child indices below are zero-based.
+
+Child order (X sign changes fastest):
+  0: (I,J,K) = (-1,-1,-1)
+  1: (I,J,K) = (+1,-1,-1)
+  2: (I,J,K) = (-1,+1,-1)
+  3: (I,J,K) = (+1,+1,-1)
+  4: (I,J,K) = (-1,-1,+1)
+  5: (I,J,K) = (+1,-1,+1)
+  6: (I,J,K) = (-1,+1,+1)
+  7: (I,J,K) = (+1,+1,+1)
+
+SOURCE-BY-SOURCE ADDITIONS
+Each expression uses ux,uy,uz,Nx,Ny,Nz,Dxy,Dxz,Dyz from the CURRENT source.
+Start uxFine[8],uyFine[8],uzFine[8] at zero. Zero rows are omitted.
+Expressions below already include the 1/64 factor.
+
+// Source O
+uxFine[0] += (1.f / 64.f) * (44.f * ux + 6.f * uy + 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz - 4.f * Dxy - 4.f * Dxz - 2.f * Dyz);
+uyFine[0] += (1.f / 64.f) * (6.f * ux + 44.f * uy + 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz - 4.f * Dxy - 2.f * Dxz - 4.f * Dyz);
+uzFine[0] += (1.f / 64.f) * (6.f * ux + 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz - 2.f * Dxy - 4.f * Dxz - 4.f * Dyz);
+uxFine[1] += (1.f / 64.f) * (44.f * ux - 6.f * uy - 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz - 4.f * Dxy - 4.f * Dxz + 2.f * Dyz);
+uyFine[1] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy + 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz + 4.f * Dxy + 2.f * Dxz - 4.f * Dyz);
+uzFine[1] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz + 2.f * Dxy + 4.f * Dxz - 4.f * Dyz);
+uxFine[2] += (1.f / 64.f) * (44.f * ux - 6.f * uy + 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz + 4.f * Dxy - 4.f * Dxz + 2.f * Dyz);
+uyFine[2] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy - 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz - 4.f * Dxy + 2.f * Dxz - 4.f * Dyz);
+uzFine[2] += (1.f / 64.f) * (6.f * ux - 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz + 2.f * Dxy - 4.f * Dxz + 4.f * Dyz);
+uxFine[3] += (1.f / 64.f) * (44.f * ux + 6.f * uy - 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz + 4.f * Dxy - 4.f * Dxz - 2.f * Dyz);
+uyFine[3] += (1.f / 64.f) * (6.f * ux + 44.f * uy - 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz + 4.f * Dxy - 2.f * Dxz - 4.f * Dyz);
+uzFine[3] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy + 44.f * uz + 3.f * Nx + 3.f * Ny - 12.f * Nz - 2.f * Dxy + 4.f * Dxz + 4.f * Dyz);
+uxFine[4] += (1.f / 64.f) * (44.f * ux + 6.f * uy - 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz - 4.f * Dxy + 4.f * Dxz + 2.f * Dyz);
+uyFine[4] += (1.f / 64.f) * (6.f * ux + 44.f * uy - 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz - 4.f * Dxy + 2.f * Dxz + 4.f * Dyz);
+uzFine[4] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz + 2.f * Dxy - 4.f * Dxz - 4.f * Dyz);
+uxFine[5] += (1.f / 64.f) * (44.f * ux - 6.f * uy + 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz - 4.f * Dxy + 4.f * Dxz - 2.f * Dyz);
+uyFine[5] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy - 6.f * uz + 3.f * Nx - 12.f * Ny + 3.f * Nz + 4.f * Dxy - 2.f * Dxz + 4.f * Dyz);
+uzFine[5] += (1.f / 64.f) * (6.f * ux - 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz - 2.f * Dxy + 4.f * Dxz - 4.f * Dyz);
+uxFine[6] += (1.f / 64.f) * (44.f * ux - 6.f * uy - 6.f * uz - 12.f * Nx + 3.f * Ny + 3.f * Nz + 4.f * Dxy + 4.f * Dxz - 2.f * Dyz);
+uyFine[6] += (1.f / 64.f) * (- 6.f * ux + 44.f * uy + 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz - 4.f * Dxy - 2.f * Dxz + 4.f * Dyz);
+uzFine[6] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz - 2.f * Dxy - 4.f * Dxz + 4.f * Dyz);
+uxFine[7] += (1.f / 64.f) * (44.f * ux + 6.f * uy + 6.f * uz + 12.f * Nx - 3.f * Ny - 3.f * Nz + 4.f * Dxy + 4.f * Dxz + 2.f * Dyz);
+uyFine[7] += (1.f / 64.f) * (6.f * ux + 44.f * uy + 6.f * uz - 3.f * Nx + 12.f * Ny - 3.f * Nz + 4.f * Dxy + 2.f * Dxz + 4.f * Dyz);
+uzFine[7] += (1.f / 64.f) * (6.f * ux + 6.f * uy + 44.f * uz - 3.f * Nx - 3.f * Ny + 12.f * Nz + 2.f * Dxy + 4.f * Dxz + 4.f * Dyz);
+
+// Source I+
+uxFine[1] += (1.f / 64.f) * (6.f * uy + 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz - 3.f * Dxy - 3.f * Dxz - 2.f * Dyz);
+uyFine[1] += (1.f / 64.f) * (10.f * uy - Ny - 3.f * Dxy - 2.f * Dyz);
+uzFine[1] += (1.f / 64.f) * (10.f * uz - Nz - 3.f * Dxz - 2.f * Dyz);
+uxFine[3] += (1.f / 64.f) * (- 6.f * uy + 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz + 3.f * Dxy - 3.f * Dxz + 2.f * Dyz);
+uyFine[3] += (1.f / 64.f) * (10.f * uy + Ny - 3.f * Dxy - 2.f * Dyz);
+uzFine[3] += (1.f / 64.f) * (10.f * uz - Nz - 3.f * Dxz + 2.f * Dyz);
+uxFine[5] += (1.f / 64.f) * (6.f * uy - 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz - 3.f * Dxy + 3.f * Dxz + 2.f * Dyz);
+uyFine[5] += (1.f / 64.f) * (10.f * uy - Ny - 3.f * Dxy + 2.f * Dyz);
+uzFine[5] += (1.f / 64.f) * (10.f * uz + Nz - 3.f * Dxz - 2.f * Dyz);
+uxFine[7] += (1.f / 64.f) * (- 6.f * uy - 6.f * uz + 2.f * Nx + 3.f * Ny + 3.f * Nz + 3.f * Dxy + 3.f * Dxz - 2.f * Dyz);
+uyFine[7] += (1.f / 64.f) * (10.f * uy + Ny - 3.f * Dxy + 2.f * Dyz);
+uzFine[7] += (1.f / 64.f) * (10.f * uz + Nz - 3.f * Dxz + 2.f * Dyz);
+
+// Source I-
+uxFine[0] += (1.f / 64.f) * (- 6.f * uy - 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz - 3.f * Dxy - 3.f * Dxz + 2.f * Dyz);
+uyFine[0] += (1.f / 64.f) * (10.f * uy - Ny + 3.f * Dxy - 2.f * Dyz);
+uzFine[0] += (1.f / 64.f) * (10.f * uz - Nz + 3.f * Dxz - 2.f * Dyz);
+uxFine[2] += (1.f / 64.f) * (6.f * uy - 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz + 3.f * Dxy - 3.f * Dxz - 2.f * Dyz);
+uyFine[2] += (1.f / 64.f) * (10.f * uy + Ny + 3.f * Dxy - 2.f * Dyz);
+uzFine[2] += (1.f / 64.f) * (10.f * uz - Nz + 3.f * Dxz + 2.f * Dyz);
+uxFine[4] += (1.f / 64.f) * (- 6.f * uy + 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz - 3.f * Dxy + 3.f * Dxz - 2.f * Dyz);
+uyFine[4] += (1.f / 64.f) * (10.f * uy - Ny + 3.f * Dxy + 2.f * Dyz);
+uzFine[4] += (1.f / 64.f) * (10.f * uz + Nz + 3.f * Dxz - 2.f * Dyz);
+uxFine[6] += (1.f / 64.f) * (6.f * uy + 6.f * uz - 2.f * Nx - 3.f * Ny - 3.f * Nz + 3.f * Dxy + 3.f * Dxz + 2.f * Dyz);
+uyFine[6] += (1.f / 64.f) * (10.f * uy + Ny + 3.f * Dxy + 2.f * Dyz);
+uzFine[6] += (1.f / 64.f) * (10.f * uz + Nz + 3.f * Dxz + 2.f * Dyz);
+
+// Source J+
+uxFine[2] += (1.f / 64.f) * (10.f * ux - Nx - 3.f * Dxy - 2.f * Dxz);
+uyFine[2] += (1.f / 64.f) * (6.f * ux + 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz - 3.f * Dxy - 2.f * Dxz - 3.f * Dyz);
+uzFine[2] += (1.f / 64.f) * (10.f * uz - Nz - 2.f * Dxz - 3.f * Dyz);
+uxFine[3] += (1.f / 64.f) * (10.f * ux + Nx - 3.f * Dxy - 2.f * Dxz);
+uyFine[3] += (1.f / 64.f) * (- 6.f * ux + 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz + 3.f * Dxy + 2.f * Dxz - 3.f * Dyz);
+uzFine[3] += (1.f / 64.f) * (10.f * uz - Nz + 2.f * Dxz - 3.f * Dyz);
+uxFine[6] += (1.f / 64.f) * (10.f * ux - Nx - 3.f * Dxy + 2.f * Dxz);
+uyFine[6] += (1.f / 64.f) * (6.f * ux - 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz - 3.f * Dxy + 2.f * Dxz + 3.f * Dyz);
+uzFine[6] += (1.f / 64.f) * (10.f * uz + Nz - 2.f * Dxz - 3.f * Dyz);
+uxFine[7] += (1.f / 64.f) * (10.f * ux + Nx - 3.f * Dxy + 2.f * Dxz);
+uyFine[7] += (1.f / 64.f) * (- 6.f * ux - 6.f * uz + 3.f * Nx + 2.f * Ny + 3.f * Nz + 3.f * Dxy - 2.f * Dxz + 3.f * Dyz);
+uzFine[7] += (1.f / 64.f) * (10.f * uz + Nz + 2.f * Dxz - 3.f * Dyz);
+
+// Source J-
+uxFine[0] += (1.f / 64.f) * (10.f * ux - Nx + 3.f * Dxy - 2.f * Dxz);
+uyFine[0] += (1.f / 64.f) * (- 6.f * ux - 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz - 3.f * Dxy + 2.f * Dxz - 3.f * Dyz);
+uzFine[0] += (1.f / 64.f) * (10.f * uz - Nz - 2.f * Dxz + 3.f * Dyz);
+uxFine[1] += (1.f / 64.f) * (10.f * ux + Nx + 3.f * Dxy - 2.f * Dxz);
+uyFine[1] += (1.f / 64.f) * (6.f * ux - 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz + 3.f * Dxy - 2.f * Dxz - 3.f * Dyz);
+uzFine[1] += (1.f / 64.f) * (10.f * uz - Nz + 2.f * Dxz + 3.f * Dyz);
+uxFine[4] += (1.f / 64.f) * (10.f * ux - Nx + 3.f * Dxy + 2.f * Dxz);
+uyFine[4] += (1.f / 64.f) * (- 6.f * ux + 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz - 3.f * Dxy - 2.f * Dxz + 3.f * Dyz);
+uzFine[4] += (1.f / 64.f) * (10.f * uz + Nz - 2.f * Dxz + 3.f * Dyz);
+uxFine[5] += (1.f / 64.f) * (10.f * ux + Nx + 3.f * Dxy + 2.f * Dxz);
+uyFine[5] += (1.f / 64.f) * (6.f * ux + 6.f * uz - 3.f * Nx - 2.f * Ny - 3.f * Nz + 3.f * Dxy + 2.f * Dxz + 3.f * Dyz);
+uzFine[5] += (1.f / 64.f) * (10.f * uz + Nz + 2.f * Dxz + 3.f * Dyz);
+
+// Source K+
+uxFine[4] += (1.f / 64.f) * (10.f * ux - Nx - 2.f * Dxy - 3.f * Dxz);
+uyFine[4] += (1.f / 64.f) * (10.f * uy - Ny - 2.f * Dxy - 3.f * Dyz);
+uzFine[4] += (1.f / 64.f) * (6.f * ux + 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz - 2.f * Dxy - 3.f * Dxz - 3.f * Dyz);
+uxFine[5] += (1.f / 64.f) * (10.f * ux + Nx - 2.f * Dxy - 3.f * Dxz);
+uyFine[5] += (1.f / 64.f) * (10.f * uy - Ny + 2.f * Dxy - 3.f * Dyz);
+uzFine[5] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz + 2.f * Dxy + 3.f * Dxz - 3.f * Dyz);
+uxFine[6] += (1.f / 64.f) * (10.f * ux - Nx + 2.f * Dxy - 3.f * Dxz);
+uyFine[6] += (1.f / 64.f) * (10.f * uy + Ny - 2.f * Dxy - 3.f * Dyz);
+uzFine[6] += (1.f / 64.f) * (6.f * ux - 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz + 2.f * Dxy - 3.f * Dxz + 3.f * Dyz);
+uxFine[7] += (1.f / 64.f) * (10.f * ux + Nx + 2.f * Dxy - 3.f * Dxz);
+uyFine[7] += (1.f / 64.f) * (10.f * uy + Ny + 2.f * Dxy - 3.f * Dyz);
+uzFine[7] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy + 3.f * Nx + 3.f * Ny + 2.f * Nz - 2.f * Dxy + 3.f * Dxz + 3.f * Dyz);
+
+// Source K-
+uxFine[0] += (1.f / 64.f) * (10.f * ux - Nx - 2.f * Dxy + 3.f * Dxz);
+uyFine[0] += (1.f / 64.f) * (10.f * uy - Ny - 2.f * Dxy + 3.f * Dyz);
+uzFine[0] += (1.f / 64.f) * (- 6.f * ux - 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz + 2.f * Dxy - 3.f * Dxz - 3.f * Dyz);
+uxFine[1] += (1.f / 64.f) * (10.f * ux + Nx - 2.f * Dxy + 3.f * Dxz);
+uyFine[1] += (1.f / 64.f) * (10.f * uy - Ny + 2.f * Dxy + 3.f * Dyz);
+uzFine[1] += (1.f / 64.f) * (6.f * ux - 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz - 2.f * Dxy + 3.f * Dxz - 3.f * Dyz);
+uxFine[2] += (1.f / 64.f) * (10.f * ux - Nx + 2.f * Dxy + 3.f * Dxz);
+uyFine[2] += (1.f / 64.f) * (10.f * uy + Ny - 2.f * Dxy + 3.f * Dyz);
+uzFine[2] += (1.f / 64.f) * (- 6.f * ux + 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz - 2.f * Dxy - 3.f * Dxz + 3.f * Dyz);
+uxFine[3] += (1.f / 64.f) * (10.f * ux + Nx + 2.f * Dxy + 3.f * Dxz);
+uyFine[3] += (1.f / 64.f) * (10.f * uy + Ny + 2.f * Dxy + 3.f * Dyz);
+uzFine[3] += (1.f / 64.f) * (6.f * ux + 6.f * uy - 3.f * Nx - 3.f * Ny - 2.f * Nz + 2.f * Dxy + 3.f * Dxz + 3.f * Dyz);
+
