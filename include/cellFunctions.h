@@ -209,6 +209,30 @@ __host__ __device__ void getRhoUxUyUz( float &rho, float &ux, float &uy, float &
     uz = momentumZ * rhoInv;
 }
 
+__host__ __device__ void getDRhoUxUyUz( float &dRho, float &ux, float &uy, float &uz, const float (&f)[27])
+{
+	dRho = (((f[PPP]+f[MMM]) + (f[PMP]+f[MPM])) + ((f[PPM]+f[MMP]) + (f[PMM]+f[MPP])))
+					  + (((f[OPP]+f[OMM]) + (f[OPM]+f[OMP])) + ((f[POP]+f[MOM]) + (f[POM]+f[MOP])) + ((f[PPO]+f[MMO]) + (f[PMO]+f[MPO])))
+						+ ((f[POO]+f[MOO]) + (f[OPO]+f[OMO]) + (f[OOP]+f[OOM])) + f[OOO];			
+    
+    const float rhoInv = 1.f / (dRho + 1.f);
+    
+    const float momentumX = ((((f[PPP]-f[MMM]) + (f[PMP]-f[MPM])) + ((f[PPM]-f[MMP]) + (f[PMM]-f[MPP])))
+                          + (((f[POP]-f[MOM]) + (f[POM]-f[MOP])) + ((f[PPO]-f[MMO]) + (f[PMO]-f[MPO])))
+                            + (f[POO]-f[MOO]));
+
+    const float momentumY = ((((f[PPP]-f[MMM]) - (f[PMP]-f[MPM])) + ((f[PPM]-f[MMP]) - (f[PMM]-f[MPP])))
+                          + (((f[OPP]-f[OMM]) + (f[OPM]-f[OMP])) + ((f[PPO]-f[MMO]) - (f[PMO]-f[MPO])))
+                            + (f[OPO]-f[OMO]));
+
+    const float momentumZ = ((((f[PPP]-f[MMM]) + (f[PMP]-f[MPM])) - ((f[PPM]-f[MMP]) + (f[PMM]-f[MPP])))
+                          + (((f[OPP]-f[OMM]) - (f[OPM]-f[OMP])) + ((f[POP]-f[MOM]) - (f[POM]-f[MOP])))
+                            + (f[OOP]-f[OOM]));
+    ux = momentumX * rhoInv;
+    uy = momentumY * rhoInv;
+    uz = momentumZ * rhoInv;
+}
+
 __host__ __device__ void getLocalDu( float (&f)[27], const float &nu, LocalDuStruct &localDu )
 {	
     // D3Q27 weight moments needed by the well-conditioned transformation.

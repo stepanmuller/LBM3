@@ -5,16 +5,16 @@ constexpr float sphereDiameterPhys = 1000.f;											// mm
 constexpr float uxInlet = 0.0125f; 														// also works as nominal LBM Mach number
 constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
 
-constexpr int GRID_LEVEL_COUNT = 6;
+constexpr int GRID_LEVEL_COUNT = 4;
 constexpr int WALL_REFINEMENT_COUNT = 6;
-constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (GRID_LEVEL_COUNT - 1));
+constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (6 - 1)); // (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (GRID_LEVEL_COUNT - 1));
 
 constexpr float NU_PHYS = uxInletPhys * (sphereDiameterPhys / 1000.f) / reynoldsNumber;	// m2/s
 constexpr float RHO_PHYS = 1.225f;														// kg/m3 air
 constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 			// s
 
-constexpr int ITERATION_COUNT = 60000;
-constexpr int PLOTTER_PERIOD = 500;
+constexpr int ITERATION_COUNT = 2000;
+constexpr int PLOTTER_PERIOD = 2000;
 
 #include "../../include/types.h"
 

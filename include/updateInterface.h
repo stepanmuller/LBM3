@@ -686,6 +686,370 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
 	{
 		const int cellCoarse = indexView( index );
+		
+		// Initialize the accumulation variables for fine cell velocity
+		float uxFine[8] = {0.f};
+		float uyFine[8] = {0.f};
+		float uzFine[8] = {0.f};
+		
+		// Initialize the accumulation variables for fine cell rho and k
+		// these will be interpolated linearly in the following way:
+		// dRho_child = r0 + I*rx + J*ry + K*rz
+		// where
+		// r0 = dRho(O) + 1/2 * ( dRho(I+) + dRho(I-) + dRho(J+) + dRho(J-) + dRho(K+) + dRho(K-) )
+		// rx = 1/2 * ( dRho(I+) - dRho(I-) )
+		// ry = 1/2 * ( dRho(J+) - dRho(J-) )
+		// rz = 1/2 * ( dRho(K+) - dRho(K-) )
+		// this results in dRho(1/4, 1/4, 1/4) = 1/4 dRho(0, 0, 0) + 1/4 dRho(1, 0, 0) + 1/4 dRho(0, 1, 0) + 1/4 dRho(0, 0, 1)
+		// which does not depend on the negative coarse neighbours
+		float r_0 = 0.f; 		float r_x = 0.f; 		float r_y = 0.f; 		float r_z = 0.f;
+		float kyz_0 = 0.f; 		float kyz_x = 0.f; 		float kyz_y = 0.f; 		float kyz_z = 0.f;
+		float kxz_0 = 0.f; 		float kxz_x = 0.f; 		float kxz_y = 0.f; 		float kxz_z = 0.f;
+		float kxy_0 = 0.f; 		float kxy_x = 0.f; 		float kxy_y = 0.f; 		float kxy_z = 0.f;
+		float kxxMyy_0 = 0.f; 	float kxxMyy_x = 0.f; 	float kxxMyy_y = 0.f; 	float kxxMyy_z = 0.f;
+		float kxxMzz_0 = 0.f; 	float kxxMzz_x = 0.f; 	float kxxMzz_y = 0.f; 	float kxxMzz_z = 0.f;
+		
+		{ // 0) center cell scope
+			const int cell = cellCoarse; 
+			NBRStruct NBR;
+			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
+			
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
+			const float rho = dRho + 1.f;
+			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
+			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
+			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
+			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
+			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
+			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
+						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
+						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
+						- rho * (ux * ux + uy * uy + uz * uz);
+			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
+			const float Ny = Nx - kxxMyy;
+			const float Nz = Nx - kxxMzz;
+			const float Dxy = kxy;
+			const float Dyz = kyz;
+			const float Dxz = kxz;
+			
+			r_0 += dRho;
+			kyz_0 += kyz; 
+			kxz_0 += kxz;
+			kxy_0 += kxy;
+			kxxMyy_0 += kxxMyy;
+			kxxMzz_0 += kxxMzz;
+		}
+		
+		{ // 1) I+ cell scope
+			const int cell = iPlusStencilView( index ); 
+			NBRStruct NBR;
+			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
+			
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
+			const float rho = dRho + 1.f;
+			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
+			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
+			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
+			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
+			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
+			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
+						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
+						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
+						- rho * (ux * ux + uy * uy + uz * uz);
+			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
+			const float Ny = Nx - kxxMyy;
+			const float Nz = Nx - kxxMzz;
+			const float Dxy = kxy;
+			const float Dyz = kyz;
+			const float Dxz = kxz;
+			
+			r_0 += 0.5f * dRho; 			r_x += 0.5f * dRho;			
+			kyz_0 += 0.5f * kyz; 			kyz_x += 0.5f * kyz; 
+			kxz_0 += 0.5f * kxz;			kxz_x += 0.5f * kxz;
+			kxy_0 += 0.5f * kxy;			kxy_x += 0.5f * kxy;
+			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_x += 0.5f * kxxMyy;
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x += 0.5f * kxxMzz;		
+		}
+		
+		{ // 2) I- cell scope
+			const int cell = iMinusStencilView( index ); 
+			NBRStruct NBR;
+			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
+			
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
+			const float rho = dRho + 1.f;
+			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
+			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
+			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
+			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
+			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
+			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
+						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
+						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
+						- rho * (ux * ux + uy * uy + uz * uz);
+			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
+			const float Ny = Nx - kxxMyy;
+			const float Nz = Nx - kxxMzz;
+			const float Dxy = kxy;
+			const float Dyz = kyz;
+			const float Dxz = kxz;
+			
+			r_0 += 0.5f * dRho; 			r_x -= 0.5f * dRho;			
+			kyz_0 += 0.5f * kyz; 			kyz_x -= 0.5f * kyz; 
+			kxz_0 += 0.5f * kxz;			kxz_x -= 0.5f * kxz;
+			kxy_0 += 0.5f * kxy;			kxy_x -= 0.5f * kxy;
+			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_x -= 0.5f * kxxMyy;
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x -= 0.5f * kxxMzz;		
+		}
+		
+		{ // 3) J+ cell scope
+			const int cell = jPlusStencilView( index ); 
+			NBRStruct NBR;
+			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
+			
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
+			const float rho = dRho + 1.f;
+			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
+			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
+			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
+			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
+			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
+			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
+						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
+						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
+						- rho * (ux * ux + uy * uy + uz * uz);
+			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
+			const float Ny = Nx - kxxMyy;
+			const float Nz = Nx - kxxMzz;
+			const float Dxy = kxy;
+			const float Dyz = kyz;
+			const float Dxz = kxz;
+			
+			r_0 += 0.5f * dRho; 			r_y += 0.5f * dRho;			
+			kyz_0 += 0.5f * kyz; 			kyz_y += 0.5f * kyz; 
+			kxz_0 += 0.5f * kxz;			kxz_y += 0.5f * kxz;
+			kxy_0 += 0.5f * kxy;			kxy_y += 0.5f * kxy;
+			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_y += 0.5f * kxxMyy;
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_y += 0.5f * kxxMzz;		
+		}
+		
+		{ // 4) J- cell scope
+			const int cell = jMinusStencilView( index ); 
+			NBRStruct NBR;
+			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
+			
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
+			const float rho = dRho + 1.f;
+			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
+			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
+			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
+			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
+			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
+			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
+						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
+						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
+						- rho * (ux * ux + uy * uy + uz * uz);
+			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
+			const float Ny = Nx - kxxMyy;
+			const float Nz = Nx - kxxMzz;
+			const float Dxy = kxy;
+			const float Dyz = kyz;
+			const float Dxz = kxz;
+			
+			r_0 += 0.5f * dRho; 			r_y -= 0.5f * dRho;			
+			kyz_0 += 0.5f * kyz; 			kyz_y -= 0.5f * kyz; 
+			kxz_0 += 0.5f * kxz;			kxz_y -= 0.5f * kxz;
+			kxy_0 += 0.5f * kxy;			kxy_y -= 0.5f * kxy;
+			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_y -= 0.5f * kxxMyy;
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_y -= 0.5f * kxxMzz;		
+		}
+		
+		{ // 5) K+ cell scope
+			const int cell = kPlusStencilView( index ); 
+			NBRStruct NBR;
+			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
+			
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
+			const float rho = dRho + 1.f;
+			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
+			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
+			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
+			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
+			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
+			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
+						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
+						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
+						- rho * (ux * ux + uy * uy + uz * uz);
+			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
+			const float Ny = Nx - kxxMyy;
+			const float Nz = Nx - kxxMzz;
+			const float Dxy = kxy;
+			const float Dyz = kyz;
+			const float Dxz = kxz;
+			
+			r_0 += 0.5f * dRho; 			r_z += 0.5f * dRho;			
+			kyz_0 += 0.5f * kyz; 			kyz_z += 0.5f * kyz; 
+			kxz_0 += 0.5f * kxz;			kxz_z += 0.5f * kxz;
+			kxy_0 += 0.5f * kxy;			kxy_z += 0.5f * kxy;
+			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_z += 0.5f * kxxMyy;
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_z += 0.5f * kxxMzz;		
+		}
+		
+		{ // 6) K- cell scope
+			const int cell = kMinusStencilView( index ); 
+			NBRStruct NBR;
+			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
+			
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
+			const float rho = dRho + 1.f;
+			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
+			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
+			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
+			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
+			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
+			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
+						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
+						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
+						- rho * (ux * ux + uy * uy + uz * uz);
+			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
+			const float Ny = Nx - kxxMyy;
+			const float Nz = Nx - kxxMzz;
+			const float Dxy = kxy;
+			const float Dyz = kyz;
+			const float Dxz = kxz;
+			
+			r_0 += 0.5f * dRho; 			r_z -= 0.5f * dRho;			
+			kyz_0 += 0.5f * kyz; 			kyz_z -= 0.5f * kyz; 
+			kxz_0 += 0.5f * kxz;			kxz_z -= 0.5f * kxz;
+			kxy_0 += 0.5f * kxy;			kxy_z -= 0.5f * kxy;
+			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_z -= 0.5f * kxxMyy;
+			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_z -= 0.5f * kxxMzz;		
+		}
+		
+		const int cellFine0 = childMapView( index );
+		
+		NBRStruct NBRCellFineList;
+		getCompressedNBR( cellFine0, NBRCellFineList, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
+				
+		int cellFineList[8];
+		cellFineList[0] = NBRCellFineList.self;
+		cellFineList[1] = NBRCellFineList.iPlus;
+		cellFineList[2] = NBRCellFineList.jPlus;
+		cellFineList[3] = NBRCellFineList.ijPlus;
+		cellFineList[4] = NBRCellFineList.kPlus;
+		cellFineList[5] = NBRCellFineList.ikPlus;
+		cellFineList[6] = NBRCellFineList.jkPlus;
+		cellFineList[7] = NBRCellFineList.ijkPlus;
+		
+		const float cellFineDx[8] = {-0.25f, 0.25f,-0.25f, 0.25f,-0.25f, 0.25f,-0.25f, 0.25f};
+		const float cellFineDy[8] = {-0.25f,-0.25f, 0.25f, 0.25f,-0.25f,-0.25f, 0.25f, 0.25f};
+		const float cellFineDz[8] = {-0.25f,-0.25f,-0.25f,-0.25f, 0.25f, 0.25f, 0.25f, 0.25f};		
+		
+		for ( int which = 0; which < 8; which++ )
+		{
+			const int cellFine = cellFineList[which];
+			getCompressedNBR( cellFine, NBR, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
+			int cellWriteIndex[27];
+			int fWriteIndex[27];
+			getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperFine );
+			
+			const float dx = cellFineDx[which];
+			const float dy = cellFineDy[which];
+			const float dz = cellFineDz[which];
+			const float rho = rhoBase + dRhodx * dx + dRhody * dy + dRhodz * dz;
+			const float dRho = rho - 1.f;
+			const float ux = uxBase + ax * dx + ay * dy + az * dz + axy * dx * dy + axz * dx * dz + ayz * dy * dz + axx * dx * dx + ayy * dy * dy + azz * dz * dz;
+			const float uy = uyBase + bx * dx + by * dy + bz * dz + bxy * dx * dy + bxz * dx * dz + byz * dy * dz + bxx * dx * dx + byy * dy * dy + bzz * dz * dz;
+			const float uz = uzBase + cx * dx + cy * dy + cz * dz + cxy * dx * dy + cxz * dx * dz + cyz * dy * dz + cxx * dx * dx + cyy * dy * dy + czz * dz * dz;
+			
+			// calculate second order central moments
+			// eq Schönherr 2015 (7.38 - 7.43) - with base gradients mathematically cancelled
+			const float sigma = 0.5f; // coarse to fine
+			const float A011 = bxz * dx + cxy * dx + byz * dy + 2.f * cyy * dy + 2.f * bzz * dz + cyz * dz;
+			const float A101 = axz * dx + 2.f * cxx * dx + ayz * dy + cxy * dy + 2.f * azz * dz + cxz * dz;
+			const float A110 = axy * dx + 2.f * bxx * dx + 2.f * ayy * dy + bxy * dy + ayz * dz + bxz * dz;
+			const float B = 2.f * axx * dx - bxy * dx + axy * dy - 2.f * byy * dy + axz * dz - byz * dz;
+			const float C = 2.f * axx * dx - cxz * dx + axy * dy - cyz * dy + axz * dz - 2.f * czz * dz;
+            
+			const float k_011 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * ( kyzBase + A011 );
+			const float k_101 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * ( kxzBase + A101 );
+			const float k_110 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * ( kxyBase + A110 );
+			const float k_200 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyyBase + B + kxxMzzBase + C );
+			const float k_020 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( - 2.f * ( kxxMyyBase + B ) + kxxMzzBase + C );
+			const float k_002 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyyBase + B - 2.f * ( kxxMzzBase + C ) );
+			
+			float f[27];
+			reconstructInterpolatedF( f, rho, ux, uy, uz, k_011, k_101, k_110, k_200, k_020, k_002 );
+			
+			for ( int direction = 0; direction < 27; direction++ ) fViewFine( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.interfaceCount, cellLambda );
+}
+
+/*
+void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
+{
+	const InfoStruct &InfoCoarse = GridCoarse.Info;
+	auto fViewCoarse = GridCoarse.fArray.getView();
+	const bool &esotwistFlipperCoarse = GridCoarse.esotwistFlipper;
+	auto shifterViewCoarse = GridCoarse.IJKNBR.shifterArray.getConstView();
+	auto jPlusViewCoarse = GridCoarse.IJKNBR.jPlusArray.getConstView();
+	auto kPlusViewCoarse = GridCoarse.IJKNBR.kPlusArray.getConstView();
+	auto jkPlusViewCoarse = GridCoarse.IJKNBR.jkPlusArray.getConstView();
+	const float tauCoarse = 3.f * InfoCoarse.nu + 0.5f;
+	const float omega1Coarse =  1.f / tauCoarse;
+	
+	const InfoStruct &InfoFine = GridFine.Info;
+	auto fViewFine = GridFine.fArray.getView();
+	const bool &esotwistFlipperFine = GridFine.esotwistFlipper;
+	auto shifterViewFine = GridFine.IJKNBR.shifterArray.getConstView();
+	auto jPlusViewFine = GridFine.IJKNBR.jPlusArray.getConstView();
+	auto kPlusViewFine = GridFine.IJKNBR.kPlusArray.getConstView();
+	auto jkPlusViewFine = GridFine.IJKNBR.jkPlusArray.getConstView();
+	const float tauFine = 3.f * InfoFine.nu + 0.5f;
+	const float omega1Fine =  1.f / tauFine;
+	
+	auto indexView = GridCoarse.CoarseToFineInterface.indexArray.getConstView();
+	auto childMapView = GridCoarse.CoarseToFineInterface.childMapArray.getConstView();
+	auto iPlusStencilView = GridCoarse.CoarseToFineInterface.iPlusStencilArray.getConstView();
+	auto jPlusStencilView = GridCoarse.CoarseToFineInterface.jPlusStencilArray.getConstView();
+	auto kPlusStencilView = GridCoarse.CoarseToFineInterface.kPlusStencilArray.getConstView();
+	auto iMinusStencilView = GridCoarse.CoarseToFineInterface.iMinusStencilArray.getConstView();
+	auto jMinusStencilView = GridCoarse.CoarseToFineInterface.jMinusStencilArray.getConstView();
+	auto kMinusStencilView = GridCoarse.CoarseToFineInterface.kMinusStencilArray.getConstView();
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
+	{
+		const int cellCoarse = indexView( index );
 		// get base data = center cell
 		NBRStruct NBR;
 		getCompressedNBR( cellCoarse, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
@@ -830,6 +1194,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.interfaceCount, cellLambda );
 }
+*/
 
 void updateInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 {
