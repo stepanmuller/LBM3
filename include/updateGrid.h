@@ -30,10 +30,6 @@ void updateSingleGrid( GridStruct &Grid )
 	auto gyWallView = Grid.Wall.gyArray.getView();
 	auto gzWallView = Grid.Wall.gzArray.getView();
 	
-	// TEMPORARY START
-	auto linkLengthView = Grid.linkLengthArray.getConstView();
-	// TEMPORARY END
-	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
 		// read wallMap, early return if the cell itself is a wall
@@ -45,12 +41,14 @@ void updateSingleGrid( GridStruct &Grid )
 		if ( wallMap == -2 ) trackForce = false; // fluid cell under an interface overlap -> dont track force
 		
 		// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
-		uint32_t packed[4];
+		uint32_t packed[6];
 		int wallID = -1; 
 		if ( wallMap >= 0 )
 		{
-			const uint4 wallData = wallDataView( wallMap );
-			packed[0] = wallData.x; packed[1] = wallData.y; packed[2] = wallData.z;	packed[3] = wallData.w;
+			const uint3 wallData1 = wallDataView( wallMap * 2 );
+			const uint3 wallData2 = wallDataView( wallMap * 2 + 1 );
+			packed[0] = wallData1.x; packed[1] = wallData1.y; packed[2] = wallData1.z;	
+			packed[3] = wallData2.x; packed[4] = wallData2.y; packed[5] = wallData2.z;
 			bool interfaceOverlapMarker;
 			unpackWallID( packed, wallID, interfaceOverlapMarker );
 			if ( interfaceOverlapMarker ) trackForce = false;
@@ -105,7 +103,7 @@ void updateSingleGrid( GridStruct &Grid )
 		// use bit packed wallLinkMarker to remember which directions the walls are, also track the forces
 		uint32_t wallLinkMarker = 0u;
 		float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
-		applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall, wallMap, linkLengthView );
+		applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall );
 		
 		// write all directions. If there is a wall, switch the writing index to next pre-collision and inverse direction
 		int cellWriteIndex = 0; 
@@ -161,12 +159,14 @@ void updateSingleGrid( GridStruct &Grid )
 			if ( wallMap == -2 ) trackFlow = false; // fluid cell under an interface overlap -> dont track flow
 			
 			// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
-			uint32_t packed[4];
+			uint32_t packed[6];
 			int wallID = -1; 
 			if ( wallMap >= 0 )
 			{
-				const uint4 wallData = wallDataView( wallMap );
-				packed[0] = wallData.x; packed[1] = wallData.y; packed[2] = wallData.z;	packed[3] = wallData.w;
+				const uint3 wallData1 = wallDataView( wallMap * 2 );
+				const uint3 wallData2 = wallDataView( wallMap * 2 + 1 );
+				packed[0] = wallData1.x; packed[1] = wallData1.y; packed[2] = wallData1.z;	
+				packed[3] = wallData2.x; packed[4] = wallData2.y; packed[5] = wallData2.z;
 				bool interfaceOverlapMarker;
 				unpackWallID( packed, wallID, interfaceOverlapMarker );
 				if ( interfaceOverlapMarker ) trackFlow = false; // turn off flow tracker for a wall adjacent cell under an interface overlap

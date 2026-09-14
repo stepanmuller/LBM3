@@ -81,7 +81,7 @@ using FloatArray3DTypeCPU = TNL::Containers::NDArray< float,
 												
 using Uint8_tArrayType = TNL::Containers::Vector< uint8_t, TNL::Devices::Cuda, size_t >;
 
-using Uint4ArrayType = TNL::Containers::Vector< uint4, TNL::Devices::Cuda, size_t >;
+using Uint3ArrayType = TNL::Containers::Vector< uint3, TNL::Devices::Cuda, size_t >;
 
 using IntPairType = TNL::Containers::StaticArray< 2, int >;											
 using IntTripleType = TNL::Containers::StaticArray< 3, int >;
@@ -173,9 +173,11 @@ struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct 
 							SkeletonGridStruct SkeletonGrid; }; 
 
 struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntArrayType childMapArray; 
-							int leftoverCount = 0; IntArrayType leftoverIndexArray; IntArrayType leftoverParentMapArray; };
+							int leftoverCount = 0; IntArrayType leftoverIndexArray; IntArrayType leftoverParentMapArray;
+							IntArrayType leftoverNbrIArray; IntArrayType leftoverNbrJArray; IntArrayType leftoverNbrKArray; };
 	
-struct WallStruct{ int wallCount = 0; IntArrayType wallMapArray; Uint4ArrayType wallDataArray; FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
+struct WallStruct{ int wallCount = 0; IntArrayType indexArray; IntArrayType wallMapArray; Uint3ArrayType wallDataArray; 
+					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
 struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
@@ -188,9 +190,7 @@ struct GridStruct { InfoStruct Info;
 					CompressedIJKNBRStruct IJKNBR;
 					WallStruct Wall;
 					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
-					std::vector<OpenBCArrayStruct> openBCs; 
-					FloatArray2DType linkLengthArray; // Temporary to find out what is happening
-					}; 	
+					std::vector<OpenBCArrayStruct> openBCs; }; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;
 						FloatArrayTypeCPU axArray; FloatArrayTypeCPU ayArray; FloatArrayTypeCPU azArray; 

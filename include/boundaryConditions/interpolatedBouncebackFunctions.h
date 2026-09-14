@@ -20,10 +20,9 @@
 // Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
 // Single node scheme eq (10)
 // Set l = gamma which also agrees with Martin Geier, 2015
-__cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &nu, uint32_t (&packed)[4], uint32_t &wallLinkMarker, float &gxWall, float &gyWall, float &gzWall,
-									const int &wallMap, FloatConstView2DType linkLengthView )
+__cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &nu, uint32_t (&packed)[6], uint32_t &wallLinkMarker, float &gxWall, float &gyWall, float &gzWall )
 {
-	constexpr uint32_t divider = 23u;
+	constexpr uint32_t divider = 84u;
 	int direction = -1; // -1 is wallID, 0 is interfaceOverlapMarker, from 1 we start using the link data
 	bool writeBuffer = false;
 	float fBuffer; 
@@ -32,12 +31,13 @@ __cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &
 	float rho, ux, uy, uz;
 	getRhoUxUyUz( rho, ux, uy, uz, fPost ); // we will need this to reconstruct fPre
 	const float omega1 = 1.f / (3.f * (nu * BC.nuMultiplier) + 0.5f);
-	for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
+	for( int packedIndex = 0; packedIndex < 6; packedIndex++ )
     {
-        for( int codeIndex = 0; codeIndex < 7; codeIndex++ )
+        for( int codeIndex = 0; codeIndex < 5; codeIndex++ )
         {
             if ( direction >= 1 )
             {
+				if (direction > 26) return;
 				const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
 				const int code = packed[packedIndex] % divider;
 				const bool linkExists = ( code != 0u );
@@ -50,11 +50,8 @@ __cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &
 					continue;
 				}
 				wallLinkMarker |= (1u << direction);
-				float gamma = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f);
-				
-				// TEMPORARY START
-				gamma = std::clamp( linkLengthView( direction, wallMap ), 0.00001f, 1.f);
-				// TEMPORARY END
+				float gamma = std::clamp( static_cast<float>( code - 1u ) / 82.f, 0.00001f, 1.f);
+
 				// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
 				// from this wall we will be pulling f[inverseDirection] so that is what we need to calculate
 				if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;
@@ -424,6 +421,11 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 						// 0.1 means 10% of this grid level's cell spacing.
 						const float edgeTolCells = 0.1f;
 						const float edgeTol = edgeTolCells * Info.res;
+						
+						// Physical allowance if the intersection is negative or over 1
+						// Trying to catch triangles that would have been missed due to numerical error
+						// of the STL coordinate shift and floating errors
+						const float qTol = 0.2f;
 
 						float hitX, hitY, hitZ, distance, t;
 
@@ -431,14 +433,29 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 						{
 							float q = t / Info.res;
 							
-							const float qTol = 0.2f;
-							
-							if (q > -qTol && q <= 1.f + qTol)
+							if (q > 0 && q <= 1.f) // accurate link branch
 							{
 								q = std::clamp(q, 0.00001f, 1.f);
-
 								const float qPrev = linkLengthView(direction, index);
-								if (q < qPrev) linkLengthView(direction, index) = q;
+								// write new link if old one was from the inaccurate branch or longer
+								if ( qPrev < 0.f || q < qPrev) linkLengthView(direction, index) = q; 
+							}
+							
+							else if (q > -qTol && q <= 1.f + qTol) // inaccurate link branch
+							{
+								q = std::clamp(q, 0.00001f, 1.f);
+								const float qPrev = linkLengthView(direction, index);
+								if ( qPrev < 0.f ) // old link there is also inaccurate
+								{
+									if ( q < -qPrev ) // our link is shorter
+									{
+										linkLengthView(direction, index) = - q; // write our link but with minus to remember it is inaccurate
+									}
+								}
+								else if ( qPrev > 1.f ) // there was no link from before -> then write at least our inaccurate link
+								{
+									linkLengthView(direction, index) = - q;
+								}
 							}
 						}
 					}
@@ -447,18 +464,33 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, wallAdjacentCellCount, cellLambda );	
 	}
-	// catch any misbehaving links that stayed on 2.f and make them 0.5f as a safe fallback, count how many such cases occur
+	// catch any misbehaving links that stayed on 2.f and make them 0.5f as a safe fallback
+	// also flip any inaccurate negative links to positive
+	// count how many completely missed link cases occur
+
 	auto fetch = [ = ] __cuda_callable__( const int index ) mutable
 	{
 		int linkNotFound = 0;
 		for ( int direction = 1; direction < 27; direction++ )
 		{
 			if ( !linkExistenceMarkerView( direction, index ) ) continue;
+			// if there is an interface link not marked yet, mark it but do not count it as not found
+			if ( linkPiercesInterfaceMarkerView( direction, index ) )
+			{
+				// force any link lengths which pierce interface to safe 0.5f
+				// this way interface geometry appears the same for parent and child
+				linkLengthView( direction, index ) = 0.5f;  
+				continue;
+			}
 			const float qPrev = linkLengthView( direction, index );
 			if ( qPrev > 1.f ) 
 			{
 				linkLengthView( direction, index ) = 0.5f;
 				linkNotFound++;
+			}
+			else if ( qPrev < 0.f ) 
+			{
+				linkLengthView( direction, index ) = -qPrev;
 			}
 		}
 		return linkNotFound;
@@ -475,16 +507,16 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 	else std::cout << "	Level " << GridBuilder.Info.gridID << " failed to find " << linksNotFoundCount << " IBB links out of " << linksTotalCount << std::endl;
 }
 
-__cuda_callable__ inline void packWallData( uint32_t (&packed)[4],
+__cuda_callable__ inline void packWallData( uint32_t (&packed)[6],
                                             const bool (&linkExists)[26], const float (&linkLength)[26],
                                             const int wallID, const bool interfaceOverlapMarker )
 {
-    constexpr uint32_t divider = 23u;
-    uint32_t digits[28]; // 1 wallID, 1 interfaceOverlapMarker, 26 links
+    constexpr uint32_t divider = 84u;
+    uint32_t digits[30] = {}; // 1 wallID, 1 interfaceOverlapMarker, 26 links
     digits[0] = static_cast<uint32_t>( wallID );
     digits[1] = interfaceOverlapMarker ? 1u : 0u;
 
-    for( int i = 0; i < 26; ++i )
+    for( int i = 0; i < 26; i++ )
     {
         if( !linkExists[i] )
         {
@@ -492,55 +524,26 @@ __cuda_callable__ inline void packWallData( uint32_t (&packed)[4],
             continue;
         }
         const float q = linkLength[i];
-        // Round to nearest multiple of 0.05:
-        // q = 0 -> code 1, q = 0.5 -> code 11, q = 1 -> code 21.
-        digits[i + 2] = 1u + static_cast<uint32_t>( q * 20.0f + 0.5f );
+        // Round to nearest multiple of 1/82:
+        // q = 0 -> code 1, q = 0.5 -> code 42, q = 1 -> code 83.
+        digits[i + 2] = 1u + static_cast<uint32_t>( q * 82.f + 0.5f );
     }
 
-    for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
+    for( int packedIndex = 0; packedIndex < 6; packedIndex++ )
     {
         uint32_t value = 0u;
-        for( int digitIndex = 6; digitIndex >= 0; digitIndex-- )
+        for( int digitIndex = 4; digitIndex >= 0; digitIndex-- )
         {
-            value = value * divider + digits[7 * packedIndex + digitIndex];
+            value = value * divider + digits[5 * packedIndex + digitIndex];
         }
         packed[packedIndex] = value;
     }
 }
 
-__cuda_callable__ inline void unpackWallData( const uint32_t (&packed)[4],
-                                                bool (&linkExists)[26], float (&linkLength)[26],
-                                                int &wallID, bool &interfaceOverlapMarker )
-{
-    constexpr uint32_t divider = 23u;
-    uint32_t digits[28]; // 1 wallID, 1 interfaceOverlapMarker, 26 links
-
-    for( int packedIndex = 0; packedIndex < 4; packedIndex++ )
-    {
-        uint32_t value = packed[packedIndex];
-        for( int digitIndex = 0; digitIndex < 7; digitIndex++ )
-        {
-            digits[7 * packedIndex + digitIndex] = value % divider;
-            value /= divider;
-        }
-    }
-
-    wallID = static_cast<int>( digits[0] );
-    interfaceOverlapMarker = ( digits[1] == 1u );
-
-    for( int i = 0; i < 26; ++i )
-    {
-        const uint32_t code = digits[i + 2];
-        linkExists[i] = ( code != 0u );
-        if ( !linkExists[i] ) linkLength[i] = 0.f;
-        else linkLength[i] = std::clamp( static_cast<float>( code - 1u ) / 20.0f, 0.00001f, 1.f);
-    }
-}
-
-__cuda_callable__ inline void unpackWallID( const uint32_t (&packed)[4],
+__cuda_callable__ inline void unpackWallID( const uint32_t (&packed)[6],
                                             int &wallID, bool &interfaceOverlapMarker )
 {
-    constexpr uint32_t divider = 23u;
+    constexpr uint32_t divider = 84u;
     uint32_t value = packed[0];
     wallID = static_cast<int>( value % divider );
     value /= divider;
