@@ -344,14 +344,19 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		
 		// get average second order moments
 		// eq Schönherr 2015 (7.29 - 7.33)
-		float kxyAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxyAvg += kxyStencil[i]; kxyAvg *= 0.125f; kxyAvg -= ( ay + bx );
-		float kyzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kyzAvg += kyzStencil[i]; kyzAvg *= 0.125f; kyzAvg -= ( bz + cy );
-		float kxzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxzAvg += kxzStencil[i]; kxzAvg *= 0.125f; kxzAvg -= ( az + cx );
-		float kxxMyyAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMyyAvg += kxxMyyStencil[i]; kxxMyyAvg *= 0.125f; kxxMyyAvg -= ( ax - by );
-		float kxxMzzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMzzAvg += kxxMzzStencil[i]; kxxMzzAvg *= 0.125f; kxxMzzAvg -= ( ax - cz );
+		constexpr float kxyAvg = 0.f;
+		constexpr float kyzAvg = 0.f;
+		constexpr float kxzAvg = 0.f;
+		constexpr float kxxMyyAvg = 0.f;
+		constexpr float kxxMzzAvg = 0.f;
+		
+		const float LaplaceRho = - 3.f * (ax * ax + by * by + cz * cz) - 6.f * (bx * ay + cx * az + cy * bz);
 		
 		// get interpolated variables for the coarse cell
-		const float dRho = d000; const float ux = a000; const float uy = b000; const float uz = c000;
+		const float dRho = d000 - 0.25f * LaplaceRho;
+		const float ux = a000; 
+		const float uy = b000; 
+		const float uz = c000;
 		const float rho  = dRho + 1.f;
 		
 		// calculate second order central moments
