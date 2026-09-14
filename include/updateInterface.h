@@ -194,7 +194,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		cellStencil[7] = NBRStencil.ijkPlus;
 		
 		// Initialize stencil variables
-		float rhoStencil[8]; float uxStencil[8]; float uyStencil[8]; float uzStencil[8];
+		float dRhoStencil[8]; float uxStencil[8]; float uyStencil[8]; float uzStencil[8];
 		float kxyStencil[8]; float kyzStencil[8]; float kxzStencil[8]; float kxxMyyStencil[8]; float kxxMzzStencil[8];
 		
 		// Extract values from each stencil cell
@@ -208,33 +208,33 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			float fNbr[27];
 			for ( int direction = 0; direction < 27; direction++ ) fNbr[direction] = fViewFine( nbrFReadIndex[direction], nbrCellReadIndex[direction] );
 			
-			getRhoUxUyUz( rhoStencil[i], uxStencil[i], uyStencil[i], uzStencil[i], fNbr );
+			getDRhoUxUyUz( dRhoStencil[i], uxStencil[i], uyStencil[i], uzStencil[i], fNbr );
 			
 			kxyStencil[i] = - 3.f * omega1Fine * ( ( 
 					+ fNbr[11] + fNbr[12] - fNbr[15] - fNbr[16] 
 					- fNbr[19] - fNbr[20] + fNbr[21] + fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
-													) / rhoStencil[i] - uxStencil[i] * uyStencil[i] );
+													) / dRhoStencil[i] - uxStencil[i] * uyStencil[i] );
 			kyzStencil[i] = - 3.f * omega1Fine * ( (
 					- fNbr[13] - fNbr[14] + fNbr[17] + fNbr[18] 
 					- fNbr[19] - fNbr[20] - fNbr[21] - fNbr[22] + fNbr[23] + fNbr[24] + fNbr[25] + fNbr[26]
-													) / rhoStencil[i] - uyStencil[i] * uzStencil[i] );
+													) / dRhoStencil[i] - uyStencil[i] * uzStencil[i] );
 			kxzStencil[i] = - 3.f * omega1Fine * ( (
 					- fNbr[7 ] - fNbr[8 ] + fNbr[9 ] + fNbr[10] 
 					+ fNbr[19] + fNbr[20] - fNbr[21] - fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
-													) / rhoStencil[i] - uxStencil[i] * uzStencil[i] );
+													) / dRhoStencil[i] - uxStencil[i] * uzStencil[i] );
 			kxxMyyStencil[i] = - 1.5f * omega1Fine * ( (
 					+ fNbr[1 ] + fNbr[2 ] - fNbr[5 ] - fNbr[6 ] 
 					+ fNbr[7 ] + fNbr[8 ] + fNbr[9 ] + fNbr[10] - fNbr[13] - fNbr[14] - fNbr[17] - fNbr[18]
-													) / rhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uyStencil[i] * uyStencil[i] ) );
+													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uyStencil[i] * uyStencil[i] ) );
 			kxxMzzStencil[i] = - 1.5f * omega1Fine * ( (
 					+ fNbr[1 ] + fNbr[2 ] - fNbr[3 ] - fNbr[4 ] 
 					+ fNbr[11] + fNbr[12] - fNbr[13] - fNbr[14] + fNbr[15] + fNbr[16] - fNbr[17] - fNbr[18]
-													) / rhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
+													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
 		}
 		
 		// get all required coefficients
 		// eq Schönherr 2015 (7.10)
-		float d0 = 0.f; for ( int i = 0; i < 8; i++ ) d0 += rhoStencil[i]; d0 *= 0.125f;
+		float d0 = 0.f; for ( int i = 0; i < 8; i++ ) d0 += dRhoStencil[i]; d0 *= 0.125f;
 		
 		// The following is directly taken from VirtualFluids (just renamed variables). https://github.com/irmb/virtualfluids 
 		const float a0 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
@@ -350,8 +350,8 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		float kxxMzzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMzzAvg += kxxMzzStencil[i]; kxxMzzAvg *= 0.125f; kxxMzzAvg -= ( ax - cz );
 		
 		// get interpolated variables for the coarse cell
-		const float rho = d0; const float ux = a0; const float uy = b0; const float uz = c0;
-		const float dRho = rho - 1.f;
+		const float dRho = d0; const float ux = a0; const float uy = b0; const float uz = c0;
+		const float rho  = dRho + 1.f;
 		
 		// calculate second order central moments
 		// eq Schönherr 2015 (7.38 - 7.43)
@@ -384,8 +384,9 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.FineToCoarseInterface.interfaceCount, cellLambda );
 }
 
-void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
+void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 {
+	// The interpolation and rescaling is based on Martin Schönherr's disertation 2015
 	const InfoStruct &InfoCoarse = GridCoarse.Info;
 	auto fViewCoarse = GridCoarse.fArray.getView();
 	const bool &esotwistFlipperCoarse = GridCoarse.esotwistFlipper;
@@ -408,616 +409,251 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	
 	auto indexView = GridCoarse.CoarseToFineInterface.indexArray.getConstView();
 	auto childMapView = GridCoarse.CoarseToFineInterface.childMapArray.getConstView();
-	auto iPlusStencilView = GridCoarse.CoarseToFineInterface.iPlusStencilArray.getConstView();
-	auto jPlusStencilView = GridCoarse.CoarseToFineInterface.jPlusStencilArray.getConstView();
-	auto kPlusStencilView = GridCoarse.CoarseToFineInterface.kPlusStencilArray.getConstView();
-	auto iMinusStencilView = GridCoarse.CoarseToFineInterface.iMinusStencilArray.getConstView();
-	auto jMinusStencilView = GridCoarse.CoarseToFineInterface.jMinusStencilArray.getConstView();
-	auto kMinusStencilView = GridCoarse.CoarseToFineInterface.kMinusStencilArray.getConstView();
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
 	{
-		const int cellCoarse = indexView( index );
-		
-		// Initialize the accumulation variables for fine cell velocity
-		float uxFine[8] = {0.f};
-		float uyFine[8] = {0.f};
-		float uzFine[8] = {0.f};
-		
-		// Initialize the accumulation variables for fine cell rho and k
-		// these will be interpolated linearly in the following way:
-		// dRho_child = 1/4 r0 + I*rx + J*ry + K*rz
-		// where
-		// r0 = dRho(O) + 1/2 * ( dRho(I+) + dRho(I-) + dRho(J+) + dRho(J-) + dRho(K+) + dRho(K-) )
-		// rx = 1/2 * ( dRho(I+) - dRho(I-) )
-		// ry = 1/2 * ( dRho(J+) - dRho(J-) )
-		// rz = 1/2 * ( dRho(K+) - dRho(K-) )
-		// this results in dRho(1/4, 1/4, 1/4) = 1/4 dRho(0, 0, 0) + 1/4 dRho(1, 0, 0) + 1/4 dRho(0, 1, 0) + 1/4 dRho(0, 0, 1)
-		// which does not depend on the negative coarse neighbours
-		float r_0 = 0.f; 		float r_x = 0.f; 		float r_y = 0.f; 		float r_z = 0.f;
-		float kyz_0 = 0.f; 		float kyz_x = 0.f; 		float kyz_y = 0.f; 		float kyz_z = 0.f;
-		float kxz_0 = 0.f; 		float kxz_x = 0.f; 		float kxz_y = 0.f; 		float kxz_z = 0.f;
-		float kxy_0 = 0.f; 		float kxy_x = 0.f; 		float kxy_y = 0.f; 		float kxy_z = 0.f;
-		float kxxMyy_0 = 0.f; 	float kxxMyy_x = 0.f; 	float kxxMyy_y = 0.f; 	float kxxMyy_z = 0.f;
-		float kxxMzz_0 = 0.f; 	float kxxMzz_x = 0.f; 	float kxxMzz_y = 0.f; 	float kxxMzz_z = 0.f;
-		
-		//float ux_0 = 0.f; 		float ux_x = 0.f; 		float ux_y = 0.f; 		float ux_z = 0.f;
-		//float uy_0 = 0.f; 		float uy_x = 0.f; 		float uy_y = 0.f; 		float uy_z = 0.f;
-		//float uz_0 = 0.f; 		float uz_x = 0.f; 		float uz_y = 0.f; 		float uz_z = 0.f;
-		
-		{ // 0) center cell scope
-			const int cell = cellCoarse; 
-			NBRStruct NBR;
-			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
-			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
-			float f[27];
-			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
-			
-			float dRho, ux, uy, uz;
-			getDRhoUxUyUz( dRho, ux, uy, uz, f );
-			const float rho = dRho + 1.f;
-			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
-			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
-			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
-			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
-			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
-			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
-						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
-						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
-						- rho * (ux * ux + uy * uy + uz * uz);
-			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
-			const float Ny = Nx - kxxMyy;
-			const float Nz = Nx - kxxMzz;
-			const float Dxy = kxy;
-			const float Dyz = kyz;
-			const float Dxz = kxz;
-			
-			r_0 += dRho;
-			kyz_0 += kyz; 
-			kxz_0 += kxz;
-			kxy_0 += kxy;
-			kxxMyy_0 += kxxMyy;
-			kxxMzz_0 += kxxMzz;
-			
-			//ux_0 += ux;
-			//uy_0 += uy;
-			//uz_0 += uz;
-			
-			// 0) Center cell
-			uxFine[0] += (1.f / 64.f) * (40.f * ux + 2.f * Nx);
-			uyFine[0] += (1.f / 64.f) * (40.f * uy + 2.f * Ny);
-			uzFine[0] += (1.f / 64.f) * (40.f * uz + 2.f * Nz);
-
-			uxFine[1] += (1.f / 64.f) * (40.f * ux - 2.f * Nx);
-			uyFine[1] += (1.f / 64.f) * (40.f * uy + 2.f * Ny);
-			uzFine[1] += (1.f / 64.f) * (40.f * uz + 2.f * Nz);
-
-			uxFine[2] += (1.f / 64.f) * (40.f * ux + 2.f * Nx);
-			uyFine[2] += (1.f / 64.f) * (40.f * uy - 2.f * Ny);
-			uzFine[2] += (1.f / 64.f) * (40.f * uz + 2.f * Nz);
-
-			uxFine[3] += (1.f / 64.f) * (40.f * ux - 2.f * Nx);
-			uyFine[3] += (1.f / 64.f) * (40.f * uy - 2.f * Ny);
-			uzFine[3] += (1.f / 64.f) * (40.f * uz + 2.f * Nz);
-
-			uxFine[4] += (1.f / 64.f) * (40.f * ux + 2.f * Nx);
-			uyFine[4] += (1.f / 64.f) * (40.f * uy + 2.f * Ny);
-			uzFine[4] += (1.f / 64.f) * (40.f * uz - 2.f * Nz);
-
-			uxFine[5] += (1.f / 64.f) * (40.f * ux - 2.f * Nx);
-			uyFine[5] += (1.f / 64.f) * (40.f * uy + 2.f * Ny);
-			uzFine[5] += (1.f / 64.f) * (40.f * uz - 2.f * Nz);
-
-			uxFine[6] += (1.f / 64.f) * (40.f * ux + 2.f * Nx);
-			uyFine[6] += (1.f / 64.f) * (40.f * uy - 2.f * Ny);
-			uzFine[6] += (1.f / 64.f) * (40.f * uz - 2.f * Nz);
-
-			uxFine[7] += (1.f / 64.f) * (40.f * ux - 2.f * Nx);
-			uyFine[7] += (1.f / 64.f) * (40.f * uy - 2.f * Ny);
-			uzFine[7] += (1.f / 64.f) * (40.f * uz - 2.f * Nz);
-		}
-		
-		{ // 1) I+ cell scope
-			const int cell = iPlusStencilView( index ); 
-			NBRStruct NBR;
-			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
-			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
-			float f[27];
-			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
-			
-			float dRho, ux, uy, uz;
-			getDRhoUxUyUz( dRho, ux, uy, uz, f );
-			const float rho = dRho + 1.f;
-			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
-			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
-			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
-			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
-			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
-			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
-						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
-						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
-						- rho * (ux * ux + uy * uy + uz * uz);
-			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
-			const float Ny = Nx - kxxMyy;
-			const float Nz = Nx - kxxMzz;
-			const float Dxy = kxy;
-			const float Dyz = kyz;
-			const float Dxz = kxz;
-			
-			r_0 += 0.5f * dRho; 			r_x += 0.5f * dRho;			
-			kyz_0 += 0.5f * kyz; 			kyz_x += 0.5f * kyz; 
-			kxz_0 += 0.5f * kxz;			kxz_x += 0.5f * kxz;
-			kxy_0 += 0.5f * kxy;			kxy_x += 0.5f * kxy;
-			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_x += 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x += 0.5f * kxxMzz;	
-			
-			//ux_0 += 0.5f * ux; 			ux_x += 0.5f * ux; 
-			//uy_0 += 0.5f * uy;			uy_x += 0.5f * uy;
-			//uz_0 += 0.5f * uz;			uz_x += 0.5f * uz;
-			
-			// 1) I+ cell
-
-			uxFine[0] += (1.f / 64.f) * (-Dyz);
-			uyFine[0] += (1.f / 64.f) * (-6.f * uy + Dyz);
-			uzFine[0] += (1.f / 64.f) * (-6.f * uz + Dyz);
-
-			uxFine[1] += (1.f / 64.f) * (16.f * ux - 6.f * Nx - Dyz);
-			uyFine[1] += (1.f / 64.f) * (10.f * uy - 4.f * Ny - Dyz);
-			uzFine[1] += (1.f / 64.f) * (10.f * uz - 4.f * Nz - Dyz);
-
-			uxFine[2] += (1.f / 64.f) * (Dyz);
-			uyFine[2] += (1.f / 64.f) * (-6.f * uy + Dyz);
-			uzFine[2] += (1.f / 64.f) * (-6.f * uz - Dyz);
-
-			uxFine[3] += (1.f / 64.f) * (16.f * ux - 6.f * Nx + Dyz);
-			uyFine[3] += (1.f / 64.f) * (10.f * uy + 4.f * Ny - Dyz);
-			uzFine[3] += (1.f / 64.f) * (10.f * uz - 4.f * Nz + Dyz);
-
-			uxFine[4] += (1.f / 64.f) * (Dyz);
-			uyFine[4] += (1.f / 64.f) * (-6.f * uy - Dyz);
-			uzFine[4] += (1.f / 64.f) * (-6.f * uz + Dyz);
-
-			uxFine[5] += (1.f / 64.f) * (16.f * ux - 6.f * Nx + Dyz);
-			uyFine[5] += (1.f / 64.f) * (10.f * uy - 4.f * Ny + Dyz);
-			uzFine[5] += (1.f / 64.f) * (10.f * uz + 4.f * Nz - Dyz);
-
-			uxFine[6] += (1.f / 64.f) * (-Dyz);
-			uyFine[6] += (1.f / 64.f) * (-6.f * uy - Dyz);
-			uzFine[6] += (1.f / 64.f) * (-6.f * uz - Dyz);
-
-			uxFine[7] += (1.f / 64.f) * (16.f * ux - 6.f * Nx - Dyz);
-			uyFine[7] += (1.f / 64.f) * (10.f * uy + 4.f * Ny + Dyz);
-			uzFine[7] += (1.f / 64.f) * (10.f * uz + 4.f * Nz + Dyz);
-		}
-		
-		{ // 2) I- cell scope
-			const int cell = iMinusStencilView( index ); 
-			NBRStruct NBR;
-			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
-			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
-			float f[27];
-			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
-			
-			float dRho, ux, uy, uz;
-			getDRhoUxUyUz( dRho, ux, uy, uz, f );
-			const float rho = dRho + 1.f;
-			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
-			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
-			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
-			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
-			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
-			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
-						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
-						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
-						- rho * (ux * ux + uy * uy + uz * uz);
-			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
-			const float Ny = Nx - kxxMyy;
-			const float Nz = Nx - kxxMzz;
-			const float Dxy = kxy;
-			const float Dyz = kyz;
-			const float Dxz = kxz;
-			
-			r_0 += 0.5f * dRho; 			r_x -= 0.5f * dRho;			
-			kyz_0 += 0.5f * kyz; 			kyz_x -= 0.5f * kyz; 
-			kxz_0 += 0.5f * kxz;			kxz_x -= 0.5f * kxz;
-			kxy_0 += 0.5f * kxy;			kxy_x -= 0.5f * kxy;
-			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_x -= 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_x -= 0.5f * kxxMzz;
-			
-			//ux_0 += 0.5f * ux; 			ux_x -= 0.5f * ux; 
-			//uy_0 += 0.5f * uy;			uy_x -= 0.5f * uy;
-			//uz_0 += 0.5f * uz;			uz_x -= 0.5f * uz;
-			
-			// 2) I- cell
-
-			uxFine[0] += (1.f / 64.f) * (16.f * ux + 6.f * Nx + Dyz);
-			uyFine[0] += (1.f / 64.f) * (10.f * uy - 4.f * Ny - Dyz);
-			uzFine[0] += (1.f / 64.f) * (10.f * uz - 4.f * Nz - Dyz);
-
-			uxFine[1] += (1.f / 64.f) * (Dyz);
-			uyFine[1] += (1.f / 64.f) * (-6.f * uy + Dyz);
-			uzFine[1] += (1.f / 64.f) * (-6.f * uz + Dyz);
-
-			uxFine[2] += (1.f / 64.f) * (16.f * ux + 6.f * Nx - Dyz);
-			uyFine[2] += (1.f / 64.f) * (10.f * uy + 4.f * Ny - Dyz);
-			uzFine[2] += (1.f / 64.f) * (10.f * uz - 4.f * Nz + Dyz);
-
-			uxFine[3] += (1.f / 64.f) * (-Dyz);
-			uyFine[3] += (1.f / 64.f) * (-6.f * uy + Dyz);
-			uzFine[3] += (1.f / 64.f) * (-6.f * uz - Dyz);
-
-			uxFine[4] += (1.f / 64.f) * (16.f * ux + 6.f * Nx - Dyz);
-			uyFine[4] += (1.f / 64.f) * (10.f * uy - 4.f * Ny + Dyz);
-			uzFine[4] += (1.f / 64.f) * (10.f * uz + 4.f * Nz - Dyz);
-
-			uxFine[5] += (1.f / 64.f) * (-Dyz);
-			uyFine[5] += (1.f / 64.f) * (-6.f * uy - Dyz);
-			uzFine[5] += (1.f / 64.f) * (-6.f * uz + Dyz);
-
-			uxFine[6] += (1.f / 64.f) * (16.f * ux + 6.f * Nx + Dyz);
-			uyFine[6] += (1.f / 64.f) * (10.f * uy + 4.f * Ny + Dyz);
-			uzFine[6] += (1.f / 64.f) * (10.f * uz + 4.f * Nz + Dyz);
-
-			uxFine[7] += (1.f / 64.f) * (Dyz);
-			uyFine[7] += (1.f / 64.f) * (-6.f * uy - Dyz);
-			uzFine[7] += (1.f / 64.f) * (-6.f * uz - Dyz);
-		}
-		
-		{ // 3) J+ cell scope
-			const int cell = jPlusStencilView( index ); 
-			NBRStruct NBR;
-			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
-			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
-			float f[27];
-			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
-			
-			float dRho, ux, uy, uz;
-			getDRhoUxUyUz( dRho, ux, uy, uz, f );
-			const float rho = dRho + 1.f;
-			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
-			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
-			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
-			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
-			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
-			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
-						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
-						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
-						- rho * (ux * ux + uy * uy + uz * uz);
-			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
-			const float Ny = Nx - kxxMyy;
-			const float Nz = Nx - kxxMzz;
-			const float Dxy = kxy;
-			const float Dyz = kyz;
-			const float Dxz = kxz;
-			
-			r_0 += 0.5f * dRho; 			r_y += 0.5f * dRho;			
-			kyz_0 += 0.5f * kyz; 			kyz_y += 0.5f * kyz; 
-			kxz_0 += 0.5f * kxz;			kxz_y += 0.5f * kxz;
-			kxy_0 += 0.5f * kxy;			kxy_y += 0.5f * kxy;
-			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_y += 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_y += 0.5f * kxxMzz;	
-			
-			//ux_0 += 0.5f * ux; 			ux_y += 0.5f * ux; 
-			//uy_0 += 0.5f * uy;			uy_y += 0.5f * uy;
-			//uz_0 += 0.5f * uz;			uz_y += 0.5f * uz;
-			
-			// 3) J+ cell
-
-			uxFine[0] += (1.f / 64.f) * (-6.f * ux + Dxz);
-			uyFine[0] += (1.f / 64.f) * (-Dxz);
-			uzFine[0] += (1.f / 64.f) * (-6.f * uz + Dxz);
-
-			uxFine[1] += (1.f / 64.f) * (-6.f * ux + Dxz);
-			uyFine[1] += (1.f / 64.f) * (Dxz);
-			uzFine[1] += (1.f / 64.f) * (-6.f * uz - Dxz);
-
-			uxFine[2] += (1.f / 64.f) * (10.f * ux - 4.f * Nx - Dxz);
-			uyFine[2] += (1.f / 64.f) * (16.f * uy - 6.f * Ny - Dxz);
-			uzFine[2] += (1.f / 64.f) * (10.f * uz - 4.f * Nz - Dxz);
-
-			uxFine[3] += (1.f / 64.f) * (10.f * ux + 4.f * Nx - Dxz);
-			uyFine[3] += (1.f / 64.f) * (16.f * uy - 6.f * Ny + Dxz);
-			uzFine[3] += (1.f / 64.f) * (10.f * uz - 4.f * Nz + Dxz);
-
-			uxFine[4] += (1.f / 64.f) * (-6.f * ux - Dxz);
-			uyFine[4] += (1.f / 64.f) * (Dxz);
-			uzFine[4] += (1.f / 64.f) * (-6.f * uz + Dxz);
-
-			uxFine[5] += (1.f / 64.f) * (-6.f * ux - Dxz);
-			uyFine[5] += (1.f / 64.f) * (-Dxz);
-			uzFine[5] += (1.f / 64.f) * (-6.f * uz - Dxz);
-
-			uxFine[6] += (1.f / 64.f) * (10.f * ux - 4.f * Nx + Dxz);
-			uyFine[6] += (1.f / 64.f) * (16.f * uy - 6.f * Ny + Dxz);
-			uzFine[6] += (1.f / 64.f) * (10.f * uz + 4.f * Nz - Dxz);
-
-			uxFine[7] += (1.f / 64.f) * (10.f * ux + 4.f * Nx + Dxz);
-			uyFine[7] += (1.f / 64.f) * (16.f * uy - 6.f * Ny - Dxz);
-			uzFine[7] += (1.f / 64.f) * (10.f * uz + 4.f * Nz + Dxz);
-		}
-		
-		{ // 4) J- cell scope
-			const int cell = jMinusStencilView( index ); 
-			NBRStruct NBR;
-			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
-			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
-			float f[27];
-			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
-			
-			float dRho, ux, uy, uz;
-			getDRhoUxUyUz( dRho, ux, uy, uz, f );
-			const float rho = dRho + 1.f;
-			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
-			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
-			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
-			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
-			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
-			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
-						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
-						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
-						- rho * (ux * ux + uy * uy + uz * uz);
-			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
-			const float Ny = Nx - kxxMyy;
-			const float Nz = Nx - kxxMzz;
-			const float Dxy = kxy;
-			const float Dyz = kyz;
-			const float Dxz = kxz;
-			
-			r_0 += 0.5f * dRho; 			r_y -= 0.5f * dRho;			
-			kyz_0 += 0.5f * kyz; 			kyz_y -= 0.5f * kyz; 
-			kxz_0 += 0.5f * kxz;			kxz_y -= 0.5f * kxz;
-			kxy_0 += 0.5f * kxy;			kxy_y -= 0.5f * kxy;
-			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_y -= 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_y -= 0.5f * kxxMzz;	
-			
-			//ux_0 += 0.5f * ux; 			ux_y -= 0.5f * ux; 
-			//uy_0 += 0.5f * uy;			uy_y -= 0.5f * uy;
-			//uz_0 += 0.5f * uz;			uz_y -= 0.5f * uz;	
-			
-			// 4) J- cell
-
-			uxFine[0] += (1.f / 64.f) * (10.f * ux - 4.f * Nx - Dxz);
-			uyFine[0] += (1.f / 64.f) * (16.f * uy + 6.f * Ny + Dxz);
-			uzFine[0] += (1.f / 64.f) * (10.f * uz - 4.f * Nz - Dxz);
-
-			uxFine[1] += (1.f / 64.f) * (10.f * ux + 4.f * Nx - Dxz);
-			uyFine[1] += (1.f / 64.f) * (16.f * uy + 6.f * Ny - Dxz);
-			uzFine[1] += (1.f / 64.f) * (10.f * uz - 4.f * Nz + Dxz);
-
-			uxFine[2] += (1.f / 64.f) * (-6.f * ux + Dxz);
-			uyFine[2] += (1.f / 64.f) * (Dxz);
-			uzFine[2] += (1.f / 64.f) * (-6.f * uz + Dxz);
-
-			uxFine[3] += (1.f / 64.f) * (-6.f * ux + Dxz);
-			uyFine[3] += (1.f / 64.f) * (-Dxz);
-			uzFine[3] += (1.f / 64.f) * (-6.f * uz - Dxz);
-
-			uxFine[4] += (1.f / 64.f) * (10.f * ux - 4.f * Nx + Dxz);
-			uyFine[4] += (1.f / 64.f) * (16.f * uy + 6.f * Ny - Dxz);
-			uzFine[4] += (1.f / 64.f) * (10.f * uz + 4.f * Nz - Dxz);
-
-			uxFine[5] += (1.f / 64.f) * (10.f * ux + 4.f * Nx + Dxz);
-			uyFine[5] += (1.f / 64.f) * (16.f * uy + 6.f * Ny + Dxz);
-			uzFine[5] += (1.f / 64.f) * (10.f * uz + 4.f * Nz + Dxz);
-
-			uxFine[6] += (1.f / 64.f) * (-6.f * ux - Dxz);
-			uyFine[6] += (1.f / 64.f) * (-Dxz);
-			uzFine[6] += (1.f / 64.f) * (-6.f * uz + Dxz);
-
-			uxFine[7] += (1.f / 64.f) * (-6.f * ux - Dxz);
-			uyFine[7] += (1.f / 64.f) * (Dxz);
-			uzFine[7] += (1.f / 64.f) * (-6.f * uz - Dxz);
-		}
-		
-		{ // 5) K+ cell scope
-			const int cell = kPlusStencilView( index ); 
-			NBRStruct NBR;
-			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
-			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
-			float f[27];
-			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
-			
-			float dRho, ux, uy, uz;
-			getDRhoUxUyUz( dRho, ux, uy, uz, f );
-			const float rho = dRho + 1.f;
-			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
-			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
-			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
-			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
-			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
-			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
-						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
-						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
-						- rho * (ux * ux + uy * uy + uz * uz);
-			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
-			const float Ny = Nx - kxxMyy;
-			const float Nz = Nx - kxxMzz;
-			const float Dxy = kxy;
-			const float Dyz = kyz;
-			const float Dxz = kxz;
-			
-			r_0 += 0.5f * dRho; 			r_z += 0.5f * dRho;			
-			kyz_0 += 0.5f * kyz; 			kyz_z += 0.5f * kyz; 
-			kxz_0 += 0.5f * kxz;			kxz_z += 0.5f * kxz;
-			kxy_0 += 0.5f * kxy;			kxy_z += 0.5f * kxy;
-			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_z += 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_z += 0.5f * kxxMzz;		
-			
-			//ux_0 += 0.5f * ux; 			ux_z += 0.5f * ux; 
-			//uy_0 += 0.5f * uy;			uy_z += 0.5f * uy;
-			//uz_0 += 0.5f * uz;			uz_z += 0.5f * uz;
-			
-			// 5) K+ cell
-
-			uxFine[0] += (1.f / 64.f) * (-6.f * ux + Dxy);
-			uyFine[0] += (1.f / 64.f) * (-6.f * uy + Dxy);
-			uzFine[0] += (1.f / 64.f) * (-Dxy);
-
-			uxFine[1] += (1.f / 64.f) * (-6.f * ux + Dxy);
-			uyFine[1] += (1.f / 64.f) * (-6.f * uy - Dxy);
-			uzFine[1] += (1.f / 64.f) * (Dxy);
-
-			uxFine[2] += (1.f / 64.f) * (-6.f * ux - Dxy);
-			uyFine[2] += (1.f / 64.f) * (-6.f * uy + Dxy);
-			uzFine[2] += (1.f / 64.f) * (Dxy);
-
-			uxFine[3] += (1.f / 64.f) * (-6.f * ux - Dxy);
-			uyFine[3] += (1.f / 64.f) * (-6.f * uy - Dxy);
-			uzFine[3] += (1.f / 64.f) * (-Dxy);
-
-			uxFine[4] += (1.f / 64.f) * (10.f * ux - 4.f * Nx - Dxy);
-			uyFine[4] += (1.f / 64.f) * (10.f * uy - 4.f * Ny - Dxy);
-			uzFine[4] += (1.f / 64.f) * (16.f * uz - 6.f * Nz - Dxy);
-
-			uxFine[5] += (1.f / 64.f) * (10.f * ux + 4.f * Nx - Dxy);
-			uyFine[5] += (1.f / 64.f) * (10.f * uy - 4.f * Ny + Dxy);
-			uzFine[5] += (1.f / 64.f) * (16.f * uz - 6.f * Nz + Dxy);
-
-			uxFine[6] += (1.f / 64.f) * (10.f * ux - 4.f * Nx + Dxy);
-			uyFine[6] += (1.f / 64.f) * (10.f * uy + 4.f * Ny - Dxy);
-			uzFine[6] += (1.f / 64.f) * (16.f * uz - 6.f * Nz + Dxy);
-
-			uxFine[7] += (1.f / 64.f) * (10.f * ux + 4.f * Nx + Dxy);
-			uyFine[7] += (1.f / 64.f) * (10.f * uy + 4.f * Ny + Dxy);
-			uzFine[7] += (1.f / 64.f) * (16.f * uz - 6.f * Nz - Dxy);
-		}
-		
-		{ // 6) K- cell scope
-			const int cell = kMinusStencilView( index ); 
-			NBRStruct NBR;
-			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
-			int cellReadIndex[27], fReadIndex[27]; getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
-			float f[27];
-			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse(fReadIndex[direction], cellReadIndex[direction]);
-			
-			float dRho, ux, uy, uz;
-			getDRhoUxUyUz( dRho, ux, uy, uz, f );
-			const float rho = dRho + 1.f;
-			const float kyz = - 3.f * omega1Coarse * ( ( - f[13] - f[14] + f[17] + f[18] - f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]) / rho - uy * uz );
-			const float kxz = - 3.f * omega1Coarse * ( ( - f[7 ] - f[8 ] + f[9 ] + f[10] + f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uz );
-			const float kxy = - 3.f * omega1Coarse * ( ( + f[11] + f[12] - f[15] - f[16] - f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]) / rho - ux * uy );
-			const float kxxMyy = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[5 ] - f[6 ] + f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]) / rho - ( ux * ux - uy * uy ) );
-			const float kxxMzz = - 1.5f * omega1Coarse * ( ( + f[1 ] + f[2 ] - f[3 ] - f[4 ] + f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]) / rho - ( ux * ux - uz * uz ) );
-			const float centralTrace =	( f[1] + f[2] + f[3] + f[4] + f[5] + f[6] ) 
-						+ 2.f * ( f[7]  + f[8]  + f[9]  + f[10] + f[11] + f[12] + f[13] + f[14] + f[15] + f[16] + f[17] + f[18] ) 
-						+ 3.f * ( f[19] + f[20] + f[21] + f[22] + f[23] + f[24] + f[25] + f[26] ) 
-						- rho * (ux * ux + uy * uy + uz * uz);
-			const float Nx = (kxxMyy + kxxMzz) / 3.f + 0.5f * (dRho - centralTrace) / rho;
-			const float Ny = Nx - kxxMyy;
-			const float Nz = Nx - kxxMzz;
-			const float Dxy = kxy;
-			const float Dyz = kyz;
-			const float Dxz = kxz;
-			
-			r_0 += 0.5f * dRho; 			r_z -= 0.5f * dRho;			
-			kyz_0 += 0.5f * kyz; 			kyz_z -= 0.5f * kyz; 
-			kxz_0 += 0.5f * kxz;			kxz_z -= 0.5f * kxz;
-			kxy_0 += 0.5f * kxy;			kxy_z -= 0.5f * kxy;
-			kxxMyy_0 += 0.5f * kxxMyy;		kxxMyy_z -= 0.5f * kxxMyy;
-			kxxMzz_0 += 0.5f * kxxMzz;		kxxMzz_z -= 0.5f * kxxMzz;
-			
-			//ux_0 += 0.5f * ux; 			ux_z -= 0.5f * ux; 
-			//uy_0 += 0.5f * uy;			uy_z -= 0.5f * uy;
-			//uz_0 += 0.5f * uz;			uz_z -= 0.5f * uz;
-			
-			// 6) K- cell
-
-			uxFine[0] += (1.f / 64.f) * (10.f * ux - 4.f * Nx - Dxy);
-			uyFine[0] += (1.f / 64.f) * (10.f * uy - 4.f * Ny - Dxy);
-			uzFine[0] += (1.f / 64.f) * (16.f * uz + 6.f * Nz + Dxy);
-
-			uxFine[1] += (1.f / 64.f) * (10.f * ux + 4.f * Nx - Dxy);
-			uyFine[1] += (1.f / 64.f) * (10.f * uy - 4.f * Ny + Dxy);
-			uzFine[1] += (1.f / 64.f) * (16.f * uz + 6.f * Nz - Dxy);
-
-			uxFine[2] += (1.f / 64.f) * (10.f * ux - 4.f * Nx + Dxy);
-			uyFine[2] += (1.f / 64.f) * (10.f * uy + 4.f * Ny - Dxy);
-			uzFine[2] += (1.f / 64.f) * (16.f * uz + 6.f * Nz - Dxy);
-
-			uxFine[3] += (1.f / 64.f) * (10.f * ux + 4.f * Nx + Dxy);
-			uyFine[3] += (1.f / 64.f) * (10.f * uy + 4.f * Ny + Dxy);
-			uzFine[3] += (1.f / 64.f) * (16.f * uz + 6.f * Nz + Dxy);
-
-			uxFine[4] += (1.f / 64.f) * (-6.f * ux + Dxy);
-			uyFine[4] += (1.f / 64.f) * (-6.f * uy + Dxy);
-			uzFine[4] += (1.f / 64.f) * (Dxy);
-
-			uxFine[5] += (1.f / 64.f) * (-6.f * ux + Dxy);
-			uyFine[5] += (1.f / 64.f) * (-6.f * uy - Dxy);
-			uzFine[5] += (1.f / 64.f) * (-Dxy);
-
-			uxFine[6] += (1.f / 64.f) * (-6.f * ux - Dxy);
-			uyFine[6] += (1.f / 64.f) * (-6.f * uy + Dxy);
-			uzFine[6] += (1.f / 64.f) * (-Dxy);
-
-			uxFine[7] += (1.f / 64.f) * (-6.f * ux - Dxy);
-			uyFine[7] += (1.f / 64.f) * (-6.f * uy - Dxy);
-			uzFine[7] += (1.f / 64.f) * (Dxy);
-		}
-		
+		const int cellCoarse0 = indexView( index );
 		const int cellFine0 = childMapView( index );
 		
-		NBRStruct NBRCellFineList;
-		getCompressedNBR( cellFine0, NBRCellFineList, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
+		NBRStruct NBRStencil;
+		getCompressedNBR( cellCoarse0, NBRStencil, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
 				
-		int cellFineList[8];
-		cellFineList[0] = NBRCellFineList.self;
-		cellFineList[1] = NBRCellFineList.iPlus;
-		cellFineList[2] = NBRCellFineList.jPlus;
-		cellFineList[3] = NBRCellFineList.ijPlus;
-		cellFineList[4] = NBRCellFineList.kPlus;
-		cellFineList[5] = NBRCellFineList.ikPlus;
-		cellFineList[6] = NBRCellFineList.jkPlus;
-		cellFineList[7] = NBRCellFineList.ijkPlus;
+		int cellStencil[8];
+		cellStencil[0] = NBRStencil.self;
+		cellStencil[1] = NBRStencil.iPlus;
+		cellStencil[2] = NBRStencil.jPlus;
+		cellStencil[3] = NBRStencil.ijPlus;
+		cellStencil[4] = NBRStencil.kPlus;
+		cellStencil[5] = NBRStencil.ikPlus;
+		cellStencil[6] = NBRStencil.jkPlus;
+		cellStencil[7] = NBRStencil.ijkPlus;
 		
-		const float cellFineDx[8] = {-0.25f, 0.25f,-0.25f, 0.25f,-0.25f, 0.25f,-0.25f, 0.25f};
-		const float cellFineDy[8] = {-0.25f,-0.25f, 0.25f, 0.25f,-0.25f,-0.25f, 0.25f, 0.25f};
-		const float cellFineDz[8] = {-0.25f,-0.25f,-0.25f,-0.25f, 0.25f, 0.25f, 0.25f, 0.25f};		
+		// Initialize stencil variables
+		float dRhoStencil[8]; float uxStencil[8]; float uyStencil[8]; float uzStencil[8];
+		float kxyStencil[8]; float kyzStencil[8]; float kxzStencil[8]; float kxxMyyStencil[8]; float kxxMzzStencil[8];
 		
-		for ( int which = 0; which < 8; which++ )
+		// Extract values from each stencil cell
+		for ( int i = 0; i < 8; i++ )
 		{
-			const int cellFine = cellFineList[which];
-			NBRStruct NBR;
-			getCompressedNBR( cellFine, NBR, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
-			int cellWriteIndex[27];
-			int fWriteIndex[27];
-			getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperFine );
+			const int nbr = cellStencil[i];
+			NBRStruct NBRofNBR;
+			getCompressedNBR( nbr, NBRofNBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int nbrCellReadIndex[27], nbrFReadIndex[27];
+			getPreCollisionIndex( nbrCellReadIndex, nbrFReadIndex, NBRofNBR, esotwistFlipperCoarse );
+			float fNbr[27];
+			for ( int direction = 0; direction < 27; direction++ ) fNbr[direction] = fViewCoarse( nbrFReadIndex[direction], nbrCellReadIndex[direction] );
 			
-			const float dx = cellFineDx[which];
-			const float dy = cellFineDy[which];
-			const float dz = cellFineDz[which];
-			const float dRho 	= 0.25f * r_0   + dx * r_x 	+ dy * r_y 	 + dz * r_z;
-			const float kyz  	= 0.25f * kyz_0 + dx * kyz_x 	+ dy * kyz_y + dz * kyz_z;
-			const float kxz	   	= 0.25f * kxz_0 + dx * kxz_x 	+ dy * kxz_y + dz * kxz_z;
-			const float kxy	   	= 0.25f * kxy_0 + dx * kxy_x 	+ dy * kxy_y + dz * kxy_z;
-			const float kxxMyy 	= 0.25f * kxxMyy_0 + dx * kxxMyy_x + dy * kxxMyy_y + dz * kxxMyy_z;
-			const float kxxMzz 	= 0.25f * kxxMzz_0 + dx * kxxMzz_x + dy * kxxMzz_y + dz * kxxMzz_z;
+			getDRhoUxUyUz( dRhoStencil[i], uxStencil[i], uyStencil[i], uzStencil[i], fNbr );
+			
+			kxyStencil[i] = - 3.f * omega1Coarse * ( ( 
+					+ fNbr[11] + fNbr[12] - fNbr[15] - fNbr[16] 
+					- fNbr[19] - fNbr[20] + fNbr[21] + fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
+													) / dRhoStencil[i] - uxStencil[i] * uyStencil[i] );
+			kyzStencil[i] = - 3.f * omega1Coarse * ( (
+					- fNbr[13] - fNbr[14] + fNbr[17] + fNbr[18] 
+					- fNbr[19] - fNbr[20] - fNbr[21] - fNbr[22] + fNbr[23] + fNbr[24] + fNbr[25] + fNbr[26]
+													) / dRhoStencil[i] - uyStencil[i] * uzStencil[i] );
+			kxzStencil[i] = - 3.f * omega1Coarse * ( (
+					- fNbr[7 ] - fNbr[8 ] + fNbr[9 ] + fNbr[10] 
+					+ fNbr[19] + fNbr[20] - fNbr[21] - fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
+													) / dRhoStencil[i] - uxStencil[i] * uzStencil[i] );
+			kxxMyyStencil[i] = - 1.5f * omega1Coarse * ( (
+					+ fNbr[1 ] + fNbr[2 ] - fNbr[5 ] - fNbr[6 ] 
+					+ fNbr[7 ] + fNbr[8 ] + fNbr[9 ] + fNbr[10] - fNbr[13] - fNbr[14] - fNbr[17] - fNbr[18]
+													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uyStencil[i] * uyStencil[i] ) );
+			kxxMzzStencil[i] = - 1.5f * omega1Coarse * ( (
+					+ fNbr[1 ] + fNbr[2 ] - fNbr[3 ] - fNbr[4 ] 
+					+ fNbr[11] + fNbr[12] - fNbr[13] - fNbr[14] + fNbr[15] + fNbr[16] - fNbr[17] - fNbr[18]
+													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
+		}
+		
+		// get all required coefficients
+		// eq Schönherr 2015 (7.10)
+		
+		// The following is directly taken from VirtualFluids (just renamed variables). https://github.com/irmb/virtualfluids 
+		
+		const float d000 = 0.125f * (((dRhoStencil[7] + dRhoStencil[0]) + (dRhoStencil[3] + dRhoStencil[4])) + ((dRhoStencil[1] + dRhoStencil[6]) + (dRhoStencil[5] + dRhoStencil[2])));
+        const float d100 = 0.25f * (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[3] - dRhoStencil[4])) + ((dRhoStencil[1] - dRhoStencil[6]) + (dRhoStencil[5] - dRhoStencil[2])));
+        const float d010 = 0.25f * (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[3] - dRhoStencil[4])) + ((dRhoStencil[6] - dRhoStencil[1]) + (dRhoStencil[2] - dRhoStencil[5])));
+        const float d001 = 0.25f * (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[4] - dRhoStencil[3])) + ((dRhoStencil[6] - dRhoStencil[1]) + (dRhoStencil[5] - dRhoStencil[2])));
+        const float d110 = 0.5f * (((dRhoStencil[7] + dRhoStencil[0]) + (dRhoStencil[3] + dRhoStencil[4])) - ((dRhoStencil[1] + dRhoStencil[6]) + (dRhoStencil[5] + dRhoStencil[2])));
+        const float d101 = 0.5f * (((dRhoStencil[7] + dRhoStencil[0]) - (dRhoStencil[3] + dRhoStencil[4])) + ((dRhoStencil[5] + dRhoStencil[2]) - (dRhoStencil[1] + dRhoStencil[6])));
+        const float d011 = 0.5f * (((dRhoStencil[7] + dRhoStencil[0]) - (dRhoStencil[3] + dRhoStencil[4])) + ((dRhoStencil[1] + dRhoStencil[6]) - (dRhoStencil[5] + dRhoStencil[2])));
+        const float d111 = (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[4] - dRhoStencil[3])) + ((dRhoStencil[1] - dRhoStencil[6]) + (dRhoStencil[2] - dRhoStencil[5])));
+		
+		const float a0 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
+                                ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])) +
+                                ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[3] - kxzStencil[4])) +
+                                ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[2] - kxzStencil[5])) +
+                                ((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) - ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5])) +
+                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[5] + uzStencil[2]) - (uzStencil[6] + uzStencil[1]))) +
+                        8.f * (((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) + ((uxStencil[6] + uxStencil[1]) + (uxStencil[5] + uxStencil[2]))) +
+                        ((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
+                        ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
+                        ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
+                        ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
+        const float b0 = 0.015625f * (2.f * (((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
+                                ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
+                                ((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
+                                ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])) +
+                                ((kyzStencil[0] - kyzStencil[7]) + (kyzStencil[3] - kyzStencil[4])) +
+                                ((kyzStencil[1] - kyzStencil[6]) + (kyzStencil[2] - kyzStencil[5])) +
+                                ((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) - ((uxStencil[2] + uxStencil[6]) + (uxStencil[1] + uxStencil[5])) +
+                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[2] + uzStencil[5]))) +
+                        8.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
+                        ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
+                        ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
+        const float c0 = 0.015625f * (2.f * (((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
+                                ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[5] - kxxMzzStencil[2])) +
+                                ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[4] - kxzStencil[3])) +
+                                ((kxzStencil[6] - kxzStencil[1]) + (kxzStencil[2] - kxzStencil[5])) +
+                                ((kyzStencil[0] - kyzStencil[7]) + (kyzStencil[4] - kyzStencil[3])) +
+                                ((kyzStencil[1] - kyzStencil[6]) + (kyzStencil[5] - kyzStencil[2])) +
+                                ((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[6] + uxStencil[1])) +
+                                ((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[6] + uyStencil[1]) - (uyStencil[2] + uyStencil[5]))) +
+                        8.f * (((uzStencil[7] + uzStencil[0]) + (uzStencil[3] + uzStencil[4])) + ((uzStencil[1] + uzStencil[6]) + (uzStencil[5] + uzStencil[2]))) +
+                        ((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
+                        ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[2] - kxxMyyStencil[5])));
+
+        const float a100 = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[3] - uxStencil[4])) + ((uxStencil[1] - uxStencil[6]) + (uxStencil[5] - uxStencil[2])));
+        const float b100 = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[3] - uyStencil[4])) + ((uyStencil[1] - uyStencil[6]) + (uyStencil[5] - uyStencil[2])));
+        const float c100 = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[3] - uzStencil[4])) + ((uzStencil[1] - uzStencil[6]) + (uzStencil[5] - uzStencil[2])));
+
+        const float a010 = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[3] - uxStencil[4])) + ((uxStencil[6] - uxStencil[1]) + (uxStencil[2] - uxStencil[5])));
+        const float b010 = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[3] - uyStencil[4])) + ((uyStencil[6] - uyStencil[1]) + (uyStencil[2] - uyStencil[5])));
+        const float c010 = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[3] - uzStencil[4])) + ((uzStencil[6] - uzStencil[1]) + (uzStencil[2] - uzStencil[5])));
+
+        const float a001 = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[4] - uxStencil[3])) + ((uxStencil[6] - uxStencil[1]) + (uxStencil[5] - uxStencil[2])));
+        const float b001 = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[6] - uyStencil[1]) + (uyStencil[5] - uyStencil[2])));
+        const float c001 = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[6] - uzStencil[1]) + (uzStencil[5] - uzStencil[2])));
+		
+		const float a200 = 0.0625f * (2.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] - uyStencil[6])) + ((uyStencil[4] - uyStencil[1]) - (uyStencil[2] + uyStencil[5])) +
+                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[6])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[4] + uzStencil[1]))) +
+                        ((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
+                        ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[5] - kxxMyyStencil[2])) +
+                        ((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
+                        ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
+        const float b200 = 0.125f * (2.f * (-((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) + ((uxStencil[6] + uxStencil[1]) + (uxStencil[2] + uxStencil[5]))) +
+                       ((kxyStencil[7] - kxyStencil[0]) + (kxyStencil[3] - kxyStencil[4])) +
+                       ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])));
+        const float c200 = 0.125f * (2.f * (((uxStencil[3] + uxStencil[4]) - (uxStencil[7] + uxStencil[0])) + ((uxStencil[6] + uxStencil[1]) - (uxStencil[2] + uxStencil[5]))) +
+                       ((kxzStencil[7] - kxzStencil[0]) + (kxzStencil[3] - kxzStencil[4])) +
+                       ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[5] - kxzStencil[2])));
+        
+        const float a020 = 0.125f * (2.f * (-((uyStencil[7] + uyStencil[0]) + (uyStencil[4] + uyStencil[3])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
+                       ((kxyStencil[7] - kxyStencil[0]) + (kxyStencil[3] - kxyStencil[4])) +
+                       ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])));
+        const float b020 = 0.0625f * (2.f * (((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
+                                ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[5] - kxxMyyStencil[2])) +
+                                ((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) - ((uxStencil[6] + uxStencil[1]) + (uxStencil[5] + uxStencil[2])) +
+                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[2] + uzStencil[5]))) +
+                        ((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
+                        ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
+        const float c020 = 0.125f * (2.f * (((uyStencil[4] + uyStencil[3]) - (uyStencil[7] + uyStencil[0])) + ((uyStencil[5] + uyStencil[2]) - (uyStencil[6] + uyStencil[1]))) +
+                       ((kyzStencil[7] - kyzStencil[0]) + (kyzStencil[3] - kyzStencil[4])) +
+                       ((kyzStencil[6] - kyzStencil[1]) + (kyzStencil[2] - kyzStencil[5])));
+                 
+        const float a002 = 0.125f * (2.f * (((uzStencil[3] + uzStencil[4]) - (uzStencil[7] + uzStencil[0])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[5] + uzStencil[2]))) +
+                       ((kxzStencil[7] - kxzStencil[0]) + (kxzStencil[4] - kxzStencil[3])) +
+                       ((kxzStencil[5] - kxzStencil[2]) + (kxzStencil[6] - kxzStencil[1])));
+        const float b002 = 0.125f * (2.f * (((uzStencil[3] + uzStencil[4]) - (uzStencil[7] + uzStencil[0])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[1] + uzStencil[6]))) +
+                       ((kyzStencil[7] - kyzStencil[0]) + (kyzStencil[4] - kyzStencil[3])) +
+                       ((kyzStencil[5] - kyzStencil[2]) + (kyzStencil[6] - kyzStencil[1])));
+        const float c002 = 0.0625f * (2.f * (((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
+                                ((kxxMzzStencil[2] - kxxMzzStencil[5]) + (kxxMzzStencil[1] - kxxMzzStencil[6])) +
+                                ((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[1] + uxStencil[6])) +
+                                ((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[1] + uyStencil[6]) - (uyStencil[2] + uyStencil[5]))) +
+                        ((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
+                        ((kxxMyyStencil[5] - kxxMyyStencil[2]) + (kxxMyyStencil[6] - kxxMyyStencil[1])));
+		
+        const float a110 = 0.5f * (((uxStencil[7] + uxStencil[0]) + (uxStencil[4] + uxStencil[3])) - ((uxStencil[2] + uxStencil[5]) + (uxStencil[1] + uxStencil[6])));
+        const float b110 = 0.5f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[4] + uyStencil[3])) - ((uyStencil[2] + uyStencil[5]) + (uyStencil[1] + uyStencil[6])));
+        const float c110 = 0.5f * (((uzStencil[7] + uzStencil[0]) + (uzStencil[4] + uzStencil[3])) - ((uzStencil[2] + uzStencil[5]) + (uzStencil[1] + uzStencil[6])));
+
+        const float a101 = 0.5f * (((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[1] + uxStencil[6])));
+        const float b101 = 0.5f * (((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[2] + uyStencil[5]) - (uyStencil[1] + uyStencil[6])));
+        const float c101 = 0.5f * (((uzStencil[7] + uzStencil[0]) - (uzStencil[4] + uzStencil[3])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[1] + uzStencil[6])));
+
+        const float a011 = 0.5f * (((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[1] + uxStencil[6]) - (uxStencil[2] + uxStencil[5])));
+        const float b011 = 0.5f * (((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[1] + uyStencil[6]) - (uyStencil[2] + uyStencil[5])));
+        const float c011 = 0.5f * (((uzStencil[7] + uzStencil[0]) - (uzStencil[4] + uzStencil[3])) + ((uzStencil[1] + uzStencil[6]) - (uzStencil[2] + uzStencil[5])));
+
+        const float a111 = ((uxStencil[7] - uxStencil[0]) + (uxStencil[4] - uxStencil[3])) + ((uxStencil[2] - uxStencil[5]) + (uxStencil[1] - uxStencil[6]));
+        const float b111 = ((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[2] - uyStencil[5]) + (uyStencil[1] - uyStencil[6]));
+        const float c111 = ((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[2] - uzStencil[5]) + (uzStencil[1] - uzStencil[6]));
+		
+		// get average second order moments
+		// eq Schönherr 2015 (7.29 - 7.33)
+		float kxyAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxyAvg += kxyStencil[i]; kxyAvg *= 0.125f; kxyAvg -= ( ay + bx );
+		float kyzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kyzAvg += kyzStencil[i]; kyzAvg *= 0.125f; kyzAvg -= ( bz + cy );
+		float kxzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxzAvg += kxzStencil[i]; kxzAvg *= 0.125f; kxzAvg -= ( az + cx );
+		float kxxMyyAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMyyAvg += kxxMyyStencil[i]; kxxMyyAvg *= 0.125f; kxxMyyAvg -= ( ax - by );
+		float kxxMzzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMzzAvg += kxxMzzStencil[i]; kxxMzzAvg *= 0.125f; kxxMzzAvg -= ( ax - cz );
+		
+		// build list of fine cells and their positions
+		NBRStruct NBRTarget;
+		getCompressedNBR( cellFine0, NBRTarget, shifterViewFine, jPlusViewFine, kPlusViewFine, jkPlusViewFine, InfoFine );
+		int cellTarget[8];
+		cellTarget[0] = NBRTarget.self;
+		cellTarget[1] = NBRTarget.iPlus;
+		cellTarget[2] = NBRTarget.jPlus;
+		cellTarget[3] = NBRTarget.ijPlus;
+		cellTarget[4] = NBRTarget.kPlus;
+		cellTarget[5] = NBRTarget.ikPlus;
+		cellTarget[6] = NBRTarget.jkPlus;
+		cellTarget[7] = NBRTarget.ijkPlus;
+		
+		const float dxArray = {-0.25f, +0.25f, -0.25f, +0.25f, -0.25f, +0.25f, -0.25f, +0.25f};
+		const float dyArray = {-0.25f, -0.25f, +0.25f, +0.25f, -0.25f, -0.25f, +0.25f, +0.25f};
+		const float dzArray = {-0.25f, -0.25f, -0.25f, -0.25f, +0.25f, +0.25f, +0.25f, +0.25f};
+		
+		for ( int i = 0; i < 8; i++ )
+		{
+			const int cellFine = cellTarget[i];
+			const float dx = dxArray[i];
+			const float dy = dyArray[i];
+			const float dz = dzArray[i];
+			// get interpolated variables for the fine cell
+			const float dRho = d0 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz; 
+			const float ux = a0 + a100 * dx + a010 * dy + a001 * dz + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
+								+ a200 * dx * dx + a020 * dy * dy + a002 * dz * dz; 
+			const float uy = b0 + b100 * dx + b010 * dy + b001 * dz + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
+								+ b200 * dx * dx + b020 * dy * dy + b002 * dz * dz; 
+			const float uz = c0 + c100 * dx + c010 * dy + c001 * dz + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
+								+ c200 * dx * dx + c020 * dy * dy + c002 * dz * dz; 
 			const float rho = dRho + 1.f;
-			const float ux = uxFine[which];
-			const float uy = uyFine[which];
-			const float uz = uzFine[which];
-			
-			//const float ux  	= 0.25f * ux_0 + dx * ux_x 	+ dy * ux_y + dz * ux_z;
-			//const float uy	   	= 0.25f * uy_0 + dx * uy_x 	+ dy * uy_y + dz * uy_z;
-			//const float uz	   	= 0.25f * uz_0 + dx * uz_x 	+ dy * uz_y + dz * uz_z;
 			
 			// calculate second order central moments
-			// eq Schönherr 2015 (7.38 - 7.43) - with base gradients mathematically cancelled
-			const float sigma = 0.5f; // coarse to fine
-			const float k_011 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * kyz;
-			const float k_101 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * kxz;
-			const float k_110 = - ( sigma * rho ) / ( 3.f * omega1Fine ) * kxy;
-			const float k_200 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyy + kxxMzz );
-			const float k_020 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( - 2.f * ( kxxMyy ) + kxxMzz );
-			const float k_002 = dRho / 3.f - ( 2.f * sigma * rho ) / ( 9.f * omega1Fine ) * ( kxxMyy - 2.f * ( kxxMzz ) );
+			// eq Schönherr 2015 (7.38 - 7.43)
+			// note that A, B, C is all zeros because coarse cell is placed [0, 0, 0]
+			const float sigma = 2.f; // fine to coarse
+			const float k_011 = - ( sigma * rho ) / ( 3.f * omega1Coarse ) * ( (bz + cy) + kyzAvg );
+			const float k_101 = - ( sigma * rho ) / ( 3.f * omega1Coarse ) * ( (az + cx) + kxzAvg );
+			const float k_110 = - ( sigma * rho ) / ( 3.f * omega1Coarse ) * ( (ay + bx) + kxyAvg );
 			
+			const float mxxMyy = - (2.f / 3.f) * ((ax - by) + kxxMyyAvg) * sigma / omega1Coarse * rho;
+			const float mxxMzz = - (2.f / 3.f) * ((ax - cz) + kxxMzzAvg) * sigma / omega1Coarse * rho;
+			
+			const float k_200 = (1.f / 3.f) * (       mxxMyy +       mxxMzz + dRho);
+			const float k_020 = (1.f / 3.f) * (-2.f * mxxMyy +       mxxMzz + dRho);
+			const float k_002 = (1.f / 3.f) * (       mxxMyy - 2.f * mxxMzz + dRho);
+			
+			// reconstruct f for the coarse cell
 			float f[27];
 			reconstructInterpolatedF( f, rho, ux, uy, uz, k_011, k_101, k_110, k_200, k_020, k_002 );
 			
-			for ( int direction = 0; direction < 27; direction++ ) fViewFine( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
+			// write reconstructed f into the coarse cell
+			NBRStruct NBR;
+			getCompressedNBR( cellCoarse, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellWriteIndex[27];
+			int fWriteIndex[27];
+			getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperCoarse );
+			for ( int direction = 0; direction < 27; direction++ ) fViewCoarse( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
+			
 		}
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.interfaceCount, cellLambda );
+	
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.FineToCoarseInterface.interfaceCount, cellLambda );
 }
 
 void updateInterface( GridStruct &GridCoarse, GridStruct &GridFine )
