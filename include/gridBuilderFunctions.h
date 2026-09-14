@@ -570,19 +570,16 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	markGeometricNBRPlus( GridBuilder );
 	
 	// 11) Build our NBR Minus
-	if ( !iAmFinest )
-	{
-		auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
-		auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
-		auto jMinusView = GridBuilder.NBR.jMinusArray.getView();
-		auto kMinusView = GridBuilder.NBR.kMinusArray.getView();
-		auto NBRMinusLambda = [=] __cuda_callable__ ( const int cell ) mutable
-		{	
-			jMinusView[ jPlusView[ cell ] ] = cell;
-			kMinusView[ kPlusView[ cell ] ] = cell;
-		};
-		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
-	}
+	auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
+	auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
+	auto jMinusView = GridBuilder.NBR.jMinusArray.getView();
+	auto kMinusView = GridBuilder.NBR.kMinusArray.getView();
+	auto NBRMinusLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		jMinusView[ jPlusView[ cell ] ] = cell;
+		kMinusView[ kPlusView[ cell ] ] = cell;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
 	
 	// 12) fill grid bounds
 	Info.Bounds.xMin = Info.ox + Info.res * TNL::min( GridBuilder.IJK.iArray ) - 0.5f * Info.res;
@@ -767,7 +764,8 @@ void fillFineToCoarseInterface( InterfaceStruct &Interface, const BoolArrayType 
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, cellLambda );
 }
 
-void fillCoarseToFineInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, const GridBuilderStruct &GridBuilder, const GridBuilderStruct &GridBuilderFine )
+void fillCoarseToFineInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, const IntArrayType &childMapArrayGlobal, 
+								const GridBuilderStruct &GridBuilder, const GridBuilderStruct &GridBuilderFine )
 {
 	const InfoStruct &Info = GridBuilder.Info;
 	const InfoStruct &InfoFine = GridBuilderFine.Info;
@@ -779,10 +777,18 @@ void fillCoarseToFineInterface( InterfaceStruct &Interface, const BoolArrayType 
 	auto iView = IJK.iArray.getConstView();
 	auto jView = IJK.jArray.getConstView();
 	auto kView = IJK.kArray.getConstView();
+	auto iViewFine = GridBuilderFine.IJK.iArray.getConstView();
+	auto jViewFine = GridBuilderFine.IJK.jArray.getConstView();
+	auto kViewFine = GridBuilderFine.IJK.kArray.getConstView();
 	auto jPlusGlobalView = NBR.jPlusArray.getConstView();
 	auto kPlusGlobalView = NBR.kPlusArray.getConstView();
+	auto jPlusGlobalViewFine = GridBuilderFine.NBR.jPlusArray.getConstView();
+	auto kPlusGlobalViewFine = GridBuilderFine.NBR.kPlusArray.getConstView();
+	auto jMinusGlobalViewFine = GridBuilderFine.NBR.jMinusArray.getConstView();
+	auto kMinusGlobalViewFine = GridBuilderFine.NBR.kMinusArray.getConstView();
 	auto wallMarkerView = wallMarkerArray.getConstView();
 	auto markerView = markerArray.getConstView();
+	auto childMapGlobalView = childMapArrayGlobal.getConstView();
 	
 	BoolArrayType iSeeFullBlockMarkerArray( cellCountTotal );
 	iSeeFullBlockMarkerArray.setValue( false );
@@ -811,6 +817,28 @@ void fillCoarseToFineInterface( InterfaceStruct &Interface, const BoolArrayType 
 			|| jView( NBR.ikPlus ) != jCell || jView( NBR.jkPlus ) != jCell+1 || jView( NBR.ijkPlus ) != jCell+1 ) return;
 		if ( kView( NBR.iPlus ) != kCell || kView( NBR.jPlus ) != kCell || kView( NBR.ijPlus ) != kCell || kView( NBR.kPlus ) != kCell+1 
 			|| kView( NBR.ikPlus ) != kCell+1 || kView( NBR.jkPlus ) != kCell+1 || kView( NBR.ijkPlus ) != kCell+1 ) return;
+			
+		const int cellFineTop = childMapGlobalView( NBR.ijkPlus );
+		if ( cellFineTop < 0 ) return;
+		NBRStruct NBRFine;
+		NBRFine.ijkPlus = cellFineTop;
+		NBRFine.jkPlus = NBRFine.ijkPlus - 1; if ( NBRFine.jkPlus < 0 ) NBRFine.jkPlus = InfoFine.cellCount - 1;
+		NBRFine.kPlus = jMinusGlobalViewFine( NBRFine.jkPlus );
+		NBRFine.self = kMinusGlobalViewFine( NBRFine.kPlus );
+		NBRFine.jPlus = jPlusGlobalViewFine( NBRFine.self );
+		finishNBRPlus( NBRFine, InfoFine );
+		
+		if ( iViewFine( NBRFine.self ) != 2*iCell+1 || jViewFine( NBRFine.self ) != 2*jCell+1 || kViewFine( NBRFine.self ) != 2*kCell+1 ) return;
+		
+		if ( iViewFine( NBRFine.iPlus ) != 2*iCell+2 || iViewFine( NBRFine.jPlus ) != 2*iCell+1 || iViewFine( NBRFine.ijPlus ) != 2*iCell+2 || iViewFine( NBRFine.kPlus ) != 2*iCell+1 
+			|| iViewFine( NBRFine.ikPlus ) != 2*iCell+2 || iViewFine( NBRFine.jkPlus ) != 2*iCell+1 || iViewFine( NBRFine.ijkPlus ) != 2*iCell+2 ) return;
+		
+		if ( jViewFine( NBRFine.iPlus ) != 2*jCell+1 || jViewFine( NBRFine.jPlus ) != 2*jCell+2 || jViewFine( NBRFine.ijPlus ) != 2*jCell+2 || jViewFine( NBRFine.kPlus ) != 2*jCell+1 
+			|| jViewFine( NBRFine.ikPlus ) != 2*jCell+1 || jViewFine( NBRFine.jkPlus ) != 2*jCell+2 || jViewFine( NBRFine.ijkPlus ) != 2*jCell+2 ) return;
+		
+		if ( kViewFine( NBRFine.iPlus ) != 2*kCell+1 || kViewFine( NBRFine.jPlus ) != 2*kCell+1 || kViewFine( NBRFine.ijPlus ) != 2*kCell+1 || kViewFine( NBRFine.kPlus ) != 2*kCell+2 
+			|| kViewFine( NBRFine.ikPlus ) != 2*kCell+2 || kViewFine( NBRFine.jkPlus ) != 2*kCell+2 || kViewFine( NBRFine.ijkPlus ) != 2*kCell+2 ) return;
+				
 		iSeeFullBlockMarkerView( cell ) = true;
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, iSeeFullBlockLambda );
@@ -900,6 +928,7 @@ void fillCoarseToFineInterface( InterfaceStruct &Interface, const BoolArrayType 
 		leftoverIndexView( index ) = cell;
 		leftoverParentMapView( index ) = parentMapGlobalView( cell );
 	};
+	
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridBuilderFine.Info.cellCount, leftoverLambda );
 }
 
@@ -1093,7 +1122,7 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		fillFineToCoarseInterface( Grid.FineToCoarseInterface, markerArray, childMapArrayGlobal, GridBuilder );
 		// Coarse to fine
 		markerArray = GridBuilder.coarseToFineMarkerArray * !GridBuilder.wallMarkerArray;
-		fillCoarseToFineInterface( Grid.CoarseToFineInterface, markerArray, GridBuilder, GridBuilderFiner );
+		fillCoarseToFineInterface( Grid.CoarseToFineInterface, markerArray, childMapArrayGlobal, GridBuilder, GridBuilderFiner );
 		std::cout << "	Leftover fine cells on interface between levels " << level << ", " << level+1 << ": " 
 					<< Grid.CoarseToFineInterface.leftoverCount << " out of " 
 					<< Grid.CoarseToFineInterface.interfaceCount * 8 + Grid.CoarseToFineInterface.leftoverCount << std::endl;

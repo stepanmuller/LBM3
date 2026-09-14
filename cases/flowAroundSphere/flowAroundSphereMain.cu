@@ -5,7 +5,7 @@ constexpr float sphereDiameterPhys = 1000.f;											// mm
 constexpr float uxInlet = 0.015625; // 0.0125f; 														// also works as nominal LBM Mach number
 constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
 
-constexpr int GRID_LEVEL_COUNT = 4;
+constexpr int GRID_LEVEL_COUNT = 6;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (6 - 1)); // (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (GRID_LEVEL_COUNT - 1));
 
