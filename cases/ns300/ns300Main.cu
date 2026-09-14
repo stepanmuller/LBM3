@@ -157,19 +157,6 @@ int main(int argc, char **argv)
 			int iCut, jCut, kCut;
 			const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;
 			
-			// XY section cut shows the rotor and the outlet pipe
-			float zCut = 32.5f;
-			getIJKCellIndexFromXYZ( iCut, jCut, kCut, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
-			exportSectionCutPlotXY( grids[0], grids.back().Info, kCut, 0 );
-			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
-			
-			exportSectionCutPlotXY( grids[1], grids.back().Info, kCut, 1 );
-			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
-			
-			exportSectionCutPlotXY( grids[2], grids.back().Info, kCut, 2 );
-			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
-			
-			/*
 			// ZY section cut shows the inlet pipe
 			float xCut = 0.f;
 			getIJKCellIndexFromXYZ( iCut, jCut, kCut, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info);
@@ -194,7 +181,6 @@ int main(int argc, char **argv)
 				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 3 );
 				if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
 			}
-			*/
 			lapTimer.reset();
 			lapTimer.start();
 		}

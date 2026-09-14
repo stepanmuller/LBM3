@@ -209,35 +209,36 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			for ( int direction = 0; direction < 27; direction++ ) fNbr[direction] = fViewFine( nbrFReadIndex[direction], nbrCellReadIndex[direction] );
 			
 			getDRhoUxUyUz( dRhoStencil[i], uxStencil[i], uyStencil[i], uzStencil[i], fNbr );
+			const float rho = 1.f + dRhoStencil[i];
 			
 			kxyStencil[i] = - 3.f * omega1Fine * ( ( 
 					+ fNbr[11] + fNbr[12] - fNbr[15] - fNbr[16] 
 					- fNbr[19] - fNbr[20] + fNbr[21] + fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
-													) / dRhoStencil[i] - uxStencil[i] * uyStencil[i] );
+													) / rho - uxStencil[i] * uyStencil[i] );
 			kyzStencil[i] = - 3.f * omega1Fine * ( (
 					- fNbr[13] - fNbr[14] + fNbr[17] + fNbr[18] 
 					- fNbr[19] - fNbr[20] - fNbr[21] - fNbr[22] + fNbr[23] + fNbr[24] + fNbr[25] + fNbr[26]
-													) / dRhoStencil[i] - uyStencil[i] * uzStencil[i] );
+													) / rho - uyStencil[i] * uzStencil[i] );
 			kxzStencil[i] = - 3.f * omega1Fine * ( (
 					- fNbr[7 ] - fNbr[8 ] + fNbr[9 ] + fNbr[10] 
 					+ fNbr[19] + fNbr[20] - fNbr[21] - fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
-													) / dRhoStencil[i] - uxStencil[i] * uzStencil[i] );
+													) / rho - uxStencil[i] * uzStencil[i] );
 			kxxMyyStencil[i] = - 1.5f * omega1Fine * ( (
 					+ fNbr[1 ] + fNbr[2 ] - fNbr[5 ] - fNbr[6 ] 
 					+ fNbr[7 ] + fNbr[8 ] + fNbr[9 ] + fNbr[10] - fNbr[13] - fNbr[14] - fNbr[17] - fNbr[18]
-													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uyStencil[i] * uyStencil[i] ) );
+													) / rho - ( uxStencil[i] * uxStencil[i] - uyStencil[i] * uyStencil[i] ) );
 			kxxMzzStencil[i] = - 1.5f * omega1Fine * ( (
 					+ fNbr[1 ] + fNbr[2 ] - fNbr[3 ] - fNbr[4 ] 
 					+ fNbr[11] + fNbr[12] - fNbr[13] - fNbr[14] + fNbr[15] + fNbr[16] - fNbr[17] - fNbr[18]
-													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
+													) / rho - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
 		}
 		
 		// get all required coefficients
 		// eq Schönherr 2015 (7.10)
-		float d0 = 0.f; for ( int i = 0; i < 8; i++ ) d0 += dRhoStencil[i]; d0 *= 0.125f;
+		float d000 = 0.f; for ( int i = 0; i < 8; i++ ) d000 += dRhoStencil[i]; d000 *= 0.125f;
 		
 		// The following is directly taken from VirtualFluids (just renamed variables). https://github.com/irmb/virtualfluids 
-		const float a0 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
+		const float a000 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
                                 ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])) +
                                 ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[3] - kxzStencil[4])) +
                                 ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[2] - kxzStencil[5])) +
@@ -248,7 +249,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
                         ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
                         ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
                         ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
-        const float b0 = 0.015625f * (2.f * (((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
+        const float b000 = 0.015625f * (2.f * (((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
                                 ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
                                 ((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
                                 ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])) +
@@ -259,7 +260,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
                         8.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
                         ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
                         ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
-        const float c0 = 0.015625f * (2.f * (((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
+        const float c000 = 0.015625f * (2.f * (((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
                                 ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[5] - kxxMzzStencil[2])) +
                                 ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[4] - kxzStencil[3])) +
                                 ((kxzStencil[6] - kxzStencil[1]) + (kxzStencil[2] - kxzStencil[5])) +
@@ -350,7 +351,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		float kxxMzzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMzzAvg += kxxMzzStencil[i]; kxxMzzAvg *= 0.125f; kxxMzzAvg -= ( ax - cz );
 		
 		// get interpolated variables for the coarse cell
-		const float dRho = d0; const float ux = a0; const float uy = b0; const float uz = c0;
+		const float dRho = d000; const float ux = a000; const float uy = b000; const float uz = c000;
 		const float rho  = dRho + 1.f;
 		
 		// calculate second order central moments
@@ -384,7 +385,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.FineToCoarseInterface.interfaceCount, cellLambda );
 }
 
-void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
+void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 {
 	// The interpolation and rescaling is based on Martin Schönherr's disertation 2015
 	const InfoStruct &InfoCoarse = GridCoarse.Info;
@@ -444,27 +445,28 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			for ( int direction = 0; direction < 27; direction++ ) fNbr[direction] = fViewCoarse( nbrFReadIndex[direction], nbrCellReadIndex[direction] );
 			
 			getDRhoUxUyUz( dRhoStencil[i], uxStencil[i], uyStencil[i], uzStencil[i], fNbr );
+			const float rho = 1.f + dRhoStencil[i];
 			
 			kxyStencil[i] = - 3.f * omega1Coarse * ( ( 
 					+ fNbr[11] + fNbr[12] - fNbr[15] - fNbr[16] 
 					- fNbr[19] - fNbr[20] + fNbr[21] + fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
-													) / dRhoStencil[i] - uxStencil[i] * uyStencil[i] );
+													) / rho - uxStencil[i] * uyStencil[i] );
 			kyzStencil[i] = - 3.f * omega1Coarse * ( (
 					- fNbr[13] - fNbr[14] + fNbr[17] + fNbr[18] 
 					- fNbr[19] - fNbr[20] - fNbr[21] - fNbr[22] + fNbr[23] + fNbr[24] + fNbr[25] + fNbr[26]
-													) / dRhoStencil[i] - uyStencil[i] * uzStencil[i] );
+													) / rho - uyStencil[i] * uzStencil[i] );
 			kxzStencil[i] = - 3.f * omega1Coarse * ( (
 					- fNbr[7 ] - fNbr[8 ] + fNbr[9 ] + fNbr[10] 
 					+ fNbr[19] + fNbr[20] - fNbr[21] - fNbr[22] - fNbr[23] - fNbr[24] + fNbr[25] + fNbr[26]
-													) / dRhoStencil[i] - uxStencil[i] * uzStencil[i] );
+													) / rho - uxStencil[i] * uzStencil[i] );
 			kxxMyyStencil[i] = - 1.5f * omega1Coarse * ( (
 					+ fNbr[1 ] + fNbr[2 ] - fNbr[5 ] - fNbr[6 ] 
 					+ fNbr[7 ] + fNbr[8 ] + fNbr[9 ] + fNbr[10] - fNbr[13] - fNbr[14] - fNbr[17] - fNbr[18]
-													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uyStencil[i] * uyStencil[i] ) );
+													) / rho - ( uxStencil[i] * uxStencil[i] - uyStencil[i] * uyStencil[i] ) );
 			kxxMzzStencil[i] = - 1.5f * omega1Coarse * ( (
 					+ fNbr[1 ] + fNbr[2 ] - fNbr[3 ] - fNbr[4 ] 
 					+ fNbr[11] + fNbr[12] - fNbr[13] - fNbr[14] + fNbr[15] + fNbr[16] - fNbr[17] - fNbr[18]
-													) / dRhoStencil[i] - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
+													) / rho - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
 		}
 		
 		// get all required coefficients
@@ -481,7 +483,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
         const float d011 = 0.5f * (((dRhoStencil[7] + dRhoStencil[0]) - (dRhoStencil[3] + dRhoStencil[4])) + ((dRhoStencil[1] + dRhoStencil[6]) - (dRhoStencil[5] + dRhoStencil[2])));
         const float d111 = (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[4] - dRhoStencil[3])) + ((dRhoStencil[1] - dRhoStencil[6]) + (dRhoStencil[2] - dRhoStencil[5])));
 		
-		const float a0 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
+		const float a000 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
                                 ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])) +
                                 ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[3] - kxzStencil[4])) +
                                 ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[2] - kxzStencil[5])) +
@@ -492,7 +494,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
                         ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
                         ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
                         ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
-        const float b0 = 0.015625f * (2.f * (((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
+        const float b000 = 0.015625f * (2.f * (((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
                                 ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
                                 ((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
                                 ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])) +
@@ -503,7 +505,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
                         8.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
                         ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
                         ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
-        const float c0 = 0.015625f * (2.f * (((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
+        const float c000 = 0.015625f * (2.f * (((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
                                 ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[5] - kxxMzzStencil[2])) +
                                 ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[4] - kxzStencil[3])) +
                                 ((kxzStencil[6] - kxzStencil[1]) + (kxzStencil[2] - kxzStencil[5])) +
@@ -582,13 +584,11 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
         const float b111 = ((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[2] - uyStencil[5]) + (uyStencil[1] - uyStencil[6]));
         const float c111 = ((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[2] - uzStencil[5]) + (uzStencil[1] - uzStencil[6]));
 		
-		// get average second order moments
-		// eq Schönherr 2015 (7.29 - 7.33)
-		float kxyAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxyAvg += kxyStencil[i]; kxyAvg *= 0.125f; kxyAvg -= ( ay + bx );
-		float kyzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kyzAvg += kyzStencil[i]; kyzAvg *= 0.125f; kyzAvg -= ( bz + cy );
-		float kxzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxzAvg += kxzStencil[i]; kxzAvg *= 0.125f; kxzAvg -= ( az + cx );
-		float kxxMyyAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMyyAvg += kxxMyyStencil[i]; kxxMyyAvg *= 0.125f; kxxMyyAvg -= ( ax - by );
-		float kxxMzzAvg = 0.f; for ( int i = 0; i < 8; i++ ) kxxMzzAvg += kxxMzzStencil[i]; kxxMzzAvg *= 0.125f; kxxMzzAvg -= ( ax - cz );
+		constexpr float kxyAvg = 0.f;
+		constexpr float kyzAvg = 0.f;
+		constexpr float kxzAvg = 0.f;
+		constexpr float kxxMyyAvg = 0.f;
+		constexpr float kxxMzzAvg = 0.f;
 		
 		// build list of fine cells and their positions
 		NBRStruct NBRTarget;
@@ -603,9 +603,9 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		cellTarget[6] = NBRTarget.jkPlus;
 		cellTarget[7] = NBRTarget.ijkPlus;
 		
-		const float dxArray = {-0.25f, +0.25f, -0.25f, +0.25f, -0.25f, +0.25f, -0.25f, +0.25f};
-		const float dyArray = {-0.25f, -0.25f, +0.25f, +0.25f, -0.25f, -0.25f, +0.25f, +0.25f};
-		const float dzArray = {-0.25f, -0.25f, -0.25f, -0.25f, +0.25f, +0.25f, +0.25f, +0.25f};
+		const float dxArray[8] = {-0.25f, +0.25f, -0.25f, +0.25f, -0.25f, +0.25f, -0.25f, +0.25f};
+		const float dyArray[8] = {-0.25f, -0.25f, +0.25f, +0.25f, -0.25f, -0.25f, +0.25f, +0.25f};
+		const float dzArray[8] = {-0.25f, -0.25f, -0.25f, -0.25f, +0.25f, +0.25f, +0.25f, +0.25f};
 		
 		for ( int i = 0; i < 8; i++ )
 		{
@@ -614,12 +614,12 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			const float dy = dyArray[i];
 			const float dz = dzArray[i];
 			// get interpolated variables for the fine cell
-			const float dRho = d0 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz; 
-			const float ux = a0 + a100 * dx + a010 * dy + a001 * dz + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
+			const float dRho = d000 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz; 
+			const float ux = a000 + a100 * dx + a010 * dy + a001 * dz + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
 								+ a200 * dx * dx + a020 * dy * dy + a002 * dz * dz; 
-			const float uy = b0 + b100 * dx + b010 * dy + b001 * dz + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
+			const float uy = b000 + b100 * dx + b010 * dy + b001 * dz + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
 								+ b200 * dx * dx + b020 * dy * dy + b002 * dz * dz; 
-			const float uz = c0 + c100 * dx + c010 * dy + c001 * dz + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
+			const float uz = c000 + c100 * dx + c010 * dy + c001 * dz + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
 								+ c200 * dx * dx + c020 * dy * dy + c002 * dz * dz; 
 			const float rho = dRho + 1.f;
 			
@@ -657,7 +657,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		}
 	};
 	
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.FineToCoarseInterface.interfaceCount, cellLambda );
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.interfaceCount, cellLambda );
 }
 
 void updateInterface( GridStruct &GridCoarse, GridStruct &GridFine )

@@ -330,25 +330,102 @@ def verify_axes_pixel_sizes(fig, axes, expected_width_px, expected_height_px):
 def main():
 	plot_number, n_vertical, n_horizontal, data = read_lbm_data(INPUT_FILE)
 
-	# Same six-channel binary format; only these two fields are displayed.
+	# Variable order must match the C++ fwrite order.
 	pressure = data[:, :, 0]
+	velocity_horizontal = data[:, :, 1]
+	velocity_vertical = data[:, :, 2]
 	velocity_normal = data[:, :, 3]
-	is_solid = data[:, :, 4] > SOLID_MASK_THRESHOLD
+	mask = data[:, :, 4]
+	grid_id = data[:, :, 5]
+
+	velocity_planar = np.hypot(velocity_horizontal, velocity_vertical)
+
+	is_solid = mask > SOLID_MASK_THRESHOLD
 
 	fig, axes, colorbar_axes, geometry = create_exact_pixel_figure(
-		n_vertical, n_horizontal, number_of_panels=2,
+		n_vertical,
+		n_horizontal,
+		number_of_panels=4,
 	)
 	ui_scale = geometry["ui_scale"]
+
 	add_panel(
-		fig, axes[0], colorbar_axes[0], velocity_normal, is_solid,
-		"Normal velocity [m/s]", n_vertical, n_horizontal,
+		fig,
+		axes[0],
+		colorbar_axes[0],
+		velocity_planar,
+		is_solid,
+		"Planar velocity [m/s]",
+		n_vertical,
+		n_horizontal,
 		ui_scale=ui_scale,
 	)
 	add_panel(
-		fig, axes[1], colorbar_axes[1], pressure, is_solid,
-		"Static pressure [Pa]", n_vertical, n_horizontal,
+		fig,
+		axes[1],
+		colorbar_axes[1],
+		velocity_normal,
+		is_solid,
+		"Normal velocity [m/s]",
+		n_vertical,
+		n_horizontal,
 		ui_scale=ui_scale,
 	)
+	add_panel(
+		fig,
+		axes[2],
+		colorbar_axes[2],
+		pressure,
+		is_solid,
+		"Static pressure [Pa]",
+		n_vertical,
+		n_horizontal,
+		ui_scale=ui_scale,
+	)
+	add_panel(
+		fig,
+		axes[3],
+		colorbar_axes[3],
+		grid_id,
+		is_solid,
+		"Grid ID [1]",
+		n_vertical,
+		n_horizontal,
+		use_full_range=True,
+		ui_scale=ui_scale,
+	)
+
+	horizontal_coordinates = np.arange(n_horizontal)
+	vertical_coordinates = np.arange(n_vertical)
+	horizontal_stream_velocity = np.where(
+		is_solid,
+		np.nan,
+		velocity_horizontal,
+	)
+	vertical_stream_velocity = np.where(
+		is_solid,
+		np.nan,
+		velocity_vertical,
+	)
+
+	# Matplotlib line widths are in points, so convert the requested pixel width.
+	streamline_width_points = STREAMLINE_WIDTH_PX * 72.0 / DPI
+
+	axes[0].streamplot(
+		horizontal_coordinates,
+		vertical_coordinates,
+		horizontal_stream_velocity,
+		vertical_stream_velocity,
+		color="white",
+		linewidth=streamline_width_points,
+		density=STREAMLINE_DENSITY,
+		arrowsize=STREAMLINE_ARROW_SIZE,
+		zorder=2,
+	)
+
+	# streamplot can autoscale; restore the exact half-cell outer boundaries.
+	axes[0].set_xlim(-0.5, n_horizontal - 0.5)
+	axes[0].set_ylim(-0.5, n_vertical - 0.5)
 
 	verify_axes_pixel_sizes(
 		fig,

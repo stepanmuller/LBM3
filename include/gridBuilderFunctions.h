@@ -740,9 +740,6 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 void fillFineToCoarseInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, 
 					const IntArrayType &childMapArrayGlobal, const GridBuilderStruct &GridBuilder )
 {
-	const InfoStruct &Info = GridBuilder.Info;
-	const IJKArrayStruct &IJK = GridBuilder.IJK;
-	const NBRArrayStruct &NBR = GridBuilder.NBR;
 	const int cellCountTotal = markerArray.getSize();
 	Interface.interfaceCount = TNL::sum( markerArray );
 	Interface.indexArray.setSize( Interface.interfaceCount );
