@@ -1106,10 +1106,12 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallCount, wallAdjacentLambda );
 	
 	// 5) Build wallData
-	Grid.Wall.wallDataArray.setSize( Grid.Wall.wallCount * 2 );
+	Grid.Wall.wallDataArray.setSize( Grid.Wall.wallCount );
+	Grid.Wall.linkLengthArray.setSizes( 7, Grid.Wall.wallCount );
 	auto wallDataView = Grid.Wall.wallDataArray.getView();
 	auto linkExistenceMarkerView = GridBuilder.linkExistenceMarkerArray.getConstView();
-	auto linkLengthView = GridBuilder.linkLengthArray.getConstView();
+	auto linkLengthBuilderView = GridBuilder.linkLengthArray.getConstView();
+	auto linkLengthView = Grid.Wall.linkLengthArray.getView();
 	auto wallIDView = GridBuilder.wallIDArray.getConstView();
 	auto wallDataLambda = [=] __cuda_callable__ ( const int index ) mutable
 	{	
@@ -1120,15 +1122,17 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		for ( int direction = 1; direction < 27; direction++ ) 
 		{
 			linkExistenceMarker[direction-1] = linkExistenceMarkerView( direction, index );
-			linkLength[direction-1] = linkLengthView( direction, index );
+			linkLength[direction-1] = linkLengthBuilderView( direction, index );
 		}
 		const int wallID = wallIDView( index );
-		// now take linkExistenceMarker, linkLength, wallID and parentInterfaceMarker and pack it into 4 uints
-		uint32_t packed[6];
+		// now take wallID, linkExistenceMarker, inverfaceOverlapMarker and pack it into wallData
+		// also take linkLength, pack those into 7 uints, only write those that exist
+		uint32_t wallData;
+		uint32_t packed[7];
 		// call the packing function
-		packWallData( packed, linkExistenceMarker, linkLength, wallID, interfaceOverlapMarker );
-		wallDataView( 2 * index ) = make_uint3( packed[0], packed[1], packed[2] );
-		wallDataView( 2 * index + 1 ) = make_uint3( packed[3], packed[4], packed[5] );
+		packWallData( wallData, packed, wallID, interfaceOverlapMarker, linkExistenceMarker, linkLength );
+		wallDataView( index ) = wallData;
+		for ( int i = 0; i < 7; i++ ) linkLengthView( i, index ) = packed[i];
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallCount, wallDataLambda );
 	// allocate force tracker
@@ -1247,17 +1251,14 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 			bool trackFlow = true;
 			if ( wallMap == -2 ) trackFlow = false; // fluid cell under an interface overlap -> dont track flow
 			// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
-			uint32_t packed[6];
+			// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
 			int wallID = -1; 
 			if ( wallMap >= 0 )
 			{
-				const uint3 wallData1 = wallDataView( wallMap * 2 );
-				const uint3 wallData2 = wallDataView( wallMap * 2 + 1 );
-				packed[0] = wallData1.x; packed[1] = wallData1.y; packed[2] = wallData1.z;	
-				packed[3] = wallData2.x; packed[4] = wallData2.y; packed[5] = wallData2.z;
+				const uint32_t wallData = wallDataView( wallMap );
 				bool interfaceOverlapMarker;
-				unpackWallID( packed, wallID, interfaceOverlapMarker );
-				if ( interfaceOverlapMarker ) trackFlow = false; // turn off flow tracker for a wall adjacent cell under an interface overlap
+				unpackWallID( wallData, wallID, interfaceOverlapMarker );
+				if ( interfaceOverlapMarker ) trackFlow = false;
 			}
 			trackFlowMarkerView( index ) = trackFlow;
 		};
@@ -1313,7 +1314,7 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		Info.gridMemoryBytes = 27LL * (long long)Info.cellCount * 4LL; // fArray
 		Info.gridMemoryBytes += 2LL * (long long)Info.cellCount * 4LL; // IJK shifter, wallMap
 		Info.gridMemoryBytes += 6LL * (long long)Grid.IJKNBR.iArray.getSize() * 4LL; // compressed iArray, jArray, kArray, jPlusArray, kPlusArray, jkPlusArray
-		Info.gridMemoryBytes += 10LL * (long long)Grid.Wall.wallCount * 4LL; // index array + wall data + wall force tracker
+		Info.gridMemoryBytes += 12LL * (long long)Grid.Wall.wallCount * 4LL; // index array + wall data + linkLengths + wall force tracker
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap

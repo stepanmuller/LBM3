@@ -26,6 +26,7 @@ void updateSingleGrid( GridStruct &Grid )
 	auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
 	auto wallMapView = Grid.Wall.wallMapArray.getConstView();
 	auto wallDataView = Grid.Wall.wallDataArray.getConstView();
+	auto linkLengthView = Grid.Wall.linkLengthArray.getConstView();
 	auto gxWallView = Grid.Wall.gxArray.getView();
 	auto gyWallView = Grid.Wall.gyArray.getView();
 	auto gzWallView = Grid.Wall.gzArray.getView();
@@ -41,16 +42,13 @@ void updateSingleGrid( GridStruct &Grid )
 		if ( wallMap == -2 ) trackForce = false; // fluid cell under an interface overlap -> dont track force
 		
 		// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
-		uint32_t packed[6];
+		uint32_t wallData = 0u;
 		int wallID = -1; 
 		if ( wallMap >= 0 )
 		{
-			const uint3 wallData1 = wallDataView( wallMap * 2 );
-			const uint3 wallData2 = wallDataView( wallMap * 2 + 1 );
-			packed[0] = wallData1.x; packed[1] = wallData1.y; packed[2] = wallData1.z;	
-			packed[3] = wallData2.x; packed[4] = wallData2.y; packed[5] = wallData2.z;
+			wallData = wallDataView( wallMap );
 			bool interfaceOverlapMarker;
-			unpackWallID( packed, wallID, interfaceOverlapMarker );
+			unpackWallID( wallData, wallID, interfaceOverlapMarker );
 			if ( interfaceOverlapMarker ) trackForce = false;
 		}
 		
@@ -101,16 +99,15 @@ void updateSingleGrid( GridStruct &Grid )
 		// apply IBB. f[direction] which would get streamed into a wall get overwritten.
 		// In their place, we will find f[inverseDirection] that we need to receive from the wall next round.
 		// use bit packed wallLinkMarker to remember which directions the walls are, also track the forces
-		uint32_t wallLinkMarker = 0u;
 		float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
-		applyIBB( f, BC, Info.nu, packed, wallLinkMarker, gxWall, gyWall, gzWall );
+		applyIBB( f, BC, Info.nu, gxWall, gyWall, gzWall, wallData, wallMap, linkLengthView );
 		
 		// write all directions. If there is a wall, switch the writing index to next pre-collision and inverse direction
 		int cellWriteIndex = 0; 
 		int fWriteIndex = 0;
 		for ( int direction = 0; direction < 27; direction++ )
 		{
-			const bool linkExists = (wallLinkMarker & (1u << direction)) != 0u;
+			const bool linkExists = direction != 0 && (wallData & (1u << direction)) != 0u;
 			if ( linkExists ) 
 			{
 				// f[direction] would point into a wall, so instead we write the incoming distribution from the wall
@@ -159,17 +156,15 @@ void updateSingleGrid( GridStruct &Grid )
 			if ( wallMap == -2 ) trackFlow = false; // fluid cell under an interface overlap -> dont track flow
 			
 			// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
-			uint32_t packed[6];
+			// read wallData if this is a wall adjacent cell. So far only unpack wallID and interfaceOverlapMarker
+			uint32_t wallData = 0u;
 			int wallID = -1; 
 			if ( wallMap >= 0 )
 			{
-				const uint3 wallData1 = wallDataView( wallMap * 2 );
-				const uint3 wallData2 = wallDataView( wallMap * 2 + 1 );
-				packed[0] = wallData1.x; packed[1] = wallData1.y; packed[2] = wallData1.z;	
-				packed[3] = wallData2.x; packed[4] = wallData2.y; packed[5] = wallData2.z;
+				wallData = wallDataView( wallMap );
 				bool interfaceOverlapMarker;
-				unpackWallID( packed, wallID, interfaceOverlapMarker );
-				if ( interfaceOverlapMarker ) trackFlow = false; // turn off flow tracker for a wall adjacent cell under an interface overlap
+				unpackWallID( wallData, wallID, interfaceOverlapMarker );
+				if ( interfaceOverlapMarker ) trackFlow = false;
 			}
 			
 			// fill iCell, jCell, kCell and NBR

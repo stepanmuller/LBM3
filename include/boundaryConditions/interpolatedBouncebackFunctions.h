@@ -20,10 +20,10 @@
 // Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
 // Single node scheme eq (10)
 // Set l = gamma which also agrees with Martin Geier, 2015
-__cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &nu, uint32_t (&packed)[6], uint32_t &wallLinkMarker, float &gxWall, float &gyWall, float &gzWall )
+__cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float &nu, 
+									float &gxWall, float &gyWall, float &gzWall, 
+									const uint32_t &wallData, const int &wallMap, Uint32_tConstView2DType &linkLengthView )
 {
-	constexpr uint32_t divider = 84u;
-	int direction = -1; // -1 is wallID, 0 is interfaceOverlapMarker, from 1 we start using the link data
 	bool writeBuffer = false;
 	float fBuffer; 
 	// we use this to hold resulting fResult[inverseDirection] until we can overwrite fPost[inverseDirection]
@@ -31,73 +31,76 @@ __cuda_callable__ void applyIBB( float (&fPost)[27], BCStruct &BC, const float &
 	float rho, ux, uy, uz;
 	getRhoUxUyUz( rho, ux, uy, uz, fPost ); // we will need this to reconstruct fPre
 	const float omega1 = 1.f / (3.f * (nu * BC.nuMultiplier) + 0.5f);
-	for( int packedIndex = 0; packedIndex < 6; packedIndex++ )
+	// we will only read link lengths for links that exist
+	// those are all in the front ( non existing link lengths are not written and dont take any space in between)
+	int linkIndex = 0;
+	uint32_t code = 0u;
+	
+	for( int direction = 1; direction < 27; direction++ )
     {
-        for( int codeIndex = 0; codeIndex < 5; codeIndex++ )
-        {
-            if ( direction >= 1 )
-            {
-				if (direction > 26) return;
-				const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
-				const int code = packed[packedIndex] % divider;
-				const bool linkExists = ( code != 0u );
-				if ( !linkExists ) 
-				{
-					if ( writeBuffer ) fPost[ inverseDirection ] = fBuffer;
-					writeBuffer = false;
-					packed[packedIndex] /= divider;
-					direction++;
-					continue;
-				}
-				wallLinkMarker |= (1u << direction);
-				float gamma = std::clamp( static_cast<float>( code - 1u ) / 82.f, 0.00001f, 1.f);
-
-				// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
-				// from this wall we will be pulling f[inverseDirection] so that is what we need to calculate
-				if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;
-				// need to restore fPreOriginal[ direction ] from fPost
-				// Geier 2015 (E.4) 
-				float feqDirection = getFeqSingle( rho, ux, uy, uz, direction );
-				float feqInverseDirection = getFeqSingle( rho, ux, uy, uz, inverseDirection );
-				float fPreDirection = 0.5f * ( fPost[ direction ] - fPost[ inverseDirection ] ) 
-								+ ( fPost[ direction ] + fPost[ inverseDirection ] - omega1 * ( feqDirection + feqInverseDirection ) ) / ( 2.f - 2.f * omega1 );
-				// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017, single node scheme eq (10)
-				const float eiDotFi = (float)CX_DIRECTIONS[ inverseDirection ] * BC.ux 
-									+ (float)CY_DIRECTIONS[ inverseDirection ] * BC.uy 
-									+ (float)CZ_DIRECTIONS[ inverseDirection ] * BC.uz;
-				const float wallMovementTerm = ( 2.f / ( 1.f + gamma ) ) * DIRECTION_WEIGHTS[ inverseDirection ] * eiDotFi * 3.f; 
-				const float fResultInverseDirection = (( 1.f - gamma ) / ( 1.f + gamma )) * fPreDirection 
-													+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
-													+ ( gamma / ( 1.f + gamma ) ) * fPost[ direction ]
-													+ wallMovementTerm;
-				// track force using momentum exchange method
-				// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
-				// Analysis on the force evaluation by the momentum exchange 
-				// method and a localized r­filling scheme for the lattice Boltzmann method, 2025
-				// eq (15)
-				// stored f are well conditioned -> compensate (here it does not cancel out)
-				gxWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CX_DIRECTIONS[ direction ] - BC.ux ) 
-						- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux );
-				gyWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CY_DIRECTIONS[ direction ] - BC.uy ) 
-						- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy );
-				gzWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CZ_DIRECTIONS[ direction ] - BC.uz ) 
-						- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz );																	
+		const int inverseDirection = INVERSE_DIRECTIONS[ direction ];
+		const bool linkExists = (wallData & (1u << direction)) != 0u;
+		if ( !linkExists ) 
+		{
+			if ( writeBuffer ) fPost[ inverseDirection ] = fBuffer;
+			writeBuffer = false;
+			continue;
+		}
+		
+		// read new code if needed
+		if ( linkIndex % 4 == 0 )
+		{
+			const int packedIndex = linkIndex / 4;
+			code = linkLengthView( packedIndex, wallMap );
+		}
 				
-				if ( direction%2 == 0 ) // this means the opposite direction was already processed -> we can overwrite fPost
-				{
-					fPost[ direction ] = fResultInverseDirection;
-					if ( writeBuffer ) fPost[ inverseDirection ] = fBuffer;
-					writeBuffer = false;
-				}
-				else // the opposite direction has not been processed yet -> we cannot overwrite fPost yet
-				{	 // and so we use a buffer
-					fBuffer = fResultInverseDirection;
-					writeBuffer = true; // this is a message for the next direction
-				}
-			}
-            packed[packedIndex] /= divider;
-            direction++;
-        }
+        const int bitShift = 8 * (linkIndex % 4);
+		const uint32_t linkCode = (code >> bitShift) & 255u;
+		float gamma = std::clamp( static_cast<float>(linkCode) / 254.f, 0.00001f, 1.f );
+        linkIndex++;
+
+		// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
+		// from this wall we will be pulling f[inverseDirection] so that is what we need to calculate
+		if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;
+		// need to restore fPreOriginal[ direction ] from fPost
+		// Geier 2015 (E.4) 
+		float feqDirection = getFeqSingle( rho, ux, uy, uz, direction );
+		float feqInverseDirection = getFeqSingle( rho, ux, uy, uz, inverseDirection );
+		float fPreDirection = 0.5f * ( fPost[ direction ] - fPost[ inverseDirection ] ) 
+						+ ( fPost[ direction ] + fPost[ inverseDirection ] - omega1 * ( feqDirection + feqInverseDirection ) ) / ( 2.f - 2.f * omega1 );
+		// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017, single node scheme eq (10)
+		const float eiDotFi = (float)CX_DIRECTIONS[ inverseDirection ] * BC.ux 
+							+ (float)CY_DIRECTIONS[ inverseDirection ] * BC.uy 
+							+ (float)CZ_DIRECTIONS[ inverseDirection ] * BC.uz;
+		const float wallMovementTerm = ( 2.f / ( 1.f + gamma ) ) * DIRECTION_WEIGHTS[ inverseDirection ] * eiDotFi * 3.f; 
+		const float fResultInverseDirection = (( 1.f - gamma ) / ( 1.f + gamma )) * fPreDirection 
+											+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
+											+ ( gamma / ( 1.f + gamma ) ) * fPost[ direction ]
+											+ wallMovementTerm;
+		// track force using momentum exchange method
+		// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
+		// Analysis on the force evaluation by the momentum exchange 
+		// method and a localized r­filling scheme for the lattice Boltzmann method, 2025
+		// eq (15)
+		// stored f are well conditioned -> compensate (here it does not cancel out)
+		gxWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CX_DIRECTIONS[ direction ] - BC.ux ) 
+				- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux );
+		gyWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CY_DIRECTIONS[ direction ] - BC.uy ) 
+				- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy );
+		gzWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CZ_DIRECTIONS[ direction ] - BC.uz ) 
+				- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz );																	
+		
+		if ( direction%2 == 0 ) // this means the opposite direction was already processed -> we can overwrite fPost
+		{
+			fPost[ direction ] = fResultInverseDirection;
+			if ( writeBuffer ) fPost[ inverseDirection ] = fBuffer;
+			writeBuffer = false;
+		}
+		else // the opposite direction has not been processed yet -> we cannot overwrite fPost yet
+		{	 // and so we use a buffer
+			fBuffer = fResultInverseDirection;
+			writeBuffer = true; // this is a message for the next direction
+		}
     }
 }
 
@@ -507,45 +510,44 @@ void buildLinkLengthArray( GridBuilderStruct &GridBuilder, std::vector<STLStruct
 	else std::cout << "	Level " << GridBuilder.Info.gridID << " failed to find " << linksNotFoundCount << " IBB links out of " << linksTotalCount << std::endl;
 }
 
-__cuda_callable__ inline void packWallData( uint32_t (&packed)[6],
-                                            const bool (&linkExists)[26], const float (&linkLength)[26],
-                                            const int wallID, const bool interfaceOverlapMarker )
+__cuda_callable__ inline void packWallData( uint32_t &wallData, uint32_t (&packed)[7], const int &wallID, 
+											const bool &interfaceOverlapMarker, const bool (&linkExists)[26], const float (&linkLength)[26] )
 {
-    constexpr uint32_t divider = 84u;
-    uint32_t digits[30] = {}; // 1 wallID, 1 interfaceOverlapMarker, 26 links
-    digits[0] = static_cast<uint32_t>( wallID );
-    digits[1] = interfaceOverlapMarker ? 1u : 0u;
+    // wallData Bit 0: interface overlap
+    // wallData Bits 1–26: link existence
+    // wallData Bits 27–31: wall ID
+    wallData = (interfaceOverlapMarker ? 1u : 0u)
+             | (static_cast<uint32_t>(wallID) << 27);
 
-    for( int i = 0; i < 26; i++ )
+    // Zero all distance words, including unused bytes.
+    for( int packedIndex = 0; packedIndex < 7; packedIndex++ )
     {
-        if( !linkExists[i] )
-        {
-            digits[i + 2] = 0u;
-            continue;
-        }
-        const float q = linkLength[i];
-        // Round to nearest multiple of 1/82:
-        // q = 0 -> code 1, q = 0.5 -> code 42, q = 1 -> code 83.
-        digits[i + 2] = 1u + static_cast<uint32_t>( q * 82.f + 0.5f );
+        packed[packedIndex] = 0u;
     }
 
-    for( int packedIndex = 0; packedIndex < 6; packedIndex++ )
+    int linkIndex = 0;
+    for( int i = 0; i < 26; i++ )
     {
-        uint32_t value = 0u;
-        for( int digitIndex = 4; digitIndex >= 0; digitIndex-- )
-        {
-            value = value * divider + digits[5 * packedIndex + digitIndex];
-        }
-        packed[packedIndex] = value;
+        if( !linkExists[i] ) continue;
+
+        wallData |= (1u << (i + 1));
+
+        const float q = std::clamp(linkLength[i], 0.f, 1.f);
+        // q will be packed into 8 bits and have 254 steps
+        // this gives resolution of the interpolated bounceback as 1/254 of cell size
+        // q = 0 -> code 0, q = 0.5 -> code 127, q = 1 -> code 254.
+        const uint32_t code = static_cast<uint32_t>(q * 254.f + 0.5f);
+
+        const int packedIndex = linkIndex / 4;
+        const int bitShift = 8 * (linkIndex % 4);
+
+        packed[packedIndex] |= (code << bitShift);
+        linkIndex++;
     }
 }
 
-__cuda_callable__ inline void unpackWallID( const uint32_t (&packed)[6],
-                                            int &wallID, bool &interfaceOverlapMarker )
+__cuda_callable__ inline void unpackWallID( const uint32_t &wallData, int &wallID, bool &interfaceOverlapMarker )
 {
-    constexpr uint32_t divider = 84u;
-    uint32_t value = packed[0];
-    wallID = static_cast<int>( value % divider );
-    value /= divider;
-    interfaceOverlapMarker = ( value % divider == 1u );
+    wallID = static_cast<int>((wallData >> 27) & 31u);
+    interfaceOverlapMarker = (wallData & 1u) != 0u;
 }

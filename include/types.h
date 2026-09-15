@@ -30,12 +30,15 @@
 
 using BoolArrayType = TNL::Containers::Vector< bool, TNL::Devices::Cuda, size_t >;
 using BoolArrayTypeCPU = TNL::Containers::Vector< bool, TNL::Devices::Host, size_t >;
+
+using BoolArray2DType = TNL::Containers::NDArray< bool, 
+												TNL::Containers::SizesHolder< size_t, 0, 0 >,
+												std::index_sequence< 0, 1 >,
+												TNL::Devices::Cuda >;
 												
 using IntArrayType = TNL::Containers::Vector< int, TNL::Devices::Cuda, size_t >;
 using IntConstViewType = IntArrayType::ConstViewType;
 using IntArrayTypeCPU = TNL::Containers::Vector< int, TNL::Devices::Host, size_t >;
-
-using LongLongArrayType = TNL::Containers::Vector< long long, TNL::Devices::Cuda, size_t >;
 
 using IntArray2DType = TNL::Containers::NDArray< int, 
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
@@ -50,21 +53,35 @@ using IntArray3DType = TNL::Containers::NDArray< int,
 												TNL::Containers::SizesHolder< size_t, 0, 0, 0 >,
 												std::index_sequence< 0, 1, 2 >,
 												TNL::Devices::Cuda >;
+												
 
-using FloatArrayType = TNL::Containers::Vector< float, TNL::Devices::Cuda, size_t >;
-using FloatArrayTypeCPU = TNL::Containers::Vector< float, TNL::Devices::Host, size_t >;
-
-using BoolArray2DType = TNL::Containers::NDArray< bool, 
+using IntArray2DType = TNL::Containers::NDArray< int, 
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
 												std::index_sequence< 0, 1 >,
 												TNL::Devices::Cuda >;
+
+using IntPairType = TNL::Containers::StaticArray< 2, int >;											
+using IntTripleType = TNL::Containers::StaticArray< 3, int >;
+
+using Uint8_tArrayType = TNL::Containers::Vector< uint8_t, TNL::Devices::Cuda, size_t >;
+
+using Uint32_tArrayType = TNL::Containers::Vector< uint32_t, TNL::Devices::Cuda, size_t >;
+using Uint32_tArray2DType = TNL::Containers::NDArray< uint32_t, 
+												TNL::Containers::SizesHolder< size_t, 0, 0 >,
+												std::index_sequence< 0, 1 >,
+												TNL::Devices::Cuda >;
+using Uint32_tConstView2DType = Uint32_tArray2DType::ConstViewType;
+
+using Uint3ArrayType = TNL::Containers::Vector< uint3, TNL::Devices::Cuda, size_t >;
+
+using FloatArrayType = TNL::Containers::Vector< float, TNL::Devices::Cuda, size_t >;
+using FloatArrayTypeCPU = TNL::Containers::Vector< float, TNL::Devices::Host, size_t >;
 
 using FloatArray2DType = TNL::Containers::NDArray< float, 
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
 												std::index_sequence< 0, 1 >,
 												TNL::Devices::Cuda >;
 using FloatConstView2DType = FloatArray2DType::ConstViewType;
-
 using FloatArray2DTypeCPU = TNL::Containers::NDArray< float, 
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
 												std::index_sequence< 0, 1 >,
@@ -79,12 +96,7 @@ using FloatArray3DTypeCPU = TNL::Containers::NDArray< float,
 												std::index_sequence< 0, 1, 2 >,
 												TNL::Devices::Host >;
 												
-using Uint8_tArrayType = TNL::Containers::Vector< uint8_t, TNL::Devices::Cuda, size_t >;
-
-using Uint3ArrayType = TNL::Containers::Vector< uint3, TNL::Devices::Cuda, size_t >;
-
-using IntPairType = TNL::Containers::StaticArray< 2, int >;											
-using IntTripleType = TNL::Containers::StaticArray< 3, int >;
+using LongLongArrayType = TNL::Containers::Vector< long long, TNL::Devices::Cuda, size_t >;
 
 //------------------------------------------------------------------------------------
 //--------------------------------- STRUCTS  -----------------------------------------
@@ -156,8 +168,6 @@ struct NBRArrayStruct { IntArrayType jPlusArray; IntArrayType kPlusArray;
 struct NBRStruct { 	int self;
 					int iPlus; int jPlus; int kPlus; int ijPlus; int ikPlus; int jkPlus; int ijkPlus; 
 					int iMinus; int jMinus; int kMinus; }; 
-					
-struct NBRHoleMapStruct { IntArray3DType holeStartArray; IntArray2DType startCounterArray; IntArray3DType holeEndArray; IntArray2DType endCounterArray; };
 
 struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; };
 
@@ -176,7 +186,7 @@ struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntAr
 							int leftoverCount = 0; IntArrayType leftoverIndexArray; IntArrayType leftoverParentMapArray;
 							IntArrayType leftoverNbrIArray; IntArrayType leftoverNbrJArray; IntArrayType leftoverNbrKArray; };
 	
-struct WallStruct{ int wallCount = 0; IntArrayType indexArray; IntArrayType wallMapArray; Uint3ArrayType wallDataArray; 
+struct WallStruct{ int wallCount = 0; IntArrayType indexArray; IntArrayType wallMapArray; Uint32_tArrayType wallDataArray; Uint32_tArray2DType linkLengthArray;
 					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
