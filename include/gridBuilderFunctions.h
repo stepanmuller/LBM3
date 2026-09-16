@@ -948,36 +948,74 @@ void fillCoarseToFineInterface( InterfaceStruct &Interface, const BoolArrayType 
 			int candidateI = cellCoarse + 1; if ( candidateI >= Info.cellCount ) candidateI = 0;
 			if ( markerView( candidateI ) && iView( candidateI ) == iCoarse+1 
 			&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI = candidateI;
+			else // positive candidate is not available -> try negative one
+			{
+				candidateI = cellCoarse - 1; if ( candidateI < 0 ) candidateI = Info.cellCount-1;
+				if ( markerView( candidateI ) && iView( candidateI ) == iCoarse-1 
+				&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI =  - candidateI - 1; 
+				// coding the inverse side as negative index
+			}
 		}
 		else // iMinus direction
 		{
 			int candidateI = cellCoarse - 1; if ( candidateI < 0 ) candidateI = Info.cellCount-1;
 			if ( markerView( candidateI ) && iView( candidateI ) == iCoarse-1 
 			&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI = candidateI;
+			else // negative candidate is not available -> try positive one
+			{
+				candidateI = cellCoarse + 1; if ( candidateI >= Info.cellCount ) candidateI = 0;
+				if ( markerView( candidateI ) && iView( candidateI ) == iCoarse+1 
+				&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI = - candidateI - 1; 
+				// coding the inverse side as negative index
+			}
 		}
 		if ( jFine % 2 == 1 ) // jPlus direction
 		{
-			const int candidateJ = jPlusGlobalView( cellCoarse );
+			int candidateJ = jPlusGlobalView( cellCoarse );
 			if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
 			&& jView( candidateJ ) == jCoarse+1 && kView( candidateJ ) == kCoarse ) nbrJ = candidateJ;
+			else // positive candidate is not available -> try negative one
+			{
+				candidateJ = jMinusGlobalView( cellCoarse );
+				if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
+				&& jView( candidateJ ) == jCoarse-1 && kView( candidateJ ) == kCoarse ) nbrJ = - candidateJ - 1;
+			}
 		}
 		else // jMinus direction
 		{
-			const int candidateJ = jMinusGlobalView( cellCoarse );
+			int candidateJ = jMinusGlobalView( cellCoarse );
 			if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
 			&& jView( candidateJ ) == jCoarse-1 && kView( candidateJ ) == kCoarse ) nbrJ = candidateJ;
+			else // negative candidate is not available -> try positive one
+			{
+				candidateJ = jPlusGlobalView( cellCoarse );
+				if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
+				&& jView( candidateJ ) == jCoarse+1 && kView( candidateJ ) == kCoarse ) nbrJ = - candidateJ - 1;
+			}
 		}
 		if ( kFine % 2 == 1 ) // kPlus direction
 		{
-			const int candidateK = kPlusGlobalView( cellCoarse );
+			int candidateK = kPlusGlobalView( cellCoarse );
 			if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
 			&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse+1 ) nbrK = candidateK;
+			else // positive candidate is not available -> try negative one
+			{
+				candidateK = kMinusGlobalView( cellCoarse );
+				if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
+				&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse-1 ) nbrK = - candidateK - 1;
+			}
 		}
 		else // kMinus direction
 		{
-			const int candidateK = kMinusGlobalView( cellCoarse );
+			int candidateK = kMinusGlobalView( cellCoarse );
 			if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
 			&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse-1 ) nbrK = candidateK;
+			else // negative candidate is not available -> try positive one
+			{
+				candidateK = kPlusGlobalView( cellCoarse );
+				if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
+				&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse+1 ) nbrK = - candidateK - 1;
+			}
 		}
 		leftoverNbrIView( index ) = nbrI;
 		leftoverNbrJView( index ) = nbrJ;

@@ -1,9 +1,9 @@
-constexpr float RES_GLOBAL = 8.0f; 	
+constexpr float RES_GLOBAL = 4.0f; 	
 constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int WALL_REFINEMENT_COUNT = 3;
 
-constexpr int ITERATION_COUNT = 1;
-constexpr int PLOTTER_PERIOD = 10;
+constexpr int ITERATION_COUNT = 10000;
+constexpr int PLOTTER_PERIOD = 500;
 
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
@@ -38,7 +38,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	const float rz = std::sqrt( x*x + y*y );
 	if ( Info.gridID == 0 )
 	{
-		if ( x < -355 ) refinementMarker = false;
+		refinementMarker = false;
 		if ( y <= 400.f && z <= 200.f ) refinementMarker = true;
 	}
 	if ( Info.gridID == 1 )

@@ -666,31 +666,8 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	};	
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.interfaceCount, cellLambda );
 	
-	updateCoarseToFineLeftovers( GridCoarse, GridFine );
-}
-
-void updateCoarseToFineLeftovers( GridStruct &GridCoarse, GridStruct &GridFine )
-{
-	// The interpolation and rescaling is based on Martin Schönherr's disertation 2015
-	const InfoStruct &InfoCoarse = GridCoarse.Info;
-	auto fViewCoarse = GridCoarse.fArray.getView();
-	const bool &esotwistFlipperCoarse = GridCoarse.esotwistFlipper;
-	auto shifterViewCoarse = GridCoarse.IJKNBR.shifterArray.getConstView();
-	auto jPlusViewCoarse = GridCoarse.IJKNBR.jPlusArray.getConstView();
-	auto kPlusViewCoarse = GridCoarse.IJKNBR.kPlusArray.getConstView();
-	auto jkPlusViewCoarse = GridCoarse.IJKNBR.jkPlusArray.getConstView();
-	const float tauCoarse = 3.f * InfoCoarse.nu + 0.5f;
-	const float omega1Coarse =  1.f / tauCoarse;
-	
-	const InfoStruct &InfoFine = GridFine.Info;
-	auto fViewFine = GridFine.fArray.getView();
-	const bool &esotwistFlipperFine = GridFine.esotwistFlipper;
-	auto shifterViewFine = GridFine.IJKNBR.shifterArray.getConstView();
-	auto jPlusViewFine = GridFine.IJKNBR.jPlusArray.getConstView();
-	auto kPlusViewFine = GridFine.IJKNBR.kPlusArray.getConstView();
-	auto jkPlusViewFine = GridFine.IJKNBR.jkPlusArray.getConstView();
-	const float tauFine = 3.f * InfoFine.nu + 0.5f;
-	const float omega1Fine =  1.f / tauFine;
+	// finish by updating the leftovers too: those are fine cells for which no full Geier block was found
+	// we treat them separately using just an average from the 4 nearest coarse cells
 	
 	auto leftoverIndexView = GridCoarse.CoarseToFineInterface.leftoverIndexArray.getConstView();
 	auto leftoverParentMapView = GridCoarse.CoarseToFineInterface.leftoverParentMapArray.getConstView();
@@ -698,25 +675,67 @@ void updateCoarseToFineLeftovers( GridStruct &GridCoarse, GridStruct &GridFine )
 	auto leftoverNbrJView = GridCoarse.CoarseToFineInterface.leftoverNbrJArray.getConstView();
 	auto leftoverNbrKView = GridCoarse.CoarseToFineInterface.leftoverNbrKArray.getConstView();
 	
-	auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
+	auto leftoverLambda = [=] __cuda_callable__ ( const int index ) mutable
 	{
 		const int cellFine = leftoverIndexView( index );
 		const int cellCoarse0 = leftoverParentMapView( index );
-				
-		int cellStencil[4];
-		cellStencil[0] = cellCoarse0;
-		cellStencil[1] = leftoverNbrIView( index );
-		cellStencil[2] = leftoverNbrJView( index );
-		cellStencil[3] = leftoverNbrKView( index );
 		
-		// Initialize stencil variables
-		float dRhoAvg = 0.f; float uxAvg = 0.f; float uyAvg = 0.f; float uzAvg = 0.f;
-		float kxyAvg = 0.f; float kyzAvg = 0.f; float kxzAvg = 0.f; float kxxMyyAvg = 0.f; float kxxMzzAvg = 0.f;
+		// Initialize variables for the center cell separately
+		float dRhoCenter; float uxCenter; float uyCenter; float uzCenter;
+		float kxyCenter; float kyzCenter; float kxzCenter; float kxxMyyCenter; float kxxMzzCenter;
+		
+		{ // center cel scope
+			NBRStruct NBR;
+			getCompressedNBR( cellCoarse0, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			int cellReadIndex[27], fReadIndex[27];
+			getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
+			float f[27];
+			for ( int direction = 0; direction < 27; direction++ ) f[direction] = fViewCoarse( fReadIndex[direction], cellReadIndex[direction] );
+			
+			getDRhoUxUyUz( dRhoCenter, uxCenter, uyCenter, uzCenter, f );
+			const float rhoCenter = 1.f + dRhoCenter;
+			
+			kxyCenter = - 3.f * omega1Coarse * ( ( 
+					+ f[11] + f[12] - f[15] - f[16] 
+					- f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]
+													) / rhoCenter - uxCenter * uyCenter );
+			kyzCenter = - 3.f * omega1Coarse * ( (
+					- f[13] - f[14] + f[17] + f[18] 
+					- f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]
+													) / rhoCenter - uyCenter * uzCenter );
+			kxzCenter = - 3.f * omega1Coarse * ( (
+					- f[7 ] - f[8 ] + f[9 ] + f[10] 
+					+ f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]
+													) / rhoCenter - uxCenter * uzCenter );
+			kxxMyyCenter = - 1.5f * omega1Coarse * ( (
+					+ f[1 ] + f[2 ] - f[5 ] - f[6 ] 
+					+ f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]
+													) / rhoCenter - ( uxCenter * uxCenter - uyCenter * uyCenter ) );
+			kxxMzzCenter = - 1.5f * omega1Coarse * ( (
+					+ f[1 ] + f[2 ] - f[3 ] - f[4 ] 
+					+ f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]
+													) / rhoCenter - ( uxCenter * uxCenter - uzCenter * uzCenter ) );
+		}
+		
+		// Initialize variables for accumulation and average
+		float dRhoAvg = dRhoCenter; float uxAvg = uxCenter; float uyAvg = uyCenter; float uzAvg = uzCenter;
+		float kxyAvg = kxyCenter; float kyzAvg = kyzCenter; float kxzAvg = kxzCenter; float kxxMyyAvg = kxxMyyCenter; float kxxMzzAvg = kxxMzzCenter;
+		
+		int cellStencil[3];
+		cellStencil[0] = leftoverNbrIView( index );
+		cellStencil[1] = leftoverNbrJView( index );
+		cellStencil[2] = leftoverNbrKView( index );
 		
 		// Extract values from each stencil cell
-		for ( int i = 0; i < 4; i++ )
+		for ( int i = 0; i < 3; i++ )
 		{
-			const int cell = cellStencil[i];
+			bool inverseDirection = false;
+			int cell = cellStencil[i];
+			if ( cell < 0 )
+			{
+				cell = - cell - 1;
+				inverseDirection = true;
+			}
 			NBRStruct NBR;
 			getCompressedNBR( cell, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
 			int cellReadIndex[27], fReadIndex[27];
@@ -728,31 +747,51 @@ void updateCoarseToFineLeftovers( GridStruct &GridCoarse, GridStruct &GridFine )
 			getDRhoUxUyUz( dRho, ux, uy, uz, f );
 			const float rho = 1.f + dRho;
 			
-			dRhoAvg += dRho;
-			uxAvg += ux;
-			uyAvg += uy;
-			uzAvg += uz;
-			
-			kxyAvg += - 3.f * omega1Coarse * ( ( 
+			const float kxy = - 3.f * omega1Coarse * ( ( 
 					+ f[11] + f[12] - f[15] - f[16] 
 					- f[19] - f[20] + f[21] + f[22] - f[23] - f[24] + f[25] + f[26]
 													) / rho - ux * uy );
-			kyzAvg += - 3.f * omega1Coarse * ( (
+			const float kyz = - 3.f * omega1Coarse * ( (
 					- f[13] - f[14] + f[17] + f[18] 
 					- f[19] - f[20] - f[21] - f[22] + f[23] + f[24] + f[25] + f[26]
 													) / rho - uy * uz );
-			kxzAvg += - 3.f * omega1Coarse * ( (
+			const float kxz = - 3.f * omega1Coarse * ( (
 					- f[7 ] - f[8 ] + f[9 ] + f[10] 
 					+ f[19] + f[20] - f[21] - f[22] - f[23] - f[24] + f[25] + f[26]
 													) / rho - ux * uz );
-			kxxMyyAvg += - 1.5f * omega1Coarse * ( (
+			const float kxxMyy = - 1.5f * omega1Coarse * ( (
 					+ f[1 ] + f[2 ] - f[5 ] - f[6 ] 
 					+ f[7 ] + f[8 ] + f[9 ] + f[10] - f[13] - f[14] - f[17] - f[18]
 													) / rho - ( ux * ux - uy * uy ) );
-			kxxMzzAvg += - 1.5f * omega1Coarse * ( (
+			const float kxxMzz = - 1.5f * omega1Coarse * ( (
 					+ f[1 ] + f[2 ] - f[3 ] - f[4 ] 
 					+ f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]
 													) / rho - ( ux * ux - uz * uz ) );
+			if ( !inverseDirection ) // regular averaging cell -> add it to the accumulating average
+			{
+				dRhoAvg += dRho;
+				uxAvg += ux;
+				uyAvg += uy;
+				uzAvg += uz;
+				kxyAvg += kxy;
+				kyzAvg += kyz;
+				kxzAvg += kxz;
+				kxxMyyAvg += kxxMyy;
+				kxxMzzAvg += kxxMzz;
+			}	
+			else // opposite side cell -> to the average, add a fictional cell, U(fictional cell) = 2 U(center) - U(opposite)
+			{
+				dRhoAvg += 2.f * dRhoCenter - dRho;
+				uxAvg += 2.f * uxCenter - ux;
+				uyAvg += 2.f * uyCenter - uy;
+				uzAvg += 2.f * uzCenter - uz;
+				kxyAvg += 2.f * kxyCenter - kxy;
+				kyzAvg += 2.f * kyzCenter - kyz;
+				kxzAvg += 2.f * kxzCenter - kxz;
+				kxxMyyAvg += 2.f * kxxMyyCenter - kxxMyy;
+				kxxMzzAvg += 2.f * kxxMzzCenter - kxxMzz;
+			}							
+			
 		}
 		
 		// divide by 4 to get the average
@@ -788,7 +827,7 @@ void updateCoarseToFineLeftovers( GridStruct &GridCoarse, GridStruct &GridFine )
 		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipperFine );
 		for ( int direction = 0; direction < 27; direction++ ) fViewFine( fWriteIndex[direction], cellWriteIndex[direction] ) = f[direction];
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.leftoverCount, cellLambda );
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridCoarse.CoarseToFineInterface.leftoverCount, leftoverLambda );
 }
 
 void updateInterface( GridStruct &GridCoarse, GridStruct &GridFine )
