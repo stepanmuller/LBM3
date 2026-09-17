@@ -4,6 +4,7 @@
 #include "./markerFunctions.h"
 #include "./boundaryConditions/interpolatedBouncebackFunctions.h"
 #include "./boundaryConditions/applyInitialCondition.h"
+#include "./rotorFunctions.h"
 
 void initializeGridInfo( std::vector<GridBuilderStruct> &gridBuilders, const BoundsStruct &Bounds, const int level )
 {
@@ -1315,7 +1316,7 @@ void allocateFArray( GridStruct &Grid )
 	Grid.fArray.setSizes( 27, Info.cellCount );
 }
 
-void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, BoundsStruct DomainBounds )
+void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, std::vector<STLStruct> &rotorSTLs, BoundsStruct DomainBounds )
 {
 	// call the temporary GridBuilders and Voxelizers - these will go out of scope
 	// start the GridBuilder and Voxelizer scope
@@ -1323,12 +1324,11 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		std::vector<GridBuilderStruct> gridBuilders( GRID_LEVEL_COUNT );
 		initializeGridInfo( gridBuilders, DomainBounds, 0 );
 		
+		// Pass the useRotors bool which is received with grids
+		for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) gridBuilders[ level ].Info.useRotors = grids[ level ].Info.useRotors;
+		
 		// Voxelizers
-		std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT ); 
-		// I will redo this later when adding the rotor
-		// if the finest grid has a rotor, I need one more finer voxelizer
-		// then in all functions where I rely on voxelizer count (not sure if there are any?) 
-		// I need to refer strictly to GRID_LEVEL_COUNT rather than length of the voxelizers vector
+		std::vector<VoxelizerStruct> voxelizers( GRID_LEVEL_COUNT + 1 ); 
 		initializeVoxelizers( voxelizers, gridBuilders, gridStaticSTLs, 0 );
 		
 		// Build grids
@@ -1339,6 +1339,16 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		// Pass the information to the actual grids, but in a compressed form
 		gridBuilderToGrid( gridBuilders, grids, 0 );
 	} // here GridBuilders and Voxelizers go out of scope
+	
+	// build rotors
+	if ( rotorSTLs.size() > 0 )
+	{
+		std::cout << "Building rotors for selected grid levels" << std::endl;
+		for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) 
+		{
+			if ( grids[ level ].Info.useRotors ) buildRotors( grids[ level ], rotorSTLs );
+		}
+	}
 	
 	std::cout << "Allocating fArray for all grid levels. Printed memory is total per level" << std::endl;
 	long long totalMemoryBytes = 0LL;

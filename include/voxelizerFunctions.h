@@ -714,5 +714,6 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::
 	std::cout << "	Level " << level << " done, allocated on GPU, it takes " << memoryBytes / 1048576.0 << " MiB" << std::endl;
 	
 	if ( !iAmFinest ) initializeVoxelizers( voxelizers, grids, gridStaticSTLs, level + 1 );
-	else std::cout << std::endl;
+	else 
+	std::cout << std::endl;
 }

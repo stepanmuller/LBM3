@@ -78,7 +78,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, const int &cut
 		auto jView = Grid.IJK.jArray.getConstView();
 		auto kView = Grid.IJK.kArray.getConstView();
 		
-		const bool &esotwistFlipper = Grid.esotwistFlipper;
+		const bool &esotwistFlipper = Grid.Info.esotwistFlipper;
 		
 		auto jPlusView = Grid.NBR.jPlusArray.getConstView();
 		auto kPlusView = Grid.NBR.kPlusArray.getConstView();
@@ -312,7 +312,7 @@ void exportSectionCutPlotToiletPaperZ( std::vector<GridStruct> &grids, const flo
 		auto jView = Grid.IJK.jArray.getConstView();
 		auto kView = Grid.IJK.kArray.getConstView();
 		
-		const bool &esotwistFlipper = Grid.esotwistFlipper;
+		const bool &esotwistFlipper = Grid.Info.esotwistFlipper;
 		
 		auto jPlusView = Grid.NBR.jPlusArray.getConstView();
 		auto kPlusView = Grid.NBR.kPlusArray.getConstView();

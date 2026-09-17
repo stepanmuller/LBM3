@@ -113,6 +113,7 @@ struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL;
 					int cellCountX = 0; int cellCountY = 0; int cellCountZ = 0; 
 					int cellCount = 0; 
 					bool esotwistFlipper = 0; 
+					bool useRotors = true;
 					float iRegulatorInlet = 0.f; float iRegulatorOutlet = 0.f; };
 					
 struct BCStruct { 	float rho = 1.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; 
@@ -190,15 +191,24 @@ struct WallStruct{ int wallCount = 0; IntArrayType indexArray; IntArrayType wall
 					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
+struct RotorStruct{ int rotorID = 0; float radiansPerSecond = 0.f;
+					BoundsStruct Bounds; float res = 1.f; int cellCountX; int cellCountY; int cellCountZ;
+					// rotor will rotate along an axis which passes through ox, oy, oz
+					// and is parallel to x, y or z
+					float ox = 0.f; float oy = 0.f; float oz = 0.f; 
+					// only one of the rotations can be set to true
+					bool rotateAlongX = false; bool rotateAlongY = false; bool rotateAlongZ = false; 
+					IntArrayType rotorMap; };
+
 struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
 							FloatArrayType rhoPrevArray; FloatArrayType uNormalPrevArray; 
 							FloatArrayType rhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
 		
 struct GridStruct { InfoStruct Info; 
 					FloatArray2DType fArray; 
-					bool esotwistFlipper = false; 
 					CompressedIJKNBRStruct IJKNBR;
 					WallStruct Wall;
+					std::vector<RotorStruct> rotors; 
 					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
 					std::vector<OpenBCArrayStruct> openBCs; }; 	
 					

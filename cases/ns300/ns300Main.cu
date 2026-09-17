@@ -121,7 +121,9 @@ int main(int argc, char **argv)
 	std::vector<STLStruct> gridStaticSTLs( 2 );
 	readSTL( gridStaticSTLs[0], STLPathStator );
 	readSTL( gridStaticSTLs[1], STLPathRotorShaft );
-	// readSTL( gridStaticSTLs[2], STLPathRotorBlades );
+	
+	std::vector<STLStruct> rotorSTLs( 1 );
+	readSTL( rotorSTLs[0], STLPathRotorBlades );
 	
 	// grids
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
@@ -130,7 +132,9 @@ int main(int argc, char **argv)
 	DomainBounds.zMax = 400.f;
 	DomainBounds.yMax = 1000.f;
 	
-	buildGrids( grids, gridStaticSTLs, DomainBounds );
+	grids[0].Info.useRotors = false;
+	grids[1].Info.useRotors = false;
+	buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	
 	long long totalUpdatesPerIteration = 0LL;
 	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) totalUpdatesPerIteration += grids[level].Info.cellCount * std::pow( 2, grids[level].Info.gridID );

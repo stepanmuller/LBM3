@@ -117,7 +117,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		else if ( level < imageLevel ) upsample = std::pow( 2, ( imageLevel - level ) );
 			
 		auto fView  = Grid.fArray.getView();
-		const bool &esotwistFlipper = Grid.esotwistFlipper;
+		const bool &esotwistFlipper = Grid.Info.esotwistFlipper;
 		auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
 		auto iView = Grid.IJKNBR.iArray.getConstView();
 		auto jView = Grid.IJKNBR.jArray.getConstView();
@@ -344,7 +344,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		else if ( level < imageLevel ) upsample = std::pow( 2, ( imageLevel - level ) );
 			
 		auto fView  = Grid.fArray.getView();
-		const bool &esotwistFlipper = Grid.esotwistFlipper;
+		const bool &esotwistFlipper = Grid.Info.esotwistFlipper;
 		auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
 		auto iView = Grid.IJKNBR.iArray.getConstView();
 		auto jView = Grid.IJKNBR.jArray.getConstView();

@@ -10,7 +10,7 @@ void applyInitialCondition( GridStruct &Grid )
 	const InfoStruct &Info = Grid.Info;
 	
 	auto fView  = Grid.fArray.getView();
-	const bool &esotwistFlipper = Grid.esotwistFlipper;
+	const bool &esotwistFlipper = Grid.Info.esotwistFlipper;
 	auto shifterView = Grid.IJKNBR.shifterArray.getConstView();	
 	auto iView = Grid.IJKNBR.iArray.getConstView();
 	auto jView = Grid.IJKNBR.jArray.getConstView();

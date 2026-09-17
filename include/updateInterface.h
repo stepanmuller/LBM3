@@ -156,7 +156,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	// The interpolation and rescaling is based on Martin Schönherr's disertation 2015
 	const InfoStruct &InfoCoarse = GridCoarse.Info;
 	auto fViewCoarse = GridCoarse.fArray.getView();
-	const bool &esotwistFlipperCoarse = GridCoarse.esotwistFlipper;
+	const bool &esotwistFlipperCoarse = GridCoarse.Info.esotwistFlipper;
 	auto shifterViewCoarse = GridCoarse.IJKNBR.shifterArray.getConstView();
 	auto jPlusViewCoarse = GridCoarse.IJKNBR.jPlusArray.getConstView();
 	auto kPlusViewCoarse = GridCoarse.IJKNBR.kPlusArray.getConstView();
@@ -166,7 +166,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	
 	const InfoStruct &InfoFine = GridFine.Info;
 	auto fViewFine = GridFine.fArray.getView();
-	const bool &esotwistFlipperFine = GridFine.esotwistFlipper;
+	const bool &esotwistFlipperFine = GridFine.Info.esotwistFlipper;
 	auto shifterViewFine = GridFine.IJKNBR.shifterArray.getConstView();
 	auto jPlusViewFine = GridFine.IJKNBR.jPlusArray.getConstView();
 	auto kPlusViewFine = GridFine.IJKNBR.kPlusArray.getConstView();
@@ -341,7 +341,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	// The interpolation and rescaling is based on Martin Schönherr's disertation 2015
 	const InfoStruct &InfoCoarse = GridCoarse.Info;
 	auto fViewCoarse = GridCoarse.fArray.getView();
-	const bool &esotwistFlipperCoarse = GridCoarse.esotwistFlipper;
+	const bool &esotwistFlipperCoarse = GridCoarse.Info.esotwistFlipper;
 	auto shifterViewCoarse = GridCoarse.IJKNBR.shifterArray.getConstView();
 	auto jPlusViewCoarse = GridCoarse.IJKNBR.jPlusArray.getConstView();
 	auto kPlusViewCoarse = GridCoarse.IJKNBR.kPlusArray.getConstView();
@@ -351,7 +351,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	
 	const InfoStruct &InfoFine = GridFine.Info;
 	auto fViewFine = GridFine.fArray.getView();
-	const bool &esotwistFlipperFine = GridFine.esotwistFlipper;
+	const bool &esotwistFlipperFine = GridFine.Info.esotwistFlipper;
 	auto shifterViewFine = GridFine.IJKNBR.shifterArray.getConstView();
 	auto jPlusViewFine = GridFine.IJKNBR.jPlusArray.getConstView();
 	auto kPlusViewFine = GridFine.IJKNBR.kPlusArray.getConstView();

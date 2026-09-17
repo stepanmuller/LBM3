@@ -5,7 +5,7 @@
 // Esotwist streaming step: Just flip the EsotwistFlipper to alter between odd / even iterations
 void applyStreaming( GridStruct& Grid )
 {
-	Grid.esotwistFlipper = !Grid.esotwistFlipper;
+	Grid.Info.esotwistFlipper = !Grid.Info.esotwistFlipper;
 }
 
 // Implementation of the esotwist logic:
