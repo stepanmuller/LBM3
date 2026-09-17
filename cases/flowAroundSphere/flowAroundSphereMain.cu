@@ -2,7 +2,7 @@ constexpr float reynoldsNumber = 100000.f;
 constexpr int cellsPerSphereDiameter = 410; // 512;
 
 constexpr float sphereDiameterPhys = 1000.f;											// mm
-constexpr float uxInlet = 0.015625; // 0.0125f; 														// also works as nominal LBM Mach number
+constexpr float uxInlet = 0.015625; // 0.0125f; 										// also works as nominal LBM Mach number
 constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
 
 constexpr int GRID_LEVEL_COUNT = 6;
@@ -23,7 +23,6 @@ std::string STLPathSphere = "sphere_D=1000mm.STL";
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
 #include "../../include/cellFunctions.h"
-#include "../../include/updateInterface.h"
 
 __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCell, const int& kCell, 
 												bool & refinementMarker, const InfoStruct& Info )
