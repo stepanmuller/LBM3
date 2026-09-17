@@ -198,7 +198,8 @@ struct RotorStruct{ int rotorID = 0; float radiansPerSecond = 0.f;
 					float ox = 0.f; float oy = 0.f; float oz = 0.f; 
 					// only one of the rotations can be set to true
 					bool rotateAlongX = false; bool rotateAlongY = false; bool rotateAlongZ = false; 
-					IntArrayType rotorMap; };
+					IntArrayType indexArray; IntArrayType rotorMap; Uint32_tArrayType interpolationArray; 
+					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 
 struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
 							FloatArrayType rhoPrevArray; FloatArrayType uNormalPrevArray; 

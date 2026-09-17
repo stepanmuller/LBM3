@@ -3,6 +3,18 @@
 #include "./types.h"
 #include "./NBRFunctions.h"
 
+void intArrayFromBoolArray( IntArrayType &intArray, const BoolArrayType &boolArray )
+{
+	auto intView = intArray.getView();
+	auto boolView = boolArray.getConstView();
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		if ( boolView[ cell ] ) intView[ cell ] = 1;
+		else intView[ cell ] = 0;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, intArray.getSize(), cellLambda );
+}
+
 void markWallCells( BoolArrayType &markerArray, const RayMapStruct &rayMap, const GridBuilderStruct &GridBuilder )
 {
 	const int &cellCount = GridBuilder.Info.cellCount;

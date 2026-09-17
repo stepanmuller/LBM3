@@ -63,18 +63,6 @@ void initializeGridInfo( std::vector<GridBuilderStruct> &gridBuilders, const Bou
 	if ( !iAmFinest ) initializeGridInfo( gridBuilders, Bounds, level+1 );
 }
 
-void intArrayFromBoolArray( IntArrayType &intArray, const BoolArrayType &boolArray )
-{
-	auto intView = intArray.getView();
-	auto boolView = boolArray.getConstView();
-	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
-	{
-		if ( boolView[ cell ] ) intView[ cell ] = 1;
-		else intView[ cell ] = 0;
-	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, intArray.getSize(), cellLambda );
-}
-
 void buildFinerGridBuilder( SkeletonGridStruct &SkeletonGrid, GridBuilderStruct &GridBuilderFine )
 {
 	// label stuff for SkeletonGrid
@@ -1218,7 +1206,7 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		// Coarse to fine
 		markerArray = GridBuilder.coarseToFineMarkerArray * !GridBuilder.wallMarkerArray;
 		fillCoarseToFineInterface( Grid.CoarseToFineInterface, markerArray, childMapArrayGlobal, GridBuilder, GridBuilderFiner );
-		std::cout << "	Leftover fine cells on interface between levels " << level << ", " << level+1 << ": " 
+		std::cout << "	Leftover fine cells on interface between grids " << level << ", " << level+1 << ": " 
 					<< Grid.CoarseToFineInterface.leftoverCount << " out of " 
 					<< Grid.CoarseToFineInterface.interfaceCount * 8 + Grid.CoarseToFineInterface.leftoverCount << std::endl;
 	}
@@ -1348,6 +1336,7 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		{
 			if ( grids[ level ].Info.useRotors ) buildRotors( grids[ level ], rotorSTLs );
 		}
+		std::cout << std::endl;
 	}
 	
 	std::cout << "Allocating fArray for all grid levels. Printed memory is total per level" << std::endl;
@@ -1366,6 +1355,12 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
+		for ( int rotorID = 0; rotorID < (int)Grid.rotors.size(); rotorID++ )
+		{
+			Info.gridMemoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMap.getSize() * 4LL; // rotorMap
+			Info.gridMemoryBytes += 65LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // indexArray, interpolationArray
+			Info.gridMemoryBytes += 81LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // rotor force tracker
+		}
 		for ( int openBCID = 0; openBCID < (int)Grid.openBCs.size(); openBCID++ )
 		{
 			Info.gridMemoryBytes += 5LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // indexList, rhoPrev, uNormalPrev, rhoCumulative, uNormalCumulative

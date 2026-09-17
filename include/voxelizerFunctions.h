@@ -261,6 +261,8 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		const int iSpan = iEndGlobal - iStartGlobal;
 		const int jSpan = jEndGlobal - jStartGlobal;
 		
+		if ( iSpan == 0 || jSpan == 0 ) return;
+		
 		const int taskLast = (int)TNL::min((long long)taskStart + (long long)raysPerThreadLimit, ((long long)iSpan * (long long)jSpan)) - 1;
 		
 		const int jStartThread = jStartGlobal + (taskStart / iSpan);
@@ -431,6 +433,8 @@ void voxelizeSTL( RayMapStruct &rayMap, STLStruct &STL, VoxelizerStruct &Voxeliz
 		// Find where we need to start from
 		const int iSpan = iEndGlobal - iStartGlobal;
 		const int jSpan = jEndGlobal - jStartGlobal;
+		
+		if ( iSpan == 0 || jSpan == 0 ) return;
 		
 		const int taskLast = (int)TNL::min((long long)taskStart + (long long)raysPerThreadLimit, ((long long)iSpan * (long long)jSpan)) - 1;
 		
