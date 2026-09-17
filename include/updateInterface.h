@@ -3,6 +3,8 @@
 #include "./esotwistStreamingFunctions.h"
 #include "./cellFunctions.h"
 #include "./NBRFunctions.h"
+#include "./boundaryConditions/interpolatedBouncebackFunctions.h"
+#include "./D3Q27Directions.h"
 
 // Helper table for second order moments
 //  	id: { 0, 1, 2, 3, 4, 5, 6,		 7, 8, 9,10,11,12,13,14,15,16,17,18,		19,20,21,22,23,24,25,26 };
@@ -285,62 +287,6 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
         const float cz = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[6] - uzStencil[1]) + (uzStencil[5] - uzStencil[2])));
 		
 		// The rest of the coefficients is not needed for fineToCoarse interpolation, because the coarse cell has coords [0, 0, 0]
-		/*
-		a200 = 0.0625f * (2.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] - uyStencil[6])) + ((uyStencil[4] - uyStencil[1]) - (uyStencil[2] + uyStencil[5])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[6])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[4] + uzStencil[1]))) +
-                        ((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
-                        ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[5] - kxxMyyStencil[2])) +
-                        ((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
-                        ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
-        b200 = 0.125f * (2.f * (-((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) + ((uxStencil[6] + uxStencil[1]) + (uxStencil[2] + uxStencil[5]))) +
-                       ((kxyStencil[7] - kxyStencil[0]) + (kxyStencil[3] - kxyStencil[4])) +
-                       ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])));
-        c200 = 0.125f * (2.f * (((uxStencil[3] + uxStencil[4]) - (uxStencil[7] + uxStencil[0])) + ((uxStencil[6] + uxStencil[1]) - (uxStencil[2] + uxStencil[5]))) +
-                       ((kxzStencil[7] - kxzStencil[0]) + (kxzStencil[3] - kxzStencil[4])) +
-                       ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[5] - kxzStencil[2])));
-        
-        a020 = 0.125f * (2.f * (-((uyStencil[7] + uyStencil[0]) + (uyStencil[4] + uyStencil[3])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
-                       ((kxyStencil[7] - kxyStencil[0]) + (kxyStencil[3] - kxyStencil[4])) +
-                       ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])));
-        b020 = 0.0625f * (2.f * (((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
-                                ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[5] - kxxMyyStencil[2])) +
-                                ((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) - ((uxStencil[6] + uxStencil[1]) + (uxStencil[5] + uxStencil[2])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[2] + uzStencil[5]))) +
-                        ((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
-                        ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
-        c020 = 0.125f * (2.f * (((uyStencil[4] + uyStencil[3]) - (uyStencil[7] + uyStencil[0])) + ((uyStencil[5] + uyStencil[2]) - (uyStencil[6] + uyStencil[1]))) +
-                       ((kyzStencil[7] - kyzStencil[0]) + (kyzStencil[3] - kyzStencil[4])) +
-                       ((kyzStencil[6] - kyzStencil[1]) + (kyzStencil[2] - kyzStencil[5])));
-                 
-        a002 = 0.125f * (2.f * (((uzStencil[3] + uzStencil[4]) - (uzStencil[7] + uzStencil[0])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[5] + uzStencil[2]))) +
-                       ((kxzStencil[7] - kxzStencil[0]) + (kxzStencil[4] - kxzStencil[3])) +
-                       ((kxzStencil[5] - kxzStencil[2]) + (kxzStencil[6] - kxzStencil[1])));
-        b002 = 0.125f * (2.f * (((uzStencil[3] + uzStencil[4]) - (uzStencil[7] + uzStencil[0])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[1] + uzStencil[6]))) +
-                       ((kyzStencil[7] - kyzStencil[0]) + (kyzStencil[4] - kyzStencil[3])) +
-                       ((kyzStencil[5] - kyzStencil[2]) + (kyzStencil[6] - kyzStencil[1])));
-        c002 = 0.0625f * (2.f * (((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
-                                ((kxxMzzStencil[2] - kxxMzzStencil[5]) + (kxxMzzStencil[1] - kxxMzzStencil[6])) +
-                                ((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[1] + uxStencil[6])) +
-                                ((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[1] + uyStencil[6]) - (uyStencil[2] + uyStencil[5]))) +
-                        ((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
-                        ((kxxMyyStencil[5] - kxxMyyStencil[2]) + (kxxMyyStencil[6] - kxxMyyStencil[1])));
-		
-        a110 = 0.5f * (((uxStencil[7] + uxStencil[0]) + (uxStencil[4] + uxStencil[3])) - ((uxStencil[2] + uxStencil[5]) + (uxStencil[1] + uxStencil[6])));
-        b110 = 0.5f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[4] + uyStencil[3])) - ((uyStencil[2] + uyStencil[5]) + (uyStencil[1] + uyStencil[6])));
-        c110 = 0.5f * (((uzStencil[7] + uzStencil[0]) + (uzStencil[4] + uzStencil[3])) - ((uzStencil[2] + uzStencil[5]) + (uzStencil[1] + uzStencil[6])));
-
-        a101 = 0.5f * (((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[1] + uxStencil[6])));
-        b101 = 0.5f * (((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[2] + uyStencil[5]) - (uyStencil[1] + uyStencil[6])));
-        c101 = 0.5f * (((uzStencil[7] + uzStencil[0]) - (uzStencil[4] + uzStencil[3])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[1] + uzStencil[6])));
-
-        a011 = 0.5f * (((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[1] + uxStencil[6]) - (uxStencil[2] + uxStencil[5])));
-        b011 = 0.5f * (((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[1] + uyStencil[6]) - (uyStencil[2] + uyStencil[5])));
-        c011 = 0.5f * (((uzStencil[7] + uzStencil[0]) - (uzStencil[4] + uzStencil[3])) + ((uzStencil[1] + uzStencil[6]) - (uzStencil[2] + uzStencil[5])));
-
-        a111 = ((uxStencil[7] - uxStencil[0]) + (uxStencil[4] - uxStencil[3])) + ((uxStencil[2] - uxStencil[5]) + (uxStencil[1] - uxStencil[6]));
-        b111 = ((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[2] - uyStencil[5]) + (uyStencil[1] - uyStencil[6]));
-        c111 = ((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[2] - uzStencil[5]) + (uzStencil[1] - uzStencil[6]));
-		*/
 		
 		// get average second order moments
 		// eq Schönherr 2015 (7.29 - 7.33)
@@ -669,6 +615,13 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 	// finish by updating the leftovers too: those are fine cells for which no full Geier block was found
 	// we treat them separately using just an average from the 4 nearest coarse cells
 	
+	auto wallMapView = GridCoarse.Wall.wallMapArray.getConstView();
+	auto wallDataView = GridCoarse.Wall.wallDataArray.getConstView();
+	
+	auto iViewCoarse = GridCoarse.IJKNBR.iArray.getConstView();
+	auto jViewCoarse = GridCoarse.IJKNBR.jArray.getConstView();
+	auto kViewCoarse = GridCoarse.IJKNBR.kArray.getConstView();
+	
 	auto leftoverIndexView = GridCoarse.CoarseToFineInterface.leftoverIndexArray.getConstView();
 	auto leftoverParentMapView = GridCoarse.CoarseToFineInterface.leftoverParentMapArray.getConstView();
 	auto leftoverNbrIView = GridCoarse.CoarseToFineInterface.leftoverNbrIArray.getConstView();
@@ -680,13 +633,29 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		const int cellFine = leftoverIndexView( index );
 		const int cellCoarse0 = leftoverParentMapView( index );
 		
+		// Find link existence data for the center coarse cell
+		const int wallMap = wallMapView( cellCoarse0  );
+		uint32_t wallData = 0u;
+		int wallID = -1; 
+		if ( wallMap >= 0 )
+		{
+			wallData = wallDataView( wallMap );
+			bool interfaceOverlapMarker;
+			unpackWallID( wallData, wallID, interfaceOverlapMarker );
+		}
+		
 		// Initialize variables for the center cell separately
 		float dRhoCenter; float uxCenter; float uyCenter; float uzCenter;
 		float kxyCenter; float kyzCenter; float kxzCenter; float kxxMyyCenter; float kxxMzzCenter;
+		float uxWall; float uyWall; float uzWall;
 		
 		{ // center cel scope
+			// fill iCell, jCell, kCell and NBR
+			int iCell, jCell, kCell;
 			NBRStruct NBR;
-			getCompressedNBR( cellCoarse0, NBR, shifterViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse, InfoCoarse );
+			getCompressedIJKNBR( cellCoarse0, iCell, jCell, kCell, NBR, 
+								shifterViewCoarse, iViewCoarse, jViewCoarse, kViewCoarse, jPlusViewCoarse, kPlusViewCoarse, jkPlusViewCoarse,
+								InfoCoarse );
 			int cellReadIndex[27], fReadIndex[27];
 			getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipperCoarse );
 			float f[27];
@@ -715,16 +684,24 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 					+ f[1 ] + f[2 ] - f[3 ] - f[4 ] 
 					+ f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]
 													) / rhoCenter - ( uxCenter * uxCenter - uzCenter * uzCenter ) );
+													
+			// fill the wall velocity
+			BCStruct BC;
+			BC.wallID = wallID;
+			BC.rho = rhoCenter; BC.ux = uxCenter; BC.uy = uyCenter; BC.uz = uzCenter;
+			getLocalBC( BC, iCell, jCell, kCell, InfoCoarse );
+			uxWall = BC.ux; uyWall = BC.uy; uzWall = BC.uz;
 		}
 		
-		// Initialize variables for accumulation and average
-		float dRhoAvg = dRhoCenter; float uxAvg = uxCenter; float uyAvg = uyCenter; float uzAvg = uzCenter;
-		float kxyAvg = kxyCenter; float kyzAvg = kyzCenter; float kxzAvg = kxzCenter; float kxxMyyAvg = kxxMyyCenter; float kxxMzzAvg = kxxMzzCenter;
+		// Initialize result variables for accumulation
+		float dRhoResult = dRhoCenter; float uxResult = uxCenter; float uyResult = uyCenter; float uzResult = uzCenter;
+		float kxyResult = kxyCenter; float kyzResult = kyzCenter; float kxzResult = kxzCenter; float kxxMyyResult = kxxMyyCenter; float kxxMzzResult = kxxMzzCenter;
 		
 		int cellStencil[3];
 		cellStencil[0] = leftoverNbrIView( index );
 		cellStencil[1] = leftoverNbrJView( index );
 		cellStencil[2] = leftoverNbrKView( index );
+		int directionIndex[3] = { POO, OPO, OOP };
 		
 		// Extract values from each stencil cell
 		for ( int i = 0; i < 3; i++ )
@@ -767,57 +744,71 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 					+ f[1 ] + f[2 ] - f[3 ] - f[4 ] 
 					+ f[11] + f[12] - f[13] - f[14] + f[15] + f[16] - f[17] - f[18]
 													) / rho - ( ux * ux - uz * uz ) );
-			if ( !inverseDirection ) // regular averaging cell -> add it to the accumulating average
+			if ( !inverseDirection ) // linear cell -> add linear contribution
 			{
-				dRhoAvg += dRho;
-				uxAvg += ux;
-				uyAvg += uy;
-				uzAvg += uz;
-				kxyAvg += kxy;
-				kyzAvg += kyz;
-				kxzAvg += kxz;
-				kxxMyyAvg += kxxMyy;
-				kxxMzzAvg += kxxMzz;
+				dRhoResult += 0.25f * ( dRho - dRhoCenter );
+				uxResult += 0.25f * ( ux - uxCenter );
+				uyResult += 0.25f * ( uy - uyCenter );
+				uzResult += 0.25f * ( uz - uzCenter );
+				kxyResult += 0.25f * ( kxy - kxyCenter );
+				kyzResult += 0.25f * ( kyz - kyzCenter );
+				kxzResult += 0.25f * ( kxz - kxzCenter );
+				kxxMyyResult += 0.25f * ( kxxMyy - kxxMyyCenter );
+				kxxMzzResult += 0.25f * ( kxxMzz - kxxMzzCenter );
 			}	
-			else // opposite side cell -> to the average, add a fictional cell, U(fictional cell) = 2 U(center) - U(opposite)
-			{
-				dRhoAvg += 2.f * dRhoCenter - dRho;
-				uxAvg += 2.f * uxCenter - ux;
-				uyAvg += 2.f * uyCenter - uy;
-				uzAvg += 2.f * uzCenter - uz;
-				kxyAvg += 2.f * kxyCenter - kxy;
-				kyzAvg += 2.f * kyzCenter - kyz;
-				kxzAvg += 2.f * kxzCenter - kxz;
-				kxxMyyAvg += 2.f * kxxMyyCenter - kxxMyy;
-				kxxMzzAvg += 2.f * kxxMzzCenter - kxxMzz;
+			else
+			{ 	// opposite side linear cell -> subtract linear contribution
+				dRhoResult -= 0.25f * ( dRho - dRhoCenter );
+				kxyResult -= 0.25f * ( kxy - kxyCenter );
+				kyzResult -= 0.25f * ( kyz - kyzCenter );
+				kxzResult -= 0.25f * ( kxz - kxzCenter );
+				kxxMyyResult -= 0.25f * ( kxxMyy - kxxMyyCenter );
+				kxxMzzResult -= 0.25f * ( kxxMzz - kxxMzzCenter );
+				// find if there is a wall in the original direction (opposite from opposite)
+				bool thereIsWall = false;
+				if ( (wallData & (1u << directionIndex[i])) != 0u) thereIsWall = true;
+				else if ( (wallData & (1u << INVERSE_DIRECTIONS[directionIndex[i]])) != 0u) thereIsWall = true;
+				if ( !thereIsWall )
+				{
+					uxResult -= 0.25f * ( ux - uxCenter );
+					uyResult -= 0.25f * ( uy - uyCenter );
+					uzResult -= 0.25f * ( uz - uzCenter );
+				}
+				else 
+				{
+					// we now have the center cell, opposite cell and in the original direction there is a wall with known velocity
+					// linear version just between wall and the center coarse cell -> stencil size = 0.5 coarse cell size
+					//uxResult += 0.5f * ( uxWall - uxCenter );
+					//uyResult += 0.5f * ( uyWall - uyCenter );
+					//uzResult += 0.5f * ( uzWall - uzCenter );
+					// quadratic version between wall, center coarse cell and opposite cell -> stencil size = 1.5 coarse cell size
+					uxResult += ( 1.f / 24.f ) * ( 10.f * uxWall - 9.f * uxCenter - ux );
+					uyResult += ( 1.f / 24.f ) * ( 10.f * uyWall - 9.f * uyCenter - uy );
+					uzResult += ( 1.f / 24.f ) * ( 10.f * uzWall - 9.f * uzCenter - uz );
+				}
 			}							
-			
 		}
 		
-		// divide by 4 to get the average
-		dRhoAvg *= 0.25f; uxAvg *= 0.25f; uyAvg *= 0.25f; uzAvg *= 0.25f;
-		kxyAvg *= 0.25f; kyzAvg *= 0.25f; kxzAvg *= 0.25f; kxxMyyAvg *= 0.25f; kxxMzzAvg *= 0.25f;
-		
 		// get interpolated variables for the fine cell
-		const float rhoAvg = dRhoAvg + 1.f;
+		const float rhoResult = dRhoResult + 1.f;
 		
 		// calculate second order central moments
 		
 		const float sigma = 0.5f; // coarse to fine
 		
-		const float k_011 = -(1.f / 3.f) * ( kyzAvg ) * sigma / omega1Fine * rhoAvg;
-		const float k_101 = -(1.f / 3.f) * ( kxzAvg ) * sigma / omega1Fine * rhoAvg;
-		const float k_110 = -(1.f / 3.f) * ( kxyAvg ) * sigma / omega1Fine * rhoAvg;
-		const float mxxMyy = -(2.f/3.f) * ( kxxMyyAvg ) * sigma / omega1Fine * rhoAvg;
-		const float mxxMzz = -(2.f/3.f) * ( kxxMzzAvg ) * sigma / omega1Fine * rhoAvg;
+		const float k_011 = -(1.f / 3.f) * ( kyzResult ) * sigma / omega1Fine * rhoResult;
+		const float k_101 = -(1.f / 3.f) * ( kxzResult ) * sigma / omega1Fine * rhoResult;
+		const float k_110 = -(1.f / 3.f) * ( kxyResult ) * sigma / omega1Fine * rhoResult;
+		const float mxxMyy = -(2.f/3.f) * ( kxxMyyResult ) * sigma / omega1Fine * rhoResult;
+		const float mxxMzz = -(2.f/3.f) * ( kxxMzzResult ) * sigma / omega1Fine * rhoResult;
 		
-		const float k_200 = (1.f / 3.f) * (       mxxMyy +       mxxMzz + dRhoAvg );
-		const float k_020 = (1.f / 3.f) * (-2.f * mxxMyy +       mxxMzz + dRhoAvg );
-		const float k_002 = (1.f / 3.f) * (       mxxMyy - 2.f * mxxMzz + dRhoAvg );
+		const float k_200 = (1.f / 3.f) * (       mxxMyy +       mxxMzz + dRhoResult );
+		const float k_020 = (1.f / 3.f) * (-2.f * mxxMyy +       mxxMzz + dRhoResult );
+		const float k_002 = (1.f / 3.f) * (       mxxMyy - 2.f * mxxMzz + dRhoResult );
 		
 		// reconstruct f for the fine cell
 		float f[27];
-		reconstructInterpolatedF( f, rhoAvg, uxAvg, uyAvg, uzAvg, k_011, k_101, k_110, k_200, k_020, k_002 );
+		reconstructInterpolatedF( f, rhoResult, uxResult, uyResult, uzResult, k_011, k_101, k_110, k_200, k_020, k_002 );
 		
 		// write reconstructed f into the fine cell
 		NBRStruct NBR;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "./updateInterface.h"
+
 #include "./applyCollision.h"
 #include "./esotwistStreamingFunctions.h"
 #include "./cellFunctions.h"
