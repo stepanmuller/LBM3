@@ -6,6 +6,7 @@
 #include "./esotwistStreamingFunctions.h"
 #include "./cellFunctions.h"
 #include "./NBRFunctions.h"
+#include "./rotorFunctions.h"
 
 #include "./boundaryConditions/interpolatedBouncebackFunctions.h"
 #include "./boundaryConditions/restoreRho.h"
@@ -32,6 +33,9 @@ void updateSingleGrid( GridStruct &Grid )
 	auto gxWallView = Grid.Wall.gxArray.getView();
 	auto gyWallView = Grid.Wall.gyArray.getView();
 	auto gzWallView = Grid.Wall.gzArray.getView();
+	
+	const int rotorCount = Grid.rotorViews.size();
+	const auto* rotorViews = Grid.rotorViews.data();
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
@@ -76,14 +80,27 @@ void updateSingleGrid( GridStruct &Grid )
 		getRhoUxUyUz( BC.rho, BC.ux, BC.uy, BC.uz, f );
 		getLocalBC( BC, iCell, jCell, kCell, Info );
 		
-		// add the rotor processing here. 
-		// In case that gx, gy, gz is already non zero, for the rotor pretend that this forcing is already applied and results in shifted velocity
-		// This way the rotor compensates for the global forcing by adding enough of its own force
-		// the rotor only needs iCell, jCell, kCell, Info as input, we have that
-		// as output it gives gx, gy, gz
-		// in case of multiple rotors that could even overlap in the blurred area (gear pump!) gx, gy, gz should be averaged between all those
-		// write rotor force for each rotor if trackForce is true
-		// put the complete final gx, gy, gz ( combination of global forcing and all rotors ) back into the BC struct where collision will read it
+		// process the rotors
+		if ( rotorCount > 0 )
+		{
+			// the rotor needs x, y, z, Info as input, we have that
+			float x, y, z;
+			getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+			// In case that gx, gy, gz is already non zero, for the rotor pretend that this forcing is already applied and results in shifted velocity
+			// This way the rotor compensates for the global forcing by adding enough of its own force
+			const float rhoInv = 1.f / BC.rho;
+			const float uxPreRotor = ( BC.ux * BC.rho + BC.gx) * rhoInv;
+			const float uyPreRotor = ( BC.uy * BC.rho + BC.gy) * rhoInv;
+			const float uzPreRotor = ( BC.uz * BC.rho + BC.gz) * rhoInv;
+			// loop over rotors
+			for (int rotorID = 0; rotorID < rotorCount; rotorID++)
+			{
+				float xRotor = x; float yRotor = y; float zRotor = z;
+				projectXYZIntoRotorFrame( xRotor, yRotor, zRotor, rotorViews[rotorID].Info, Info );
+				// processRotor( BC, uxPreRotor, uyPreRotor, uzPreRotor, xRotor, yRotor, zRotor, trackForce, Info, rotorViews[rotorID] );
+				// this adds rotor forcing to the BC forcing
+			}
+		}
 		
 		applyCollision( f, BC, Info.nu );
 		

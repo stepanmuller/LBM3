@@ -23,6 +23,7 @@
 #include <TNL/Containers/NDArray.h>
 #include <TNL/Containers/StaticArray.h>
 #include <TNL/Timer.h>
+#include <TNL/Allocators/CudaManaged.h>
 
 //------------------------------------------------------------------------------------
 //--------------------------- ARRAYS, VECTORS  ---------------------------------------
@@ -66,6 +67,8 @@ using IntTripleType = TNL::Containers::StaticArray< 3, int >;
 using Uint8_tArrayType = TNL::Containers::Vector< uint8_t, TNL::Devices::Cuda, size_t >;
 
 using Uint32_tArrayType = TNL::Containers::Vector< uint32_t, TNL::Devices::Cuda, size_t >;
+using Uint32_tConstViewType = Uint32_tArrayType::ConstViewType;
+
 using Uint32_tArray2DType = TNL::Containers::NDArray< uint32_t, 
 												TNL::Containers::SizesHolder< size_t, 0, 0 >,
 												std::index_sequence< 0, 1 >,
@@ -75,6 +78,7 @@ using Uint32_tConstView2DType = Uint32_tArray2DType::ConstViewType;
 using Uint3ArrayType = TNL::Containers::Vector< uint3, TNL::Devices::Cuda, size_t >;
 
 using FloatArrayType = TNL::Containers::Vector< float, TNL::Devices::Cuda, size_t >;
+using FloatViewType = FloatArrayType::ViewType;
 using FloatArrayTypeCPU = TNL::Containers::Vector< float, TNL::Devices::Host, size_t >;
 
 using FloatArray2DType = TNL::Containers::NDArray< float, 
@@ -191,15 +195,22 @@ struct WallStruct{ int wallCount = 0; IntArrayType indexArray; IntArrayType wall
 					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
-struct RotorStruct{ int rotorID = 0; float radiansPerSecond = 0.f;
-					BoundsStruct Bounds; float res = 1.f; int cellCountX; int cellCountY; int cellCountZ;
-					// rotor will rotate along an axis which passes through ox, oy, oz
-					// and is parallel to x, y or z
-					float ox = 0.f; float oy = 0.f; float oz = 0.f; 
-					// only one of the rotations can be set to true
-					bool rotateAlongX = false; bool rotateAlongY = false; bool rotateAlongZ = false; 
-					IntArrayType indexArray; IntArrayType rotorMap; Uint32_tArrayType interpolationArray; 
+struct RotorInfoStruct { 	float rotorID = 0; float radiansPerSecond = 0.f;
+							BoundsStruct Bounds; float res = 1.f; int cellCountX = 0; int cellCountY = 0; int cellCountZ = 0; 
+							// rotor will rotate along an axis which passes through ox, oy, oz
+							// and is parallel to x, y or z
+							float ox = 0.f; float oy = 0.f; float oz = 0.f; 
+							bool rotateAlongX = false; bool rotateAlongY = false; bool rotateAlongZ = false; };
+
+struct RotorStruct{ RotorInfoStruct Info;				
+					IntArrayType indexArray; IntArrayType rotorMapArray; Uint32_tArrayType interpolationArray; 
 					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
+					
+struct RotorViewStruct{ RotorInfoStruct Info; 
+						IntConstViewType indexView; IntConstViewType rotorMapView; Uint32_tConstViewType interpolationView;
+						FloatViewType gxView; FloatViewType gyView; FloatViewType gzView; };	
+						
+using RotorViewsType = std::vector<RotorViewStruct, TNL::Allocators::CudaManaged<RotorViewStruct>>;	
 
 struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
 							FloatArrayType rhoPrevArray; FloatArrayType uNormalPrevArray; 
@@ -209,7 +220,7 @@ struct GridStruct { InfoStruct Info;
 					FloatArray2DType fArray; 
 					CompressedIJKNBRStruct IJKNBR;
 					WallStruct Wall;
-					std::vector<RotorStruct> rotors; 
+					std::vector<RotorStruct> rotors; RotorViewsType rotorViews;
 					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
 					std::vector<OpenBCArrayStruct> openBCs; }; 	
 					

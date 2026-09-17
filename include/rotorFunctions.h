@@ -4,6 +4,187 @@
 #include "./markerFunctions.h"
 #include "./voxelizerFunctions.h"
 
+
+__cuda_callable__ void projectXYZIntoRotorFrame( float &xRotor, float &yRotor, float &zRotor, const RotorInfoStruct &InfoRotor, const InfoStruct &InfoGlobal )
+{
+	const float timePassed = InfoGlobal.iterationsFinished * InfoGlobal.dtPhys;
+	const float angle = InfoRotor.radiansPerSecond * timePassed;
+	const float c = cosf(angle);
+    const float s = sinf(angle);
+    // Original position relative to the rotation pivot.
+    const float x = xRotor - InfoRotor.ox;
+    const float y = yRotor - InfoRotor.oy;
+    const float z = zRotor - InfoRotor.oz;
+	// Rotor rotates along an axis parallel to one of the main axes
+	// The axis of rotation pierces the point InfoRotor.ox, InfoRotor.oy, InfoRotor.oz
+	// radiansPerSecond tell how fast the rotor rotates, in the rotor frame it seems that the global domain rotates with negative of that
+	if ( InfoRotor.rotateAlongX )
+	{
+		yRotor = InfoRotor.oy + c * y + s * z;
+        zRotor = InfoRotor.oz - s * y + c * z;
+	}
+	else if ( InfoRotor.rotateAlongY )
+	{
+		xRotor = InfoRotor.ox + c * x - s * z;
+        zRotor = InfoRotor.oz + s * x + c * z;
+	}
+	else if ( InfoRotor.rotateAlongZ )
+	{
+		xRotor = InfoRotor.ox + c * x + s * y;
+        yRotor = InfoRotor.oy - s * x + c * y;
+	}
+}
+
+/*
+__cuda_callable__ void getRotorForcing( float& gxRotor, float& gyRotor, float& gzRotor, 
+						const float& xRotor, const float& yGlobal, const float& zGlobal,
+						const float& uxPreRotor, const float& uyPreRotor, const float& uzPreRotor, 
+						const float& rho, const RotorInfoStruct& InfoRotor, const InfoStruct& InfoGlobal)
+{
+    // Position relative to the rotation axis.
+    const float x = xRotor - InfoRotor.ox;
+    const float y = yRotor - InfoRotor.oy;
+    const float z = zRotor - InfoRotor.oz;
+
+    // Converts angular velocity × distance into lattice velocity
+    const float scale = InfoRotor.radiansPerSecond * InfoGlobal.dtPhys / InfoGlobal.res;
+
+    float uxTarget = 0.f;
+    float uyTarget = 0.f;
+    float uzTarget = 0.f;
+
+    if (InfoRotor.rotateAlongX)
+    {
+        uyTarget = -scale * z;
+        uzTarget =  scale * y;
+    }
+    else if (InfoRotor.rotateAlongY)
+    {
+        uxTarget =  scale * z;
+        uzTarget = -scale * x;
+    }
+    else if (InfoRotor.rotateAlongZ)
+    {
+        uxTarget = -scale * y;
+        uyTarget =  scale * x;
+    }
+
+    // Momentum correction for the complete collision step
+    gxRotor = rho * (uxTarget - uxPreRotor);
+    gyRotor = rho * (uyTarget - uyPreRotor);
+    gzRotor = rho * (uzTarget - uzPreRotor);
+}
+*/
+
+__cuda_callable__ void interpolateRotorCube( float& rotorFraction, const float x, const float y, const float z, const uint32_t packed)
+{
+    // Unpack the eight corner counts, each in [0, 8].
+    float v[8];
+    for (unsigned int corner = 0; corner < 8; corner++) v[corner] = static_cast<float>((packed >> (4u * corner)) & 0xFu);
+
+    // Interpolate along X.
+    const float v00 = v[0] + x * (v[1] - v[0]);
+    const float v10 = v[2] + x * (v[3] - v[2]);
+    const float v01 = v[4] + x * (v[5] - v[4]);
+    const float v11 = v[6] + x * (v[7] - v[6]);
+
+    // Interpolate along Y.
+    const float v0 = v00 + y * (v10 - v00);
+    const float v1 = v01 + y * (v11 - v01);
+
+    // Interpolate along Z and normalize the count to [0, 1].
+    rotorFraction = (v0 + z * (v1 - v0)) * 0.125f;
+}
+
+__cuda_callable__ void getRotorFraction( float& rotorFraction, const float& xRotor, const float& yRotor, const float& zRotor, const InfoStruct& InfoGlobal,
+						const RotorViewStruct& RotorView)
+{
+    const RotorInfoStruct& InfoRotor = RotorView.Info;
+    const BoundsStruct& Bounds = InfoRotor.Bounds;
+    const auto& rotorMapView = RotorView.rotorMapView;
+    const auto& interpolationView = RotorView.interpolationView;
+
+    rotorFraction = 0.f;
+
+    if (xRotor < Bounds.xMin || xRotor >= Bounds.xMax ||
+        yRotor < Bounds.yMin || yRotor >= Bounds.yMax ||
+        zRotor < Bounds.zMin || zRotor >= Bounds.zMax) return;
+
+    // Position measured in interpolation-cell units.
+    const float xRelative = (xRotor - Bounds.xMin) / InfoRotor.res;
+    const float yRelative = (yRotor - Bounds.yMin) / InfoRotor.res;
+    const float zRelative = (zRotor - Bounds.zMin) / InfoRotor.res;
+
+    const int iInterpolation = static_cast<int>(xRelative);
+    const int jInterpolation = static_cast<int>(yRelative);
+    const int kInterpolation = static_cast<int>(zRelative);
+
+    // Protect against rounding up at the upper boundary.
+    if (iInterpolation >= InfoRotor.cellCountX ||
+        jInterpolation >= InfoRotor.cellCountY ||
+        kInterpolation >= InfoRotor.cellCountZ)
+        return;
+
+    const int blockCountX = InfoRotor.cellCountX / 4;
+    const int blockCountY = InfoRotor.cellCountY / 4;
+
+    const int iBlock = iInterpolation / 4;
+    const int jBlock = jInterpolation / 4;
+    const int kBlock = kInterpolation / 4;
+
+    const int blockIndex = kBlock * blockCountX * blockCountY + jBlock * blockCountX + iBlock;
+
+    const int rotorMap = rotorMapView(blockIndex);
+    if (rotorMap < 0) return;
+
+    const int interpolationIndex = rotorMap * 64 + (kInterpolation % 4) * 16 + (jInterpolation % 4) * 4 + (iInterpolation % 4);
+
+    const uint32_t packed = interpolationView(interpolationIndex);
+
+    const float xWithinCube = xRelative - iInterpolation;
+    const float yWithinCube = yRelative - jInterpolation;
+    const float zWithinCube = zRelative - kInterpolation;
+
+    interpolateRotorCube( rotorFraction, xWithinCube, yWithinCube, zWithinCube, packed );
+}
+/*
+__cuda_callable__ void processRotor( BCStruct &BC, const float &uxPreRotor, const float &uyPreRotor, const float &uzPreRotor, 
+										const float& xRotor, const float& yRotor, const float& zRotor, const bool &trackForce,
+										const InfoStruct& InfoGlobal, const RotorViewStruct& RotorView )
+{
+	float rotorFraction;
+	
+	
+	
+	getRotorFraction( rotorFraction, xRotor, yRotor, zRotor, InfoGlobal, RotorView );
+	
+	
+	
+	if ( rotorFraction == 0.f ) return;
+	float gxRotor, gyRotor, gzRotor;
+	getRotorForcing( gxRotor, gyRotor, gzRotor, xRotor, yRotor, zRotor, uxPreRotor, uyPreRotor, uzPreRotor, BC.rho, RotorView );
+	gxRotor *= rotorFraction;
+	gyRotor *= rotorFraction;
+	gzRotor *= rotorFraction;
+	BC.gx += gxRotor;
+	BC.gy += gyRotor;
+	BC.gz += gzRotor;
+	
+	// if trackForce is true, write rotor forcing here
+	if ( !trackForce ) return;
+	
+	 // Position measured in force tracking cell units.
+    const float xRelative = (xRotor - RotorView.Info.Bounds.xMin) / ( InfoRotor.res * 4.f / 3.f );
+    const float yRelative = (yRotor - RotorView.Info.Bounds.yMin) / ( InfoRotor.res * 4.f / 3.f );
+    const float zRelative = (zRotor - RotorView.Info.Bounds.zMin) / ( InfoRotor.res * 4.f / 3.f );
+
+    const int iForce = static_cast<int>(xRelative);
+    const int jForce = static_cast<int>(yRelative);
+    const int kForce = static_cast<int>(zRelative);
+    
+    const int forceIndex = 
+}
+*/
 __cuda_callable__ inline void bitPackInterpolationCube( uint32_t& result, const uint8_t (&counter)[8] )
 {
     result = 0u;
@@ -35,22 +216,22 @@ void buildRotors( GridStruct &Grid, std::vector<STLStruct> &rotorSTLs )
 		Voxelizer.rayMaps.resize( 1 );
 		voxelizeSTL( Voxelizer.rayMaps[0], STL, Voxelizer );
 		
-		Rotor.rotorID = rotorID;
-		Rotor.res = Voxelizer.Info.res;
-		Rotor.Bounds.xMin = Voxelizer.Info.ox - 1.5f * Voxelizer.Info.res;
-		Rotor.Bounds.yMin = Voxelizer.Info.oy - 1.5f * Voxelizer.Info.res;
-		Rotor.Bounds.zMin = Voxelizer.Info.oz - 1.5f * Voxelizer.Info.res;
+		Rotor.Info.rotorID = rotorID;
+		Rotor.Info.res = Voxelizer.Info.res;
+		Rotor.Info.Bounds.xMin = Voxelizer.Info.ox - 1.5f * Voxelizer.Info.res;
+		Rotor.Info.Bounds.yMin = Voxelizer.Info.oy - 1.5f * Voxelizer.Info.res;
+		Rotor.Info.Bounds.zMin = Voxelizer.Info.oz - 1.5f * Voxelizer.Info.res;
 		// add overlap of 2 cells and then +3 /4 *4 to get closest upper multiple of 4
-		Rotor.cellCountX = (( Voxelizer.Info.cellCountX + 2 + 3 ) / 4 ) * 4; // we want a multiple of 4 here
-		Rotor.cellCountY = (( Voxelizer.Info.cellCountY + 2 + 3 ) / 4 ) * 4;
-		Rotor.cellCountZ = (( Voxelizer.Info.cellCountZ + 2 + 3 ) / 4 ) * 4;
-		Rotor.Bounds.xMax = Rotor.Bounds.xMin + Rotor.res * (float)Rotor.cellCountX;
-		Rotor.Bounds.yMax = Rotor.Bounds.yMin + Rotor.res * (float)Rotor.cellCountY;
-		Rotor.Bounds.zMax = Rotor.Bounds.zMin + Rotor.res * (float)Rotor.cellCountZ;
+		Rotor.Info.cellCountX = (( Voxelizer.Info.cellCountX + 2 + 3 ) / 4 ) * 4; // we want a multiple of 4 here
+		Rotor.Info.cellCountY = (( Voxelizer.Info.cellCountY + 2 + 3 ) / 4 ) * 4;
+		Rotor.Info.cellCountZ = (( Voxelizer.Info.cellCountZ + 2 + 3 ) / 4 ) * 4;
+		Rotor.Info.Bounds.xMax = Rotor.Info.Bounds.xMin + Rotor.Info.res * (float)Rotor.Info.cellCountX;
+		Rotor.Info.Bounds.yMax = Rotor.Info.Bounds.yMin + Rotor.Info.res * (float)Rotor.Info.cellCountY;
+		Rotor.Info.Bounds.zMax = Rotor.Info.Bounds.zMin + Rotor.Info.res * (float)Rotor.Info.cellCountZ;
 		
-		const int blockCountX = Rotor.cellCountX/4;
-		const int blockCountY = Rotor.cellCountY/4;
-		const int blockCountZ = Rotor.cellCountZ/4;
+		const int blockCountX = Rotor.Info.cellCountX/4;
+		const int blockCountY = Rotor.Info.cellCountY/4;
+		const int blockCountZ = Rotor.Info.cellCountZ/4;
 		const int blockCountXY = blockCountX * blockCountY;
 		const int blockCount = blockCountX * blockCountY * blockCountZ;
 		const int voxelizerCountX = Voxelizer.Info.cellCountX;
@@ -118,8 +299,8 @@ void buildRotors( GridStruct &Grid, std::vector<STLStruct> &rotorSTLs )
 		IntArrayType scanArray( blockCount );
 		intArrayFromBoolArray( scanArray, rotorMapMarkerArray );
 		TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, blockCount, TNL::Plus{} );
-		Rotor.rotorMap.setSize( blockCount );
-		auto rotorMapView = Rotor.rotorMap.getView();
+		Rotor.rotorMapArray.setSize( blockCount );
+		auto rotorMapView = Rotor.rotorMapArray.getView();
 		auto scanView = scanArray.getConstView();
 		auto indexView = Rotor.indexArray.getView();
 		
@@ -258,9 +439,26 @@ void buildRotors( GridStruct &Grid, std::vector<STLStruct> &rotorSTLs )
 	long long memoryBytes = 0LL;
 	for ( int rotorID = 0; rotorID < (int)Grid.rotors.size(); rotorID++ )
 	{
-		memoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMap.getSize() * 4LL; // rotorMap
+		memoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMapArray.getSize() * 4LL; // rotorMap
 		memoryBytes += 65LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // indexArray, interpolationArray
 		memoryBytes += 81LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // rotor force tracker
 	}
+	
+	// prepare rotor views
+	Grid.rotorViews.resize(Grid.rotors.size());
+	auto& rotorViews = Grid.rotorViews;
+	for (int rotorID = 0; rotorID < rotorCount; rotorID++)
+	{
+		auto& Rotor = Grid.rotors[rotorID];
+		auto& RotorView = rotorViews[rotorID];
+		RotorView.Info = Rotor.Info;
+		RotorView.indexView.bind(Rotor.indexArray.getConstView());
+		RotorView.rotorMapView.bind(Rotor.rotorMapArray.getConstView());
+		RotorView.interpolationView.bind(Rotor.interpolationArray.getConstView());
+		RotorView.gxView.bind(Rotor.gxArray.getView());
+		RotorView.gyView.bind(Rotor.gyArray.getView());
+		RotorView.gzView.bind(Rotor.gzArray.getView());
+	}
+
 	std::cout << "	Allocated rotors for grid level " << Grid.Info.gridID << ", they take " << memoryBytes / 1048576.0 << " MiB" << std::endl;
 }

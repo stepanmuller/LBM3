@@ -1357,7 +1357,7 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
 		for ( int rotorID = 0; rotorID < (int)Grid.rotors.size(); rotorID++ )
 		{
-			Info.gridMemoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMap.getSize() * 4LL; // rotorMap
+			Info.gridMemoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMapArray.getSize() * 4LL; // rotorMap
 			Info.gridMemoryBytes += 65LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // indexArray, interpolationArray
 			Info.gridMemoryBytes += 81LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // rotor force tracker
 		}

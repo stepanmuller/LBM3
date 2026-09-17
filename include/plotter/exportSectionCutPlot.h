@@ -5,9 +5,11 @@ constexpr long long EXPORT_RESOLUTION_PIXEL_LIMIT = 16000000;
 //#include "./OLDcellFunctions.h"
 #include "../NBRFunctions.h"
 #include "../esotwistStreamingFunctions.h"
+#include "../rotorFunctions.h"
 
 enum PlaneEnum { XY, ZY, ZX };
 
+/*
 void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &cutIndex, const int &plotNumber, PlaneEnum plane )
 {
 	if (grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT))
@@ -265,8 +267,9 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	}
 	fclose(fp);
 }
+*/
 
-/*
+
 void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &cutIndex, const int &plotNumber, PlaneEnum plane )
 {
 	const InfoStruct InfoFinest = grids[GRID_LEVEL_COUNT-1].Info;
@@ -354,6 +357,9 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
 		auto wallMapView = Grid.Wall.wallMapArray.getConstView();
 		
+		const int rotorCount = Grid.rotorViews.size();
+		const auto* rotorViews = Grid.rotorViews.data();
+		
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
 			int iCell, jCell, kCell;
@@ -413,6 +419,28 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			
 			// here we also need to browse through rotors and find rotor fraction,
 			// if marker was zero till here set it to rotor fraction
+			
+			// process the rotors
+			if ( rotorCount > 0 )
+			{
+				// the rotor needs x, y, z, Info as input, we have that
+				float x, y, z;
+				getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+				// In case that gx, gy, gz is already non zero, for the rotor pretend that this forcing is already applied and results in shifted velocity
+				// This way the rotor compensates for the global forcing by adding enough of its own force
+				// loop over rotors
+				for (int rotorID = 0; rotorID < rotorCount; rotorID++)
+				{
+					float xRotor = x; float yRotor = y; float zRotor = z;
+					projectXYZIntoRotorFrame( xRotor, yRotor, zRotor, rotorViews[rotorID].Info, Info );
+					float rotorFraction;
+					getRotorFraction( rotorFraction, xRotor, yRotor, zRotor, Info, rotorViews[rotorID] );
+					marker += rotorFraction;
+					// processRotor( BC, uxPreRotor, uyPreRotor, uzPreRotor, xRotor, yRotor, zRotor, trackForce, Info, rotorViews[rotorID] );
+					// this adds rotor forcing to the BC forcing
+				}
+			}
+			marker = std::clamp( marker, 0.f, 1.f );
 			
 			// read f
 			float f[27];
@@ -482,7 +510,6 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	}
 	fclose(fp);
 }
-*/
 
 void exportSectionCutPlotXY( std::vector<GridStruct> &grids, const int &kCell, const int &plotNumber )
 {
