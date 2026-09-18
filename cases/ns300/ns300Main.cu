@@ -139,6 +139,9 @@ int main(int argc, char **argv)
 	grids[2].rotors[0].Info.radiansPerSecond = radiansPerSecond;
 	grids[2].rotors[0].Info.rotateAlongZ = true;
 	
+	TrackerStruct Tracker;
+	initializeTracker( Tracker, grids );
+	
 	TNL::Timer lapTimer;
 	lapTimer.reset();
 	lapTimer.start();

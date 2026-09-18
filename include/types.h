@@ -259,7 +259,8 @@ struct SectionCutStruct { 	FloatArray2DType dRhoArray; FloatArray2DType uxArray;
 struct SectionCutStructCPU { 	FloatArray2DTypeCPU dRhoArray; FloatArray2DTypeCPU uxArray; FloatArray2DTypeCPU uyArray; FloatArray2DTypeCPU uzArray; 
 								FloatArray2DTypeCPU markerArray; IntArray2DTypeCPU gridIDArray; };
 								
-struct TrackerStruct { 	FloatArray2DTypeCPU volumetricFlowArray; FloatArray2DTypeCPU massFlowArray; FloatArray2DTypeCPU pressureArray;
+struct TrackerStruct { 	int openBCCount = 0; int wallCount = 0; int rotorCount = 0;
+						FloatArray2DTypeCPU volumetricFlowArray; FloatArray2DTypeCPU massFlowArray; FloatArray2DTypeCPU pressureArray;
 						FloatArray2DTypeCPU pressurePowerArray; FloatArray2DTypeCPU momentumThrustArray; FloatArray2DTypeCPU normalKineticPowerArray; 
 						FloatArray2DTypeCPU wallFxArray; FloatArray2DTypeCPU wallFyArray; FloatArray2DTypeCPU wallFzArray;
 						FloatArray2DTypeCPU wallTxArray; FloatArray2DTypeCPU wallTyArray; FloatArray2DTypeCPU wallTzArray;

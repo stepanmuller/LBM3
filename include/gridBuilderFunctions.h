@@ -1334,7 +1334,6 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 			GridBuilderStruct &GridBuilder = gridBuilders[level];
 			InfoStruct &Info = GridBuilder.Info;
 			const int wallCount = TNL::sum( GridBuilder.wallMarkerArray );
-			std::cout << " wall count " << wallCount <<  std::endl;
 			fluidUpdatesPerIteration += (long long)( Info.cellCount - wallCount ) * (long long)std::pow( 2, grids[level].Info.gridID );
 		}
 	} // here GridBuilders and Voxelizers go out of scope
@@ -1389,8 +1388,9 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 	std::cout << "Total GPU memory: " << totalMemoryBytes / 1048576.0 << " MiB"  << std::endl;
 	std::cout << "Total fluid cell updates per iteration: " << fluidUpdatesPerIteration << std::endl;
 	std::cout << std::endl;
-	std::cout << "Applying initial condition" << std::endl;
+	std::cout << "Applying initial condition ... " << std::flush;
 	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) applyInitialCondition( grids[ level ] );
+	std::cout << "Done" << std::endl;
 	std::cout << std::endl;
 	return fluidUpdatesPerIteration;
 }

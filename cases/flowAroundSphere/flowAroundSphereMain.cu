@@ -132,6 +132,7 @@ void exportHistoryData( const std::vector<float>& historyDragCoefficient,
 
 #include "../../include/gridBuilderFunctions.h"
 #include "../../include/updateGrid.h"
+#include "../../include/trackerFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 
 int main(int argc, char **argv)
@@ -153,6 +154,9 @@ int main(int argc, char **argv)
 	DomainBounds.zMax =   5500.f;
 	
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
+	
+	TrackerStruct Tracker;
+	initializeTracker( Tracker, grids );
 	
 	std::vector<float> historyDragCoefficient( ITERATION_COUNT+1, 0.f );
 	
