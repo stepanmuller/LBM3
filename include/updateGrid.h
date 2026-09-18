@@ -35,7 +35,19 @@ void updateSingleGrid( GridStruct &Grid )
 	auto gzWallView = Grid.Wall.gzArray.getView();
 	
 	const int rotorCount = Grid.rotorViews.size();
-	const auto* rotorViews = Grid.rotorViews.data();
+	auto* rotorViews = Grid.rotorViews.data();
+	// Advance rotors and synchronize rotor Info
+	constexpr double twoPi = 6.283185307179586476925286766559;
+	for (int rotorID = 0; rotorID < rotorCount; rotorID++)
+	{
+		auto& RotorInfo = Grid.rotors[rotorID].Info;
+		RotorInfo.radiansElapsed = std::fmod(	RotorInfo.radiansElapsed + static_cast<double>(Info.dtPhys) * RotorInfo.radiansPerSecond,	twoPi);
+		// fmod can return a negative remainder.
+		if (RotorInfo.radiansElapsed < 0.0) RotorInfo.radiansElapsed += twoPi;
+		// Adding twoPi to a tiny negative remainder can round to twoPi.
+		if (RotorInfo.radiansElapsed >= twoPi) RotorInfo.radiansElapsed = 0.0;
+		Grid.rotorViews[rotorID].Info = RotorInfo;
+	}
 	
 	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{
@@ -72,12 +84,15 @@ void updateSingleGrid( GridStruct &Grid )
 		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper );
 		for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
 		
+		// calculate current state
+		float rho, ux, uy, uz;
+		getRhoUxUyUz( rho, ux, uy, uz, f );
 		// setup BC struct and load the current state into it
 		// we will then pass the current state into the getLocalBC function so that BC can also be a function of the current state 
 		// example: get forcing for rotating domain as a function of rho, ux, uy, uz
 		BCStruct BC;
 		BC.wallID = wallID;
-		getRhoUxUyUz( BC.rho, BC.ux, BC.uy, BC.uz, f );
+		BC.rho = rho; BC.ux = ux; BC.uy = uy; BC.uz = uz;
 		getLocalBC( BC, iCell, jCell, kCell, Info );
 		
 		// process the rotors
@@ -87,18 +102,28 @@ void updateSingleGrid( GridStruct &Grid )
 			float x, y, z;
 			getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
 			// In case that gx, gy, gz is already non zero, for the rotor pretend that this forcing is already applied and results in shifted velocity
-			// This way the rotor compensates for the global forcing by adding enough of its own force
-			const float rhoInv = 1.f / BC.rho;
-			const float uxPreRotor = ( BC.ux * BC.rho + BC.gx) * rhoInv;
-			const float uyPreRotor = ( BC.uy * BC.rho + BC.gy) * rhoInv;
-			const float uzPreRotor = ( BC.uz * BC.rho + BC.gz) * rhoInv;
-			// loop over rotors
+			// This is because we want to ensure that after forcing, the target velocity is achieved, so the rotor must only supply
+			// the part of the force that is missing
+			const float rhoInv = 1.f / rho;
+			const float uxPreRotor = ( ux * rho + BC.gx) * rhoInv;
+			const float uyPreRotor = ( uy * rho + BC.gy) * rhoInv;
+			const float uzPreRotor = ( uz * rho + BC.gz) * rhoInv;
+			// it can also happen that there are more slightly overlapping rotors ( gear pump! )
+			// because of this, we will be tracking the cumulative rotor fraction
+			float rotorFractionCumulative = 0.f;
+			// when browsing a rotor:
+			// 1) find its fraction
+			// 2) if rotorFractionCumulative + fraction > 1, 
+			//			fraction = 1 - rotorFractionCumulative 
+			//			set rotorFractionCumulative to 1
+			// 	  else, rotorFractionCumulative += fraction
+			// 3) proceed by doing BC.gx += gxRotor * fraction, etc -> this eventually results in BC having the complete forcing
+			// 4) after the rotor processing, check if rotorFractionCumulative >= 1, break if so
 			for (int rotorID = 0; rotorID < rotorCount; rotorID++)
 			{
-				float xRotor = x; float yRotor = y; float zRotor = z;
-				projectXYZIntoRotorFrame( xRotor, yRotor, zRotor, rotorViews[rotorID].Info, Info );
-				// processRotor( BC, uxPreRotor, uyPreRotor, uzPreRotor, xRotor, yRotor, zRotor, trackForce, Info, rotorViews[rotorID] );
+				processRotor( BC, rho, uxPreRotor, uyPreRotor, uzPreRotor, x, y, z, rotorFractionCumulative, trackForce, Info, rotorViews[rotorID] );
 				// this adds rotor forcing to the BC forcing
+				if ( rotorFractionCumulative >= 1.f ) break;
 			}
 		}
 		

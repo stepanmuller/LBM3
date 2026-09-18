@@ -431,10 +431,8 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 				// loop over rotors
 				for (int rotorID = 0; rotorID < rotorCount; rotorID++)
 				{
-					float xRotor = x; float yRotor = y; float zRotor = z;
-					projectXYZIntoRotorFrame( xRotor, yRotor, zRotor, rotorViews[rotorID].Info, Info );
 					float rotorFraction;
-					getRotorFraction( rotorFraction, xRotor, yRotor, zRotor, Info, rotorViews[rotorID] );
+					getRotorFraction( rotorFraction, x, y, z, Info, rotorViews[rotorID] );
 					marker += rotorFraction;
 					// processRotor( BC, uxPreRotor, uyPreRotor, uzPreRotor, xRotor, yRotor, zRotor, trackForce, Info, rotorViews[rotorID] );
 					// this adds rotor forcing to the BC forcing
@@ -499,12 +497,15 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			convertToPhysicalVelocity( ux, uy, uz, grids[gridID].Info );
 			convertToPhysicalPressure( p, grids[gridID].Info );
 			
+			// Get resolution
+			const float res = grids[gridID].Info.res;
+			
 			float uHorizontal, uVertical, uNormal;
 			if ( plane == XY ) 		{ uHorizontal = ux; uVertical = uy; uNormal = uz; }
 			else if ( plane == ZY ) { uHorizontal = uz; uVertical = uy; uNormal = ux; }
 			else 					{ uHorizontal = uz; uVertical = ux; uNormal = uy; }
 			
-			float data[6] = {p, uHorizontal, uVertical, uNormal, marker, (float)gridID};
+			float data[6] = {p, uHorizontal, uVertical, uNormal, marker, res};
 			fwrite(data, sizeof(float), 6, fp);
 		}
 	}

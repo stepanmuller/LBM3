@@ -7,8 +7,7 @@
 
 __cuda_callable__ void projectXYZIntoRotorFrame( float &xRotor, float &yRotor, float &zRotor, const RotorInfoStruct &InfoRotor, const InfoStruct &InfoGlobal )
 {
-	const float timePassed = InfoGlobal.iterationsFinished * InfoGlobal.dtPhys;
-	const float angle = InfoRotor.radiansPerSecond * timePassed;
+	const float angle = (float)InfoRotor.radiansElapsed;
 	const float c = cosf(angle);
     const float s = sinf(angle);
     // Original position relative to the rotation pivot.
@@ -35,16 +34,41 @@ __cuda_callable__ void projectXYZIntoRotorFrame( float &xRotor, float &yRotor, f
 	}
 }
 
-/*
+__cuda_callable__ void projectForcingIntoRotorFrame( float& gxRotor, float& gyRotor, float& gzRotor, const RotorInfoStruct& InfoRotor, const InfoStruct& InfoGlobal)
+{
+    const float angle = (float)InfoRotor.radiansElapsed;
+    const float c = cosf(angle);
+    const float s = sinf(angle);
+
+    if (InfoRotor.rotateAlongX)
+    {
+        const float gy = gyRotor;
+        gyRotor =  c * gy + s * gzRotor;
+        gzRotor = -s * gy + c * gzRotor;
+    }
+    else if (InfoRotor.rotateAlongY)
+    {
+        const float gx = gxRotor;
+        gxRotor = c * gx - s * gzRotor;
+        gzRotor = s * gx + c * gzRotor;
+    }
+    else if (InfoRotor.rotateAlongZ)
+    {
+        const float gx = gxRotor;
+        gxRotor =  c * gx + s * gyRotor;
+        gyRotor = -s * gx + c * gyRotor;
+    }
+}
+
 __cuda_callable__ void getRotorForcing( float& gxRotor, float& gyRotor, float& gzRotor, 
-						const float& xRotor, const float& yGlobal, const float& zGlobal,
-						const float& uxPreRotor, const float& uyPreRotor, const float& uzPreRotor, 
-						const float& rho, const RotorInfoStruct& InfoRotor, const InfoStruct& InfoGlobal)
+						const float& xGlobal, const float& yGlobal, const float& zGlobal,
+						const float& rho, const float& uxPreRotor, const float& uyPreRotor, const float& uzPreRotor, 
+						const RotorInfoStruct& InfoRotor, const InfoStruct& InfoGlobal)
 {
     // Position relative to the rotation axis.
-    const float x = xRotor - InfoRotor.ox;
-    const float y = yRotor - InfoRotor.oy;
-    const float z = zRotor - InfoRotor.oz;
+    const float x = xGlobal - InfoRotor.ox;
+    const float y = yGlobal - InfoRotor.oy;
+    const float z = zGlobal - InfoRotor.oz;
 
     // Converts angular velocity × distance into lattice velocity
     const float scale = InfoRotor.radiansPerSecond * InfoGlobal.dtPhys / InfoGlobal.res;
@@ -74,7 +98,6 @@ __cuda_callable__ void getRotorForcing( float& gxRotor, float& gyRotor, float& g
     gyRotor = rho * (uyTarget - uyPreRotor);
     gzRotor = rho * (uzTarget - uzPreRotor);
 }
-*/
 
 __cuda_callable__ void interpolateRotorCube( float& rotorFraction, const float x, const float y, const float z, const uint32_t packed)
 {
@@ -96,34 +119,37 @@ __cuda_callable__ void interpolateRotorCube( float& rotorFraction, const float x
     rotorFraction = (v0 + z * (v1 - v0)) * 0.125f;
 }
 
-__cuda_callable__ void getRotorFraction( float& rotorFraction, const float& xRotor, const float& yRotor, const float& zRotor, const InfoStruct& InfoGlobal,
-						const RotorViewStruct& RotorView)
+__cuda_callable__ void getRotorFraction( float& rotorFraction, 
+										 const float& xGlobal, const float& yGlobal, const float& zGlobal, 
+										 const InfoStruct& InfoGlobal, const RotorViewStruct& RotorView )
 {
-    const RotorInfoStruct& InfoRotor = RotorView.Info;
+	const RotorInfoStruct& InfoRotor = RotorView.Info;
     const BoundsStruct& Bounds = InfoRotor.Bounds;
     const auto& rotorMapView = RotorView.rotorMapView;
     const auto& interpolationView = RotorView.interpolationView;
-
+	
+	float xRotor = xGlobal; float yRotor = yGlobal; float zRotor = zGlobal;
+	projectXYZIntoRotorFrame( xRotor, yRotor, zRotor, InfoRotor, InfoGlobal );
+	
     rotorFraction = 0.f;
 
     if (xRotor < Bounds.xMin || xRotor >= Bounds.xMax ||
         yRotor < Bounds.yMin || yRotor >= Bounds.yMax ||
         zRotor < Bounds.zMin || zRotor >= Bounds.zMax) return;
 
-    // Position measured in interpolation-cell units.
-    const float xRelative = (xRotor - Bounds.xMin) / InfoRotor.res;
-    const float yRelative = (yRotor - Bounds.yMin) / InfoRotor.res;
-    const float zRelative = (zRotor - Bounds.zMin) / InfoRotor.res;
+    // Position relative to rotor Bounds.Min
+    const float xRelative = xRotor - Bounds.xMin;
+    const float yRelative = yRotor - Bounds.yMin;
+    const float zRelative = zRotor - Bounds.zMin;
 
-    const int iInterpolation = static_cast<int>(xRelative);
-    const int jInterpolation = static_cast<int>(yRelative);
-    const int kInterpolation = static_cast<int>(zRelative);
+    const int iInterpolation = static_cast<int>(xRelative / InfoRotor.res);
+    const int jInterpolation = static_cast<int>(yRelative / InfoRotor.res);
+    const int kInterpolation = static_cast<int>(zRelative / InfoRotor.res);
 
-    // Protect against rounding up at the upper boundary.
+    // Protect against rounding up at the upper boundary
     if (iInterpolation >= InfoRotor.cellCountX ||
         jInterpolation >= InfoRotor.cellCountY ||
-        kInterpolation >= InfoRotor.cellCountZ)
-        return;
+        kInterpolation >= InfoRotor.cellCountZ) return;
 
     const int blockCountX = InfoRotor.cellCountX / 4;
     const int blockCountY = InfoRotor.cellCountY / 4;
@@ -141,50 +167,105 @@ __cuda_callable__ void getRotorFraction( float& rotorFraction, const float& xRot
 
     const uint32_t packed = interpolationView(interpolationIndex);
 
-    const float xWithinCube = xRelative - iInterpolation;
-    const float yWithinCube = yRelative - jInterpolation;
-    const float zWithinCube = zRelative - kInterpolation;
+    const float xWithinCube = (xRelative / InfoRotor.res) - iInterpolation;
+    const float yWithinCube = (yRelative / InfoRotor.res) - jInterpolation;
+    const float zWithinCube = (zRelative / InfoRotor.res) - kInterpolation;
 
     interpolateRotorCube( rotorFraction, xWithinCube, yWithinCube, zWithinCube, packed );
 }
-/*
-__cuda_callable__ void processRotor( BCStruct &BC, const float &uxPreRotor, const float &uyPreRotor, const float &uzPreRotor, 
-										const float& xRotor, const float& yRotor, const float& zRotor, const bool &trackForce,
-										const InfoStruct& InfoGlobal, const RotorViewStruct& RotorView )
+
+__cuda_callable__ void processRotor( BCStruct &BC, const float &rho, const float &uxPreRotor, const float &uyPreRotor, const float &uzPreRotor, 
+										const float& xGlobal, const float& yGlobal, const float& zGlobal, 
+										float &rotorFractionCumulative, const bool &trackForce,
+										const InfoStruct& InfoGlobal, RotorViewStruct &RotorView )
 {
-	float rotorFraction;
+	const RotorInfoStruct& InfoRotor = RotorView.Info;
+    const BoundsStruct& Bounds = InfoRotor.Bounds;
+    const auto& rotorMapView = RotorView.rotorMapView;
+    const auto& interpolationView = RotorView.interpolationView;
 	
+	float xRotor = xGlobal; float yRotor = yGlobal; float zRotor = zGlobal;
+	projectXYZIntoRotorFrame( xRotor, yRotor, zRotor, InfoRotor, InfoGlobal );
 	
-	
-	getRotorFraction( rotorFraction, xRotor, yRotor, zRotor, InfoGlobal, RotorView );
-	
-	
-	
+    float rotorFraction = 0.f;
+
+    if (xRotor < Bounds.xMin || xRotor >= Bounds.xMax ||
+        yRotor < Bounds.yMin || yRotor >= Bounds.yMax ||
+        zRotor < Bounds.zMin || zRotor >= Bounds.zMax) return;
+
+    // Position relative to rotor Bounds.Min
+    const float xRelative = xRotor - Bounds.xMin;
+    const float yRelative = yRotor - Bounds.yMin;
+    const float zRelative = zRotor - Bounds.zMin;
+
+    const int iInterpolation = static_cast<int>(xRelative / InfoRotor.res);
+    const int jInterpolation = static_cast<int>(yRelative / InfoRotor.res);
+    const int kInterpolation = static_cast<int>(zRelative / InfoRotor.res);
+
+    // Protect against rounding up at the upper boundary
+    if (iInterpolation >= InfoRotor.cellCountX ||
+        jInterpolation >= InfoRotor.cellCountY ||
+        kInterpolation >= InfoRotor.cellCountZ) return;
+
+    const int blockCountX = InfoRotor.cellCountX / 4;
+    const int blockCountY = InfoRotor.cellCountY / 4;
+
+    const int iBlock = iInterpolation / 4;
+    const int jBlock = jInterpolation / 4;
+    const int kBlock = kInterpolation / 4;
+
+    const int blockIndex = kBlock * blockCountX * blockCountY + jBlock * blockCountX + iBlock;
+
+    const int rotorMap = rotorMapView(blockIndex);
+    if (rotorMap < 0) return;
+
+    const int interpolationIndex = rotorMap * 64 + (kInterpolation % 4) * 16 + (jInterpolation % 4) * 4 + (iInterpolation % 4);
+
+    const uint32_t packed = interpolationView(interpolationIndex);
+
+    const float xWithinCube = (xRelative / InfoRotor.res) - iInterpolation;
+    const float yWithinCube = (yRelative / InfoRotor.res) - jInterpolation;
+    const float zWithinCube = (zRelative / InfoRotor.res) - kInterpolation;
+
+    interpolateRotorCube( rotorFraction, xWithinCube, yWithinCube, zWithinCube, packed );
 	if ( rotorFraction == 0.f ) return;
+	
+	// forcing is calculated in the global frame
 	float gxRotor, gyRotor, gzRotor;
-	getRotorForcing( gxRotor, gyRotor, gzRotor, xRotor, yRotor, zRotor, uxPreRotor, uyPreRotor, uzPreRotor, BC.rho, RotorView );
+	getRotorForcing( gxRotor, gyRotor, gzRotor, xGlobal, yGlobal, zGlobal, rho, uxPreRotor, uyPreRotor, uzPreRotor, InfoRotor, InfoGlobal );
+	
+	if ( rotorFractionCumulative + rotorFraction > 1.f )
+	{
+		rotorFraction = 1.f - rotorFractionCumulative;
+		rotorFractionCumulative = 1.f;
+	}
+	else rotorFractionCumulative += rotorFraction;
+	
 	gxRotor *= rotorFraction;
 	gyRotor *= rotorFraction;
 	gzRotor *= rotorFraction;
+
 	BC.gx += gxRotor;
 	BC.gy += gyRotor;
 	BC.gz += gzRotor;
 	
-	// if trackForce is true, write rotor forcing here
+	// if trackForce is true, write rotor forcing
 	if ( !trackForce ) return;
 	
-	 // Position measured in force tracking cell units.
-    const float xRelative = (xRotor - RotorView.Info.Bounds.xMin) / ( InfoRotor.res * 4.f / 3.f );
-    const float yRelative = (yRotor - RotorView.Info.Bounds.yMin) / ( InfoRotor.res * 4.f / 3.f );
-    const float zRelative = (zRotor - RotorView.Info.Bounds.zMin) / ( InfoRotor.res * 4.f / 3.f );
+	projectForcingIntoRotorFrame( gxRotor, gyRotor, gzRotor, InfoRotor, InfoGlobal );
+	
+	// Coordinates inside the selected block, in interpolation-cell units.
+	const int iForce = TNL::max(0, TNL::min(2, static_cast<int>(0.75f * ((iInterpolation % 4) + xWithinCube))));
+	const int jForce = TNL::max(0, TNL::min(2, static_cast<int>(0.75f * ((jInterpolation % 4) + yWithinCube))));
+	const int kForce = TNL::max(0, TNL::min(2, static_cast<int>(0.75f * ((kInterpolation % 4) + zWithinCube))));
 
-    const int iForce = static_cast<int>(xRelative);
-    const int jForce = static_cast<int>(yRelative);
-    const int kForce = static_cast<int>(zRelative);
+	const int forceIndex = rotorMap * 27 + kForce * 9 + jForce * 3 + iForce;
     
-    const int forceIndex = 
+    RotorView.gxView( forceIndex ) += gxRotor;
+    RotorView.gyView( forceIndex ) += gyRotor;
+    RotorView.gzView( forceIndex ) += gzRotor;
 }
-*/
+
 __cuda_callable__ inline void bitPackInterpolationCube( uint32_t& result, const uint8_t (&counter)[8] )
 {
     result = 0u;

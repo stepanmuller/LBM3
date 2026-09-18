@@ -195,7 +195,7 @@ struct WallStruct{ int wallCount = 0; IntArrayType indexArray; IntArrayType wall
 					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
-struct RotorInfoStruct { 	float rotorID = 0; float radiansPerSecond = 0.f;
+struct RotorInfoStruct { 	float rotorID = 0; float radiansPerSecond = 0.f; double radiansElapsed = 0.f;
 							BoundsStruct Bounds; float res = 1.f; int cellCountX = 0; int cellCountY = 0; int cellCountZ = 0; 
 							// rotor will rotate along an axis which passes through ox, oy, oz
 							// and is parallel to x, y or z

@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import BoundaryNorm
 import numpy as np
 import numpy.ma as ma
 
@@ -18,7 +19,8 @@ OUTPUT_DIRECTORY = Path("results")
 # preserve exact integer alignment and make streamlines easier to see.
 PIXELS_PER_CELL = 1
 
-SOLID_MASK_THRESHOLD = 0.5
+# Gray level just above marker zero; marker one is black.
+MARKER_GRAY = 0.65
 PERCENTILE_RANGE = (1.0, 99.0) #(1.0, 99.0)
 STREAMLINE_DENSITY = 1.2
 STREAMLINE_ARROW_SIZE = 0.4
@@ -70,6 +72,8 @@ def color_limits(data_array, is_solid, use_full_range=False):
 	valid = data_array[(~is_solid) & np.isfinite(data_array)]
 
 	if valid.size == 0:
+		if np.all(is_solid):
+			return 0.0, 1.0  # The marker overlay covers the entire field.
 		raise ValueError("The selected field contains no finite fluid-cell values.")
 
 	data_min = float(np.min(valid))
@@ -102,29 +106,75 @@ def add_panel(
 	label,
 	n_vertical,
 	n_horizontal,
+	marker_rgba,
 	use_full_range=False,
 	ui_scale=1.0,
+	discrete_resolution=False,
 	):
 	"""Draw one field without changing the explicitly sized data axes."""
-	vmin, vmax = color_limits(
-		data_array,
-		is_solid,
-		use_full_range=use_full_range,
-	)
+	colorbar_options = {}
+	if discrete_resolution:
+		# Bin in log2 space so every factor-of-two refinement has equal spacing.
+		valid = (~is_solid) & np.isfinite(data_array)
+		levels = np.unique(data_array[valid])
+		if np.any(levels <= 0):
+			raise ValueError("Grid resolutions must be positive for a logarithmic scale.")
+		if levels.size == 0 and not np.all(is_solid):
+			raise ValueError("The resolution field contains no finite fluid-cell values.")
 
-	masked_data = ma.array(data_array, mask=is_solid)
-	colormap = plt.get_cmap("viridis").copy()
+		log_levels = np.log2(levels.astype(np.float64))
+		if levels.size > 1:
+			boundaries = np.concatenate((
+				[log_levels[0] - (log_levels[1] - log_levels[0]) / 2],
+				(log_levels[:-1] + log_levels[1:]) / 2,
+				[log_levels[-1] + (log_levels[-1] - log_levels[-2]) / 2],
+			))
+		else:
+			center = log_levels[0] if levels.size else 0.0
+			boundaries = np.array([center - 0.5, center + 0.5])
+
+		colormap = plt.get_cmap("viridis_r", max(1, levels.size)).copy()
+		logged_data = np.zeros(data_array.shape, dtype=np.float64)
+		np.log2(data_array.astype(np.float64), out=logged_data, where=valid)
+		masked_data = ma.array(logged_data, mask=~valid)
+		image_options = {"norm": BoundaryNorm(boundaries, colormap.N)}
+		colorbar_options = {
+			"boundaries": boundaries,
+			"ticks": log_levels,
+			"spacing": "proportional",
+			"drawedges": True,
+		}
+	else:
+		vmin, vmax = color_limits(
+			data_array,
+			is_solid,
+			use_full_range=use_full_range,
+		)
+		masked_data = ma.array(data_array, mask=is_solid)
+		colormap = plt.get_cmap("viridis").copy()
+		image_options = {"vmin": vmin, "vmax": vmax}
+
 	colormap.set_bad("black")
 
 	image = ax.imshow(
 		masked_data,
 		origin="lower",
 		cmap=colormap,
-		vmin=vmin,
-		vmax=vmax,
+		**image_options,
 		interpolation="nearest",
 		resample=False,
 		aspect="equal",
+	)
+
+	# Positive markers are opaque gray-to-black; zero remains transparent.
+	# Draw above streamlines so they cannot brighten marked cells.
+	ax.imshow(
+		marker_rgba,
+		origin="lower",
+		interpolation="nearest",
+		resample=False,
+		aspect="equal",
+		zorder=3,
 	)
 
 	# These limits put the outer cell edges exactly on the axes boundaries.
@@ -156,7 +206,12 @@ def add_panel(
 		image,
 		cax=colorbar_ax,
 		orientation="horizontal",
+		**colorbar_options,
 	)
+	if discrete_resolution:
+		# Use original float32 values for concise, round-trip-accurate labels.
+		colorbar.set_ticklabels([str(value) for value in levels])
+		colorbar.minorticks_off()
 
 	colorbar.ax.tick_params(
 		labelsize=tick_font_size,
@@ -336,11 +391,15 @@ def main():
 	velocity_vertical = data[:, :, 2]
 	velocity_normal = data[:, :, 3]
 	mask = data[:, :, 4]
-	grid_id = data[:, :, 5]
+	grid_resolution = data[:, :, 5]
 
 	velocity_planar = np.hypot(velocity_horizontal, velocity_vertical)
 
-	is_solid = mask > SOLID_MASK_THRESHOLD
+	marker = np.clip(mask, 0.0, 1.0)
+	is_solid = marker > 0.0
+	marker_rgba = np.empty((*marker.shape, 4), dtype=np.float32)
+	marker_rgba[:, :, :3] = (MARKER_GRAY * (1.0 - marker))[:, :, None]
+	marker_rgba[:, :, 3] = is_solid
 
 	fig, axes, colorbar_axes, geometry = create_exact_pixel_figure(
 		n_vertical,
@@ -358,6 +417,7 @@ def main():
 		"Planar velocity [m/s]",
 		n_vertical,
 		n_horizontal,
+		marker_rgba=marker_rgba,
 		ui_scale=ui_scale,
 	)
 	add_panel(
@@ -369,6 +429,7 @@ def main():
 		"Normal velocity [m/s]",
 		n_vertical,
 		n_horizontal,
+		marker_rgba=marker_rgba,
 		ui_scale=ui_scale,
 	)
 	add_panel(
@@ -380,18 +441,20 @@ def main():
 		"Static pressure [Pa]",
 		n_vertical,
 		n_horizontal,
+		marker_rgba=marker_rgba,
 		ui_scale=ui_scale,
 	)
 	add_panel(
 		fig,
 		axes[3],
 		colorbar_axes[3],
-		grid_id,
+		grid_resolution,
 		is_solid,
-		"Grid ID [1]",
+		"Grid resolution [mm]",
 		n_vertical,
 		n_horizontal,
-		use_full_range=True,
+		marker_rgba=marker_rgba,
+		discrete_resolution=True,
 		ui_scale=ui_scale,
 	)
 
