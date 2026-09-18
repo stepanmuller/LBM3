@@ -140,6 +140,8 @@ int main(int argc, char **argv)
 	std::vector<STLStruct> gridStaticSTLs( 1 );
 	readSTL( gridStaticSTLs[0], STLPathSphere );
 	
+	std::vector<STLStruct> rotorSTLs( 0 ); // there are no rotors
+	
 	// grids
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
 	BoundsStruct DomainBounds;
@@ -150,7 +152,7 @@ int main(int argc, char **argv)
 	DomainBounds.zMin = - 5500.f;
 	DomainBounds.zMax =   5500.f;
 	
-	buildGrids( grids, gridStaticSTLs, DomainBounds );
+	buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	
 	long long totalUpdatesPerIteration = 0LL;
 	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) totalUpdatesPerIteration += grids[level].Info.cellCount * std::pow( 2, grids[level].Info.gridID );
@@ -199,18 +201,18 @@ int main(int argc, char **argv)
 			// XY section cut
 			const int kCut = grids[ GRID_LEVEL_COUNT-1 ].Info.cellCountZ / 2;
 			exportSectionCutPlotXY( grids, kCut, iteration );
-			if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+			if (system("python3 ../../include/plotter/plotter.py") != 0) {}
 			// Detail 1
 			if ( GRID_LEVEL_COUNT > 1 )
 			{
 				exportSectionCutPlotXY( grids, grids[1].Info.Bounds, kCut, iteration + 1 );
-				if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
 			}
 			// Detail 2
 			if ( GRID_LEVEL_COUNT > 2 )
 			{
 				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 2 );
-				if (system("python3 ../../include/plotter/OLDplotter.py") != 0) {}
+				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
 			}
 			std::cout << std::endl;
 			lapTimer.reset();

@@ -99,6 +99,39 @@ __cuda_callable__ void getRotorForcing( float& gxRotor, float& gyRotor, float& g
     gzRotor = rho * (uzTarget - uzPreRotor);
 }
 
+__cuda_callable__ void getRotorVelocity( float& uxTarget, float& uyTarget, float& uzTarget, 
+						const float& xGlobal, const float& yGlobal, const float& zGlobal,
+						const RotorInfoStruct& InfoRotor, const InfoStruct& InfoGlobal)
+{
+    // Position relative to the rotation axis.
+    const float x = xGlobal - InfoRotor.ox;
+    const float y = yGlobal - InfoRotor.oy;
+    const float z = zGlobal - InfoRotor.oz;
+
+    // Converts angular velocity × distance into lattice velocity
+    const float scale = InfoRotor.radiansPerSecond * InfoGlobal.dtPhys / InfoGlobal.res;
+
+    uxTarget = 0.f;
+    uyTarget = 0.f;
+    uzTarget = 0.f;
+
+    if (InfoRotor.rotateAlongX)
+    {
+        uyTarget = -scale * z;
+        uzTarget =  scale * y;
+    }
+    else if (InfoRotor.rotateAlongY)
+    {
+        uxTarget =  scale * z;
+        uzTarget = -scale * x;
+    }
+    else if (InfoRotor.rotateAlongZ)
+    {
+        uxTarget = -scale * y;
+        uyTarget =  scale * x;
+    }
+}
+
 __cuda_callable__ void interpolateRotorCube( float& rotorFraction, const float x, const float y, const float z, const uint32_t packed)
 {
     // Unpack the eight corner counts, each in [0, 8].

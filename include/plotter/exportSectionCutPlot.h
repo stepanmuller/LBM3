@@ -9,8 +9,9 @@ constexpr long long EXPORT_RESOLUTION_PIXEL_LIMIT = 16000000;
 
 enum PlaneEnum { XY, ZY, ZX };
 
-/*
-void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &cutIndex, const int &plotNumber, PlaneEnum plane )
+// Version with linear interpolation in normal direction for cells that are coarser than image resolution
+void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, RotorInfoStruct &rotorFrameInfo, 
+									const int &cutIndex, const int &plotNumber, PlaneEnum plane )
 {
 	if (grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT))
     {
@@ -128,6 +129,8 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		auto kPlusView = Grid.IJKNBR.kPlusArray.getConstView();
 		auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
 		auto wallMapView = Grid.Wall.wallMapArray.getConstView();
+		const int rotorCount = Grid.rotorViews.size();
+		auto* rotorViews = Grid.rotorViews.data();
 		
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
@@ -175,7 +178,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
             const bool upperSolid = wallMapView(upperCell) == -3;
             // Keep the solid mask categorical, using the nearest normal sample.
             const bool selectedSolid = alpha <= 0.5f ? lowerSolid : upperSolid;
-            const float marker = selectedSolid ? 1.f : 0.f;
+            float marker = selectedSolid ? 1.f : 0.f;
             float rho = 1.f, ux = 0.f, uy = 0.f, uz = 0.f;
             if (!selectedSolid)
             {
@@ -189,6 +192,34 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
                 for (int direction = 0; direction < 27; ++direction)
                     f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
                 getRhoUxUyUz(rho, ux, uy, uz, f);
+                
+                // get position, we need it for the rotors
+				float x, y, z;
+				getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+				// here we also need to browse through rotors and find rotor fraction,
+				// if marker was zero till here set it to rotor fraction
+				// process the rotors
+				if ( rotorCount > 0 )
+				{
+					for (int rotorID = 0; rotorID < rotorCount; rotorID++)
+					{
+						float rotorFraction;
+						getRotorFraction( rotorFraction, x, y, z, Info, rotorViews[rotorID] );
+						marker += rotorFraction;
+					}
+				}
+				marker = std::clamp( marker, 0.f, 1.f );
+				
+				// if a rotor frame with non zero rotation is supplied, shift ux, uy, uz to the frame of this rotor
+				if ( rotorFrameInfo.rotateAlongX || rotorFrameInfo.rotateAlongY || rotorFrameInfo.rotateAlongZ )
+				{
+					float uxRotor, uyRotor, uzRotor;
+					getRotorVelocity( uxRotor, uyRotor, uzRotor, x, y, z, rotorFrameInfo, Info );
+					ux = ux - uxRotor;
+					uy = uy - uyRotor;
+					uz = uz - uzRotor;
+				}
+  
                 if (blend)
                 {
                     getPreCollisionIndex(cellReadIndex, fReadIndex, upperNBR, esotwistFlipper);
@@ -200,6 +231,40 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
                     ux += alpha * (uxUpper - ux);
                     uy += alpha * (uyUpper - uy);
                     uz += alpha * (uzUpper - uz);
+                    
+                    
+                    
+                    // get position, we need it for the rotors
+					float x, y, z;
+					getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+					// here we also need to browse through rotors and find rotor fraction,
+					// if marker was zero till here set it to rotor fraction
+					// process the rotors
+					float markerUpper = 0.f;
+					if ( rotorCount > 0 )
+					{
+						for (int rotorID = 0; rotorID < rotorCount; rotorID++)
+						{
+							float rotorFraction;
+							getRotorFraction( rotorFraction, x, y, z, Info, rotorViews[rotorID] );
+							markerUpper += rotorFraction;
+						}
+					}
+					markerUpper = std::clamp( marker, 0.f, 1.f );
+					marker += alpha * (markerUpper - marker);
+					
+					// if a rotor frame with non zero rotation is supplied, shift ux, uy, uz to the frame of this rotor
+					if ( rotorFrameInfo.rotateAlongX || rotorFrameInfo.rotateAlongY || rotorFrameInfo.rotateAlongZ )
+					{
+						float uxRotor, uyRotor, uzRotor;
+						getRotorVelocity( uxRotor, uyRotor, uzRotor, x, y, z, rotorFrameInfo, Info );
+						ux += alpha * ( (ux - uxRotor) - ux);
+						uy += alpha * ( (uy - uyRotor) - uy);
+						uz += alpha * ( (uz - uzRotor) - uz);
+					}
+                    
+                    
+                    
                 }
             }
 
@@ -256,21 +321,25 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			convertToPhysicalVelocity( ux, uy, uz, grids[gridID].Info );
 			convertToPhysicalPressure( p, grids[gridID].Info );
 			
+			// Get resolution
+			const float res = grids[gridID].Info.res;
+			
 			float uHorizontal, uVertical, uNormal;
 			if ( plane == XY ) 		{ uHorizontal = ux; uVertical = uy; uNormal = uz; }
 			else if ( plane == ZY ) { uHorizontal = uz; uVertical = uy; uNormal = ux; }
 			else 					{ uHorizontal = uz; uVertical = ux; uNormal = uy; }
 			
-			float data[6] = {p, uHorizontal, uVertical, uNormal, marker, (float)gridID};
+			float data[6] = {p, uHorizontal, uVertical, uNormal, marker, res};
 			fwrite(data, sizeof(float), 6, fp);
 		}
 	}
 	fclose(fp);
 }
-*/
 
 
-void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &cutIndex, const int &plotNumber, PlaneEnum plane )
+/*
+// Version without interpolation
+void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, RotorInfoStruct &rotorFrameInfo, const int &cutIndex, const int &plotNumber, PlaneEnum plane )
 {
 	const InfoStruct InfoFinest = grids[GRID_LEVEL_COUNT-1].Info;
 	
@@ -358,7 +427,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 		auto wallMapView = Grid.Wall.wallMapArray.getConstView();
 		
 		const int rotorCount = Grid.rotorViews.size();
-		const auto* rotorViews = Grid.rotorViews.data();
+		auto* rotorViews = Grid.rotorViews.data();
 		
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
@@ -417,29 +486,6 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			const int wallMap = wallMapView( cell );
 			if ( wallMap == -3 ) marker = 1.f;
 			
-			// here we also need to browse through rotors and find rotor fraction,
-			// if marker was zero till here set it to rotor fraction
-			
-			// process the rotors
-			if ( rotorCount > 0 )
-			{
-				// the rotor needs x, y, z, Info as input, we have that
-				float x, y, z;
-				getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
-				// In case that gx, gy, gz is already non zero, for the rotor pretend that this forcing is already applied and results in shifted velocity
-				// This way the rotor compensates for the global forcing by adding enough of its own force
-				// loop over rotors
-				for (int rotorID = 0; rotorID < rotorCount; rotorID++)
-				{
-					float rotorFraction;
-					getRotorFraction( rotorFraction, x, y, z, Info, rotorViews[rotorID] );
-					marker += rotorFraction;
-					// processRotor( BC, uxPreRotor, uyPreRotor, uzPreRotor, xRotor, yRotor, zRotor, trackForce, Info, rotorViews[rotorID] );
-					// this adds rotor forcing to the BC forcing
-				}
-			}
-			marker = std::clamp( marker, 0.f, 1.f );
-			
 			// read f
 			float f[27];
 			int cellReadIndex[27];
@@ -448,6 +494,34 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
 			float rho, ux, uy, uz;
 			getRhoUxUyUz( rho, ux, uy, uz, f );
+			
+			// get position, we need it for the rotors
+			float x, y, z;
+			getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+			
+			// here we also need to browse through rotors and find rotor fraction,
+			// if marker was zero till here set it to rotor fraction
+			// process the rotors
+			if ( rotorCount > 0 )
+			{
+				for (int rotorID = 0; rotorID < rotorCount; rotorID++)
+				{
+					float rotorFraction;
+					getRotorFraction( rotorFraction, x, y, z, Info, rotorViews[rotorID] );
+					marker += rotorFraction;
+				}
+			}
+			marker = std::clamp( marker, 0.f, 1.f );
+			
+			// if a rotor frame with non zero rotation is supplied, shift ux, uy, uz to the frame of this rotor
+			if ( rotorFrameInfo.rotateAlongX || rotorFrameInfo.rotateAlongY || rotorFrameInfo.rotateAlongZ )
+			{
+				float uxRotor, uyRotor, uzRotor;
+				getRotorVelocity( uxRotor, uyRotor, uzRotor, x, y, z, rotorFrameInfo, Info );
+				uy = uy - uyRotor;
+				ux = ux - uxRotor;
+				uz = uz - uzRotor;
+			}
 			
 			for ( int shiftVertical = 0; shiftVertical < upsample; shiftVertical++ )
 			{
@@ -511,34 +585,81 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	}
 	fclose(fp);
 }
+*/
 
+// No bounds, no rotor frame
 void exportSectionCutPlotXY( std::vector<GridStruct> &grids, const int &kCell, const int &plotNumber )
 {
 	std::cout << "Exporting XY section cut plot " << plotNumber << " ... " << std::flush;
-	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, kCell, plotNumber, XY );
+	BoundsStruct Bounds; RotorInfoStruct RotorInfo;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, kCell, plotNumber, XY );
 }
 void exportSectionCutPlotZY( std::vector<GridStruct> &grids, const int &iCell, const int &plotNumber )
 {
 	std::cout << "Exporting ZY section cut plot " << plotNumber << " ... " << std::flush;
-	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, iCell, plotNumber, ZY );
+	BoundsStruct Bounds; RotorInfoStruct RotorInfo;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, iCell, plotNumber, ZY );
 }
 void exportSectionCutPlotZX( std::vector<GridStruct> &grids, const int &jCell, const int &plotNumber )
 {
 	std::cout << "Exporting ZX section cut plot " << plotNumber << " ... " << std::flush;
-	BoundsStruct Bounds; exportSectionCutPlotGeneral( grids, Bounds, jCell, plotNumber, ZX );
+	BoundsStruct Bounds; RotorInfoStruct RotorInfo;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, jCell, plotNumber, ZX );
 }
+
+// Yes bounds, no rotor frame
 void exportSectionCutPlotXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &kCell, const int &plotNumber )
 {
 	std::cout << "Exporting XY section cut plot " << plotNumber << " ... " << std::flush;
-	exportSectionCutPlotGeneral( grids, Bounds, kCell, plotNumber, XY );
+	RotorInfoStruct RotorInfo;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, kCell, plotNumber, XY );
 }
 void exportSectionCutPlotZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &iCell, const int &plotNumber )
 {
 	std::cout << "Exporting ZY section cut plot " << plotNumber << " ... " << std::flush;
-	exportSectionCutPlotGeneral( grids, Bounds, iCell, plotNumber, ZY );
+	RotorInfoStruct RotorInfo;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, iCell, plotNumber, ZY );
 }
 void exportSectionCutPlotZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const int &jCell, const int &plotNumber )
 {
 	std::cout << "Exporting ZX section cut plot " << plotNumber << " ... " << std::flush;
-	exportSectionCutPlotGeneral( grids, Bounds, jCell, plotNumber, ZX );
+	RotorInfoStruct RotorInfo;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, jCell, plotNumber, ZX );
+}
+
+// No bounds, yes rotor frame
+void exportSectionCutPlotXY( std::vector<GridStruct> &grids, RotorInfoStruct &RotorInfo, const int &kCell, const int &plotNumber )
+{
+	std::cout << "Exporting XY section cut plot " << plotNumber << " ... " << std::flush;
+	BoundsStruct Bounds; 
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, kCell, plotNumber, XY );
+}
+void exportSectionCutPlotZY( std::vector<GridStruct> &grids, RotorInfoStruct &RotorInfo, const int &iCell, const int &plotNumber )
+{
+	std::cout << "Exporting ZY section cut plot " << plotNumber << " ... " << std::flush;
+	BoundsStruct Bounds; 
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, iCell, plotNumber, ZY );
+}
+void exportSectionCutPlotZX( std::vector<GridStruct> &grids, RotorInfoStruct &RotorInfo, const int &jCell, const int &plotNumber )
+{
+	std::cout << "Exporting ZX section cut plot " << plotNumber << " ... " << std::flush;
+	BoundsStruct Bounds;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, jCell, plotNumber, ZX );
+}
+
+// Yes bounds, yes rotor frame
+void exportSectionCutPlotXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, RotorInfoStruct &RotorInfo, const int &kCell, const int &plotNumber )
+{
+	std::cout << "Exporting XY section cut plot " << plotNumber << " ... " << std::flush;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, kCell, plotNumber, XY );
+}
+void exportSectionCutPlotZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, RotorInfoStruct &RotorInfo, const int &iCell, const int &plotNumber )
+{
+	std::cout << "Exporting ZY section cut plot " << plotNumber << " ... " << std::flush;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, iCell, plotNumber, ZY );
+}
+void exportSectionCutPlotZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds, RotorInfoStruct &RotorInfo, const int &jCell, const int &plotNumber )
+{
+	std::cout << "Exporting ZX section cut plot " << plotNumber << " ... " << std::flush;
+	exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, jCell, plotNumber, ZX );
 }

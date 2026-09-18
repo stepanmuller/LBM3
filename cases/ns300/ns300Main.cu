@@ -185,6 +185,14 @@ int main(int argc, char **argv)
 				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 3 );
 				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
 			}
+			
+			// Detail in rotor frame
+			if ( GRID_LEVEL_COUNT >= 3 )
+			{
+				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[2].rotors[0].Info, kCut, iteration + 4 );
+				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+			}
+			
 			std::cout << std::endl;
 			lapTimer.reset();
 			lapTimer.start();
