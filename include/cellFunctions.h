@@ -48,6 +48,27 @@ __host__ __device__ inline void getCompressedIJKNBR( const int &cell, int& iCell
 	finishNBRPlus( NBR, Info );
 }
 
+__host__ __device__ inline void getCompressedIJK( const int &cell, int& iCell, int& jCell, int& kCell,
+								const IntConstViewType& shifterView, const IntConstViewType& iView, const IntConstViewType& jView, const IntConstViewType& kView,
+								const InfoStruct &Info )
+{
+    const int shift = shifterView(cell);
+	if ( shift >= 0 ) 
+	{ 
+		iCell = iView( shift ); 
+		jCell = jView( shift ); 
+		kCell = kView( shift ); 
+	}
+	else 
+	{ 
+		const int firstInRow = cell + shift; 
+		const int compressedIndex = shifterView( firstInRow );
+		iCell = iView( compressedIndex ) - shift; 
+		jCell = jView( compressedIndex ); 
+		kCell = kView( compressedIndex );
+	}
+}
+
 __host__ __device__ inline void getCompressedNBR( const int &cell, NBRStruct &NBR,
 								IntConstViewType& shifterView,
 								IntConstViewType& jPlusView, IntConstViewType& kPlusView, IntConstViewType& jkPlusView, 

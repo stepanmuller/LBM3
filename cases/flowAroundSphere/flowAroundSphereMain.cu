@@ -175,7 +175,7 @@ int main(int argc, char **argv)
 		float gy = 0.f; float gz = 0.f;
 		convertToPhysicalForce( gxSum, gy, gz, grids[GRID_LEVEL_COUNT-1].Info );
 		const float drag = - gxSum;
-		const float dragCoefficient = - (8 * drag) / (RHO_PHYS * uxInletPhys * uxInletPhys * 3.14159f * (sphereDiameterPhys / 1000.f) * (sphereDiameterPhys / 1000.f));
+		const float dragCoefficient = (8 * drag) / (RHO_PHYS * uxInletPhys * uxInletPhys * 3.14159f * (sphereDiameterPhys / 1000.f) * (sphereDiameterPhys / 1000.f));
 		historyDragCoefficient[iteration] = dragCoefficient;
 		
 		if ( iteration % PLOTTER_PERIOD == 0 )

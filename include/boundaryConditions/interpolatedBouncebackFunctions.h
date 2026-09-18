@@ -77,18 +77,18 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 											+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
 											+ ( gamma / ( 1.f + gamma ) ) * fPost[ direction ]
 											+ wallMovementTerm;
-		// track force using momentum exchange method
+		// track force exerted on the fluid using momentum exchange method
 		// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
 		// Analysis on the force evaluation by the momentum exchange 
 		// method and a localized r­filling scheme for the lattice Boltzmann method, 2025
 		// eq (15)
 		// stored f are well conditioned -> compensate (here it does not cancel out)
-		gxWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CX_DIRECTIONS[ direction ] - BC.ux ) 
-				- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux );
-		gyWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CY_DIRECTIONS[ direction ] - BC.uy ) 
-				- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy );
-		gzWall += (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CZ_DIRECTIONS[ direction ] - BC.uz ) 
-				- (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz );																	
+		gxWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CX_DIRECTIONS[ direction ] - BC.ux ) 
+				  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux );
+		gyWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CY_DIRECTIONS[ direction ] - BC.uy ) 
+				  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy );
+		gzWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CZ_DIRECTIONS[ direction ] - BC.uz ) 
+				  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz );																	
 		
 		if ( direction%2 == 0 ) // this means the opposite direction was already processed -> we can overwrite fPost
 		{

@@ -9,13 +9,13 @@ constexpr int TRACKER_PERIOD = 1;
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
 
-constexpr float uzInlet = 0.01f; 														// also works as nominal LBM Mach number	
-constexpr float massFlowPhys = 335.f;													// kg/s
-constexpr float RInlet = 150.f;															// mm
-constexpr float inletAreamm2 = 3.14159f * RInlet * RInlet;								// mm2
+constexpr float uzInlet = 0.01f; 															// also works as nominal LBM Mach number	
+constexpr float massFlowPhys = 335.f;														// kg/s
+constexpr float RInlet = 150.f;																// mm
+constexpr float inletAreamm2 = 3.14159f * RInlet * RInlet;									// mm2
 constexpr float uzInletPhys = massFlowPhys / ( RHO_PHYS * ( inletAreamm2 / 1000000.f) );	// m/s
-constexpr float radiansPerSecond = -198.967f;											// rad/s
-const float boundaryLayerThickness = 2.f;												// mm
+constexpr float radiansPerSecond = -198.967f;												// rad/s
+const float boundaryLayerThickness = 2.f;													// mm
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
