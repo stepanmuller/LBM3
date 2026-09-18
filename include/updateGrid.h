@@ -186,7 +186,7 @@ void updateSingleGrid( GridStruct &Grid )
 		auto indexView = OpenBC.indexArray.getConstView();
 		auto rhoPrevView = OpenBC.rhoPrevArray.getView();
 		auto uNormalPrevView = OpenBC.uNormalPrevArray.getView();
-		auto rhoCumulativeView = OpenBC.rhoCumulativeArray.getView();
+		auto dRhoCumulativeView = OpenBC.dRhoCumulativeArray.getView();
 		auto uNormalCumulativeView = OpenBC.uNormalCumulativeArray.getView();
 		// loop over open boundary cells
 		auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
@@ -319,7 +319,7 @@ void updateSingleGrid( GridStruct &Grid )
 			uNormalPrevView( index ) = uNormal;
 			if ( trackFlow )
 			{
-				rhoCumulativeView( index ) += BC.rho;
+				dRhoCumulativeView( index ) += ( BC.rho - 1.f );
 				uNormalCumulativeView( index ) += uNormal;
 			}
 		};

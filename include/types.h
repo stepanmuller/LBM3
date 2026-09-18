@@ -214,7 +214,7 @@ using RotorViewsType = std::vector<RotorViewStruct, TNL::Allocators::CudaManaged
 
 struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
 							FloatArrayType rhoPrevArray; FloatArrayType uNormalPrevArray; 
-							FloatArrayType rhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
+							FloatArrayType dRhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
 		
 struct GridStruct { InfoStruct Info; 
 					FloatArray2DType fArray; 
