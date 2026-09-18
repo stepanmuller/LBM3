@@ -4,6 +4,7 @@ constexpr int WALL_REFINEMENT_COUNT = 3;
 
 constexpr int ITERATION_COUNT = 10000;
 constexpr int PLOTTER_PERIOD = 500;
+constexpr int TRACKER_PERIOD = 1;
 
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
@@ -116,6 +117,41 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 #include "../../include/trackerFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 
+void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
+{
+	int iCut, jCut, kCut;
+	const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;
+	// ZY section cut shows the inlet pipe
+	float xCut = 0.f;
+	getIJKCellIndexFromXYZ( iCut, jCut, kCut, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info);
+	exportSectionCutPlotZY( grids, iCut, iterationsFinished + 0 );
+	if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+	// Detail
+	if ( GRID_LEVEL_COUNT >= 3 )
+	{
+		exportSectionCutPlotZY( grids, grids[2].Info.Bounds, iCut, iterationsFinished + 1 );
+		if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+	}
+	// XY section cut shows the rotor and the outlet pipe
+	float zCut = 32.5f;
+	getIJKCellIndexFromXYZ( iCut, jCut, kCut, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
+	exportSectionCutPlotXY( grids, kCut, iterationsFinished + 2 );
+	if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+	// Detail
+	if ( GRID_LEVEL_COUNT >= 3 )
+	{
+		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iterationsFinished + 3 );
+		if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+	}
+	// Detail in rotor frame
+	if ( GRID_LEVEL_COUNT >= 3 )
+	{
+		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[2].rotors[0].Info, kCut, iterationsFinished + 4 );
+		if (system("python3 ../../include/plotter/plotter.py") != 0) {}
+	}
+	std::cout << std::endl;
+}
+
 int main(int argc, char **argv)
 {
 	// STLs
@@ -142,59 +178,33 @@ int main(int argc, char **argv)
 	TrackerStruct Tracker;
 	initializeTracker( Tracker, grids );
 	
+	plotGrids( 0, grids );
+	
 	TNL::Timer lapTimer;
 	lapTimer.reset();
 	lapTimer.start();
 	
-	for ( int iteration = 0; iteration <= ITERATION_COUNT; iteration++ )
+	for ( int iterationsFinished = 1; iterationsFinished <= ITERATION_COUNT; iterationsFinished++ )
 	{
 		updateAllGrids( grids, 0 );
 		
-		if ( iteration % PLOTTER_PERIOD == 0 )
+		if ( iterationsFinished % TRACKER_PERIOD == 0 )
+		{
+			const int trackerIndex = iterationsFinished - 1;
+			updateTracker( trackerIndex, Tracker, grids );
+		}
+		
+		if ( iterationsFinished % PLOTTER_PERIOD == 0 )
 		{
 			lapTimer.stop();
-			std::cout << "Finished iteration " << iteration << std::endl;
+			std::cout << "Iterations finished: " << iterationsFinished << std::endl;
 			auto lapTime = lapTimer.getRealTime();
 			const float updateCount = (float)fluidUpdatesPerIteration * (float)PLOTTER_PERIOD;
 			const float glups = updateCount / lapTime / 1000000000.f;
-			if ( iteration > 0) std::cout << "GLUPS: " << glups << std::endl;
+			std::cout << "GLUPS: " << glups << std::endl;
 			
-			int iCut, jCut, kCut;
-			const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;
+			plotGrids( iterationsFinished, grids );
 			
-			// ZY section cut shows the inlet pipe
-			float xCut = 0.f;
-			getIJKCellIndexFromXYZ( iCut, jCut, kCut, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info);
-			exportSectionCutPlotZY( grids, iCut, iteration + 0 );
-			if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			
-			// Detail
-			if ( GRID_LEVEL_COUNT >= 3 )
-			{
-				exportSectionCutPlotZY( grids, grids[2].Info.Bounds, iCut, iteration + 1 );
-				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			}
-			// XY section cut shows the rotor and the outlet pipe
-			float zCut = 32.5f;
-			getIJKCellIndexFromXYZ( iCut, jCut, kCut, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
-			exportSectionCutPlotXY( grids, kCut, iteration + 2 );
-			if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			
-			// Detail
-			if ( GRID_LEVEL_COUNT >= 3 )
-			{
-				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 3 );
-				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			}
-			
-			// Detail in rotor frame
-			if ( GRID_LEVEL_COUNT >= 3 )
-			{
-				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[2].rotors[0].Info, kCut, iteration + 4 );
-				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			}
-			
-			std::cout << std::endl;
 			lapTimer.reset();
 			lapTimer.start();
 		}

@@ -102,6 +102,8 @@ using FloatArray3DTypeCPU = TNL::Containers::NDArray< float,
 												
 using LongLongArrayType = TNL::Containers::Vector< long long, TNL::Devices::Cuda, size_t >;
 
+using SixFloatArrayType = TNL::Containers::StaticArray<6, float>;
+
 //------------------------------------------------------------------------------------
 //--------------------------------- STRUCTS  -----------------------------------------
 //------------------------------------------------------------------------------------
@@ -110,7 +112,7 @@ struct BoundsStruct { float xMin = 0.f; float yMin = 0.f; float zMin = 0.f; floa
 						float rxMax = 0.f; float ryMax = 0.f; float rzMax = 0.f; }; 
 
 struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL; 
-					int iterationsFinished = 0; int updatesSinceTrackerReset = 0;
+					int iterationsFinished = 0; int iterationsSinceTrackerReset = 0;
 					float res = 1.f; float ox = 0.f; float oy = 0.f; float oz = 0.f; 
 					BoundsStruct Bounds;
 					float nu = 1.f; float dtPhys = 1.f; 

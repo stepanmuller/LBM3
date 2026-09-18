@@ -326,7 +326,7 @@ void updateSingleGrid( GridStruct &Grid )
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, OpenBC.openBCCount, cellLambda );
 	}
 	
-	Info.updatesSinceTrackerReset++; 
+	Info.iterationsSinceTrackerReset++; 
 	Info.iterationsFinished++;
 }
 
