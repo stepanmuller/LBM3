@@ -169,7 +169,7 @@ void updateSingleGrid( GridStruct &Grid )
 		}
 	
 		// last step: write force
-		if ( trackForce )
+		if ( TRACK_WALL_FORCE && trackForce )
 		{
 			gxWallView( wallMap ) += gxWall;
 			gyWallView( wallMap ) += gyWall;
@@ -317,7 +317,7 @@ void updateSingleGrid( GridStruct &Grid )
 			const float uNormal = (float)outerNormalX * BC.ux + (float)outerNormalY * BC.uy + (float)outerNormalZ * BC.uz;
 			dRhoPrevView( index ) = BC.dRho;
 			uNormalPrevView( index ) = uNormal;
-			if ( trackFlow )
+			if ( TRACK_OPEN_BOUNDARIES && trackFlow )
 			{
 				dRhoCumulativeView( index ) += BC.dRho;
 				uNormalCumulativeView( index ) += uNormal;

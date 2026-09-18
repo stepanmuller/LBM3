@@ -283,7 +283,7 @@ __cuda_callable__ void processRotor( BCStruct &BC, const float &rho, const float
 	BC.gz += gzRotor;
 	
 	// if trackForce is true, write rotor forcing
-	if ( !trackForce ) return;
+	if ( !TRACK_ROTOR_FORCE || !trackForce ) return;
 	
 	projectForcingIntoRotorFrame( gxRotor, gyRotor, gzRotor, InfoRotor, InfoGlobal );
 	
