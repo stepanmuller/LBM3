@@ -113,6 +113,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 
 #include "../../include/gridBuilderFunctions.h"
 #include "../../include/updateGrid.h"
+#include "../../include/trackerFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 
 int main(int argc, char **argv)
@@ -134,12 +135,9 @@ int main(int argc, char **argv)
 	
 	grids[0].Info.useRotors = false;
 	grids[1].Info.useRotors = false;
-	buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
+	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	grids[2].rotors[0].Info.radiansPerSecond = radiansPerSecond;
 	grids[2].rotors[0].Info.rotateAlongZ = true;
-	
-	long long totalUpdatesPerIteration = 0LL;
-	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) totalUpdatesPerIteration += grids[level].Info.cellCount * std::pow( 2, grids[level].Info.gridID );
 	
 	TNL::Timer lapTimer;
 	lapTimer.reset();
@@ -154,7 +152,7 @@ int main(int argc, char **argv)
 			lapTimer.stop();
 			std::cout << "Finished iteration " << iteration << std::endl;
 			auto lapTime = lapTimer.getRealTime();
-			const float updateCount = (float)totalUpdatesPerIteration * (float)PLOTTER_PERIOD;
+			const float updateCount = (float)fluidUpdatesPerIteration * (float)PLOTTER_PERIOD;
 			const float glups = updateCount / lapTime / 1000000000.f;
 			if ( iteration > 0) std::cout << "GLUPS: " << glups << std::endl;
 			

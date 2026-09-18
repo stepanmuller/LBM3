@@ -152,10 +152,7 @@ int main(int argc, char **argv)
 	DomainBounds.zMin = - 5500.f;
 	DomainBounds.zMax =   5500.f;
 	
-	buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
-	
-	long long totalUpdatesPerIteration = 0LL;
-	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) totalUpdatesPerIteration += grids[level].Info.cellCount * std::pow( 2, grids[level].Info.gridID );
+	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	
 	std::vector<float> historyDragCoefficient( ITERATION_COUNT+1, 0.f );
 	
@@ -182,7 +179,7 @@ int main(int argc, char **argv)
 			lapTimer.stop();
 			std::cout << "Finished iteration " << iteration << std::endl;
 			auto lapTime = lapTimer.getRealTime();
-			const float updateCount = (float)totalUpdatesPerIteration * (float)PLOTTER_PERIOD;
+			const float updateCount = (float)fluidUpdatesPerIteration * (float)PLOTTER_PERIOD;
 			const float glups = updateCount / lapTime / 1000000000.f;
 			if ( iteration > 0) std::cout << "GLUPS: " << glups << std::endl;
 			

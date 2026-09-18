@@ -1112,8 +1112,8 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	// 4) Build wallMap
 	Grid.Wall.wallMapArray.setSize( Info.cellCount );
 	Grid.Wall.wallMapArray.setValue( -1 ); // set to "free fluid" as default
-	Grid.Wall.wallCount = GridBuilder.wallAdjacentCellList.getSize();
-	Grid.Wall.indexArray.setSize( Grid.Wall.wallCount );
+	Grid.Wall.wallAdjacentCount = GridBuilder.wallAdjacentCellList.getSize();
+	Grid.Wall.indexArray.setSize( Grid.Wall.wallAdjacentCount );
 	Grid.Wall.indexArray = GridBuilder.wallAdjacentCellList;
 	auto wallMapView = Grid.Wall.wallMapArray.getView();
 	auto wallMarkerView = GridBuilder.wallMarkerArray.getConstView();
@@ -1130,11 +1130,11 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		const int cell = wallAdjacentCellListView( index );
 		wallMapView( cell ) = index; // overwrite where wall adjacent fluid is
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallCount, wallAdjacentLambda );
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallAdjacentCount, wallAdjacentLambda );
 	
 	// 5) Build wallData
-	Grid.Wall.wallDataArray.setSize( Grid.Wall.wallCount );
-	Grid.Wall.linkLengthArray.setSizes( 7, Grid.Wall.wallCount );
+	Grid.Wall.wallDataArray.setSize( Grid.Wall.wallAdjacentCount );
+	Grid.Wall.linkLengthArray.setSizes( 7, Grid.Wall.wallAdjacentCount );
 	auto wallDataView = Grid.Wall.wallDataArray.getView();
 	auto linkExistenceMarkerView = GridBuilder.linkExistenceMarkerArray.getConstView();
 	auto linkLengthBuilderView = GridBuilder.linkLengthArray.getConstView();
@@ -1161,11 +1161,11 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		wallDataView( index ) = wallData;
 		for ( int i = 0; i < 7; i++ ) linkLengthView( i, index ) = packed[i];
 	};
-	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallCount, wallDataLambda );
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallAdjacentCount, wallDataLambda );
 	// allocate force tracker
-	Grid.Wall.gxArray.setSize( Grid.Wall.wallCount );
-	Grid.Wall.gyArray.setSize( Grid.Wall.wallCount );
-	Grid.Wall.gzArray.setSize( Grid.Wall.wallCount );
+	Grid.Wall.gxArray.setSize( Grid.Wall.wallAdjacentCount );
+	Grid.Wall.gyArray.setSize( Grid.Wall.wallAdjacentCount );
+	Grid.Wall.gzArray.setSize( Grid.Wall.wallAdjacentCount );
 	Grid.Wall.gxArray.setValue( 0.f );
 	Grid.Wall.gyArray.setValue( 0.f );
 	Grid.Wall.gzArray.setValue( 0.f );
@@ -1304,10 +1304,11 @@ void allocateFArray( GridStruct &Grid )
 	Grid.fArray.setSizes( 27, Info.cellCount );
 }
 
-void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, std::vector<STLStruct> &rotorSTLs, BoundsStruct DomainBounds )
+long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridStaticSTLs, std::vector<STLStruct> &rotorSTLs, BoundsStruct DomainBounds )
 {
 	// call the temporary GridBuilders and Voxelizers - these will go out of scope
 	// start the GridBuilder and Voxelizer scope
+	long long fluidUpdatesPerIteration = 0LL;
 	{
 		std::vector<GridBuilderStruct> gridBuilders( GRID_LEVEL_COUNT );
 		initializeGridInfo( gridBuilders, DomainBounds, 0 );
@@ -1326,6 +1327,16 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		
 		// Pass the information to the actual grids, but in a compressed form
 		gridBuilderToGrid( gridBuilders, grids, 0 );
+		
+		// while the GridBuilders exist, calculate fluid updates per iteration (do not include wall cells)
+		for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) 
+		{
+			GridBuilderStruct &GridBuilder = gridBuilders[level];
+			InfoStruct &Info = GridBuilder.Info;
+			const int wallCount = TNL::sum( GridBuilder.wallMarkerArray );
+			std::cout << " wall count " << wallCount <<  std::endl;
+			fluidUpdatesPerIteration += (long long)( Info.cellCount - wallCount ) * (long long)std::pow( 2, grids[level].Info.gridID );
+		}
 	} // here GridBuilders and Voxelizers go out of scope
 	
 	// build rotors
@@ -1342,7 +1353,6 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 	std::cout << "Allocating fArray for all grid levels. Printed memory is total per level" << std::endl;
 	long long totalMemoryBytes = 0LL;
 	long long totalCells = 0LL;
-	long long totalUpdatesPerIteration = 0LL;
 	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) 
 	{
 		GridStruct &Grid = grids[level];
@@ -1351,7 +1361,7 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		Info.gridMemoryBytes = 27LL * (long long)Info.cellCount * 4LL; // fArray
 		Info.gridMemoryBytes += 2LL * (long long)Info.cellCount * 4LL; // IJK shifter, wallMap
 		Info.gridMemoryBytes += 6LL * (long long)Grid.IJKNBR.iArray.getSize() * 4LL; // compressed iArray, jArray, kArray, jPlusArray, kPlusArray, jkPlusArray
-		Info.gridMemoryBytes += 12LL * (long long)Grid.Wall.wallCount * 4LL; // index array + wall data + linkLengths + wall force tracker
+		Info.gridMemoryBytes += 12LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // index array + wall data + linkLengths + wall force tracker
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
@@ -1373,14 +1383,14 @@ void buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gridSta
 		
 		totalMemoryBytes += grids[level].Info.gridMemoryBytes;
 		totalCells += grids[level].Info.cellCount;
-		totalUpdatesPerIteration += grids[level].Info.cellCount * std::pow( 2, grids[level].Info.gridID );
 	}
 	std::cout << std::endl;
 	std::cout << "Total cells: " << totalCells << std::endl;
 	std::cout << "Total GPU memory: " << totalMemoryBytes / 1048576.0 << " MiB"  << std::endl;
-	std::cout << "Total updates per iteration: " << totalUpdatesPerIteration << std::endl;
+	std::cout << "Total fluid cell updates per iteration: " << fluidUpdatesPerIteration << std::endl;
 	std::cout << std::endl;
 	std::cout << "Applying initial condition" << std::endl;
 	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) applyInitialCondition( grids[ level ] );
 	std::cout << std::endl;
+	return fluidUpdatesPerIteration;
 }

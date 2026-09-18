@@ -191,7 +191,7 @@ struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntAr
 							int leftoverCount = 0; IntArrayType leftoverIndexArray; IntArrayType leftoverParentMapArray;
 							IntArrayType leftoverNbrIArray; IntArrayType leftoverNbrJArray; IntArrayType leftoverNbrKArray; };
 	
-struct WallStruct{ int wallCount = 0; IntArrayType indexArray; IntArrayType wallMapArray; Uint32_tArrayType wallDataArray; Uint32_tArray2DType linkLengthArray;
+struct WallStruct{ int wallAdjacentCount = 0; IntArrayType indexArray; IntArrayType wallMapArray; Uint32_tArrayType wallDataArray; Uint32_tArray2DType linkLengthArray;
 					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
 // wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
@@ -258,3 +258,10 @@ struct SectionCutStruct { 	FloatArray2DType dRhoArray; FloatArray2DType uxArray;
 							
 struct SectionCutStructCPU { 	FloatArray2DTypeCPU dRhoArray; FloatArray2DTypeCPU uxArray; FloatArray2DTypeCPU uyArray; FloatArray2DTypeCPU uzArray; 
 								FloatArray2DTypeCPU markerArray; IntArray2DTypeCPU gridIDArray; };
+								
+struct TrackerStruct { 	FloatArray2DTypeCPU volumetricFlowArray; FloatArray2DTypeCPU massFlowArray; FloatArray2DTypeCPU pressureArray;
+						FloatArray2DTypeCPU pressurePowerArray; FloatArray2DTypeCPU momentumThrustArray; FloatArray2DTypeCPU normalKineticPowerArray; 
+						FloatArray2DTypeCPU wallFxArray; FloatArray2DTypeCPU wallFyArray; FloatArray2DTypeCPU wallFzArray;
+						FloatArray2DTypeCPU wallTxArray; FloatArray2DTypeCPU wallTyArray; FloatArray2DTypeCPU wallTzArray;
+						FloatArray2DTypeCPU rotorFxArray; FloatArray2DTypeCPU rotorFyArray; FloatArray2DTypeCPU rotorFzArray;
+						FloatArray2DTypeCPU rotorTxArray; FloatArray2DTypeCPU rotorTyArray; FloatArray2DTypeCPU rotorTzArray; };	
