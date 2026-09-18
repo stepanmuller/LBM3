@@ -63,3 +63,8 @@ void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 	std::cout << "Done" << std::endl;
 	std::cout << std::endl;
 }
+
+void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
+{
+	
+}
