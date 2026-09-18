@@ -24,11 +24,10 @@
 // cx2-cy2: { 0, 1, 1, 0, 0,-1,-1,		 1, 1, 1, 1, 0, 0,-1,-1, 0, 0,-1,-1,		 0, 0, 0, 0, 0, 0, 0, 0 };
 // cx2-cz2: { 0, 1, 1,-1,-1, 0, 0,		 0, 0, 0, 0, 1, 1,-1,-1, 1, 1,-1,-1,		 0, 0, 0, 0, 0, 0, 0, 0 };
 
-__host__ __device__ void reconstructInterpolatedF( 	float (&f)[27], const float &rho, const float &ux, const float &uy, const float &uz, 
+__host__ __device__ void reconstructInterpolatedF( 	float (&f)[27], const float &dRho, const float &ux, const float &uy, const float &uz, 
 													const float &k_011, const float &k_101, const float &k_110, 
 													const float &k_200, const float &k_020, const float &k_002 )
 {
-	const float dRho = rho - 1.f;
 	const float ux2 = ux * ux;
 	const float uy2 = uy * uy;
 	const float uz2 = uz * uz;
@@ -322,7 +321,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		
 		// reconstruct f for the coarse cell
 		float f[27];
-		reconstructInterpolatedF( f, rho, ux, uy, uz, k_011, k_101, k_110, k_200, k_020, k_002 );
+		reconstructInterpolatedF( f, dRho, ux, uy, uz, k_011, k_101, k_110, k_200, k_020, k_002 );
 		
 		// write reconstructed f into the coarse cell
 		NBRStruct NBR;
@@ -575,7 +574,6 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 								+ b200 * dx * dx + b020 * dy * dy + b002 * dz * dz; 
 			const float uz = c000 + c100 * dx + c010 * dy + c001 * dz + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
 								+ c200 * dx * dx + c020 * dy * dy + c002 * dz * dz; 
-			const float rho = dRho + 1.f;
 			
 			// calculate second order central moments
 			
@@ -599,7 +597,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			
 			// reconstruct f for the fine cell
 			float f[27];
-			reconstructInterpolatedF( f, rho, ux, uy, uz, k_011, k_101, k_110, k_200, k_020, k_002 );
+			reconstructInterpolatedF( f, dRho, ux, uy, uz, k_011, k_101, k_110, k_200, k_020, k_002 );
 			
 			// write reconstructed f into the fine cell
 			NBRStruct NBR;
@@ -688,7 +686,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			// fill the wall velocity
 			BCStruct BC;
 			BC.wallID = wallID;
-			BC.rho = rhoCenter; BC.ux = uxCenter; BC.uy = uyCenter; BC.uz = uzCenter;
+			BC.dRho = dRhoCenter; BC.ux = uxCenter; BC.uy = uyCenter; BC.uz = uzCenter;
 			getLocalBC( BC, iCell, jCell, kCell, InfoCoarse );
 			uxWall = BC.ux; uyWall = BC.uy; uzWall = BC.uz;
 		}
@@ -808,7 +806,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		
 		// reconstruct f for the fine cell
 		float f[27];
-		reconstructInterpolatedF( f, rhoResult, uxResult, uyResult, uzResult, k_011, k_101, k_110, k_200, k_020, k_002 );
+		reconstructInterpolatedF( f, dRhoResult, uxResult, uyResult, uzResult, k_011, k_101, k_110, k_200, k_020, k_002 );
 		
 		// write reconstructed f into the fine cell
 		NBRStruct NBR;

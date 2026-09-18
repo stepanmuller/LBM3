@@ -4,7 +4,7 @@ __host__ __device__ void restoreUxUyUz(
 	const float (&f)[27]
 )
 {
-	const float &rho = BC.rho;
+	const float rho = BC.dRho + 1.f;
 	float &ux = BC.ux;
 	float &uy = BC.uy;
 	float &uz = BC.uz;

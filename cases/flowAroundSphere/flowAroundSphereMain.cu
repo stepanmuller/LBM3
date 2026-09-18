@@ -81,7 +81,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	if ( iCell == Info.cellCountX-1 && jCell != 0 && jCell != Info.cellCountY-1 && kCell != 0 && kCell != Info.cellCountZ-1  ) // Outlet
 	{
 		BC.dirichletRho = true;
-		BC.rho = 1.f;
+		BC.dRho = 0.f;
 		BC.openBCID = 1;
 		BC.rhoReflectionTolerance = 0.00001f * 0.2f * 0.1f;
 	}
@@ -176,17 +176,7 @@ int main(int argc, char **argv)
 		const float drag = - gxSum;
 		const float dragCoefficient = - (8 * drag) / (RHO_PHYS * uxInletPhys * uxInletPhys * 3.14159f * (sphereDiameterPhys / 1000.f) * (sphereDiameterPhys / 1000.f));
 		historyDragCoefficient[iteration] = dragCoefficient;
-		/*
-		OpenBCReportStruct InletReport;
-		InletReport.uNormalPhys = TNL::sum( grids[0].openBCs[0].uNormalCumulativeArray ) / (float)grids[0].openBCs[0].openBCCount;
-		grids[0].openBCs[0].uNormalCumulativeArray.setValue( 0.f );
-		//historyDragCoefficient[iteration] = InletReport.uNormalPhys;
 		
-		OpenBCReportStruct OutletReport;
-		OutletReport.rhoPhys = TNL::sum( grids[0].openBCs[1].rhoCumulativeArray ) / (float)grids[0].openBCs[1].openBCCount;
-		grids[0].openBCs[1].rhoCumulativeArray.setValue( 0.f );
-		historyDragCoefficient[iteration] = OutletReport.rhoPhys;
-		*/		
 		if ( iteration % PLOTTER_PERIOD == 0 )
 		{
 			lapTimer.stop();

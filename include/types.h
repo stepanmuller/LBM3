@@ -120,7 +120,7 @@ struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL;
 					bool useRotors = true;
 					float iRegulatorInlet = 0.f; float iRegulatorOutlet = 0.f; };
 					
-struct BCStruct { 	float rho = 1.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; 
+struct BCStruct { 	float dRho = 0.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; 
 					float gx = 0.f; float gy = 0.f; float gz = 0.f; 
 					int wallID = -1; float overwriteIBBLinks = -1.f;
 					bool dirichletU = false; bool dirichletRho = false; 
@@ -213,7 +213,7 @@ struct RotorViewStruct{ RotorInfoStruct Info;
 using RotorViewsType = std::vector<RotorViewStruct, TNL::Allocators::CudaManaged<RotorViewStruct>>;	
 
 struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
-							FloatArrayType rhoPrevArray; FloatArrayType uNormalPrevArray; 
+							FloatArrayType dRhoPrevArray; FloatArrayType uNormalPrevArray; 
 							FloatArrayType dRhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
 		
 struct GridStruct { InfoStruct Info; 
@@ -253,15 +253,8 @@ struct STLStruct { 	static constexpr int threadsToTrianglesRatio = 4;
 					}
 				};
 
-struct OpenBCReportStruct { int openBCID = 0; float uNormalPhys = 0.f; float pPhys = 0.f; float rhoPhys = 0.f; float areamm2 = 0.f; float massFlowPhys = 0.f; };
-
-struct FlowReportStruct { float uxPhys = 0.f; float uyPhys = 0.f; float uzPhys = 0.f; float pPhys = 0.f; float areamm2 = 0.f; 
-							float massFlowPhys = 0.f; float normalDirectionMomentumFlowPhys = 0.f; float normalDirectionKineticEnergyFlowPhys = 0.f; };
-
-struct LocalDuStruct { float duxdx = 0.f; float duydy = 0.f; float duzdz = 0.f; float duxdyCross = 0.f; float duydzCross = 0.f; float duxdzCross = 0.f; };
-
-struct SectionCutStruct { 	FloatArray2DType rhoArray; FloatArray2DType uxArray; FloatArray2DType uyArray; FloatArray2DType uzArray; 
+struct SectionCutStruct { 	FloatArray2DType dRhoArray; FloatArray2DType uxArray; FloatArray2DType uyArray; FloatArray2DType uzArray; 
 							FloatArray2DType markerArray; IntArray2DType gridIDArray; };
 							
-struct SectionCutStructCPU { 	FloatArray2DTypeCPU rhoArray; FloatArray2DTypeCPU uxArray; FloatArray2DTypeCPU uyArray; FloatArray2DTypeCPU uzArray; 
+struct SectionCutStructCPU { 	FloatArray2DTypeCPU dRhoArray; FloatArray2DTypeCPU uxArray; FloatArray2DTypeCPU uyArray; FloatArray2DTypeCPU uzArray; 
 								FloatArray2DTypeCPU markerArray; IntArray2DTypeCPU gridIDArray; };

@@ -31,7 +31,7 @@ void applyInitialCondition( GridStruct &Grid )
 		getInitialCondition( BC, iCell, jCell, kCell, Info ); 
 		
 		float f[27];
-		getFeq( BC.rho, BC.ux, BC.uy, BC.uz, f );
+		getFeq( BC.dRho, BC.ux, BC.uy, BC.uz, f );
 		
 		int cellWriteIndex[27];
 		int fWriteIndex[27];
@@ -45,7 +45,7 @@ void applyInitialCondition( GridStruct &Grid )
 	{
 		OpenBCArrayStruct &OpenBC = Grid.openBCs[ openBCID ];
 		auto indexView = OpenBC.indexArray.getConstView();
-		auto rhoPrevView = OpenBC.rhoPrevArray.getView();
+		auto dRhoPrevView = OpenBC.dRhoPrevArray.getView();
 		auto uNormalPrevView = OpenBC.uNormalPrevArray.getView();
 		// loop over open boundary cells
 		auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
@@ -70,13 +70,12 @@ void applyInitialCondition( GridStruct &Grid )
 			getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper );
 			for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fIndex[direction], cellIndex[direction]);
 			
-			// get rho, ux, uy, uz
-			float rho, ux, uy, uz;
-			getRhoUxUyUz( rho, ux, uy, uz, f );
+			float dRho, ux, uy, uz;
+			getDRhoUxUyUz( dRho, ux, uy, uz, f );
 			
 			// fill those as previous values
 			const float uNormal = (float)outerNormalX * ux + (float)outerNormalY * uy + (float)outerNormalZ * uz;
-			rhoPrevView( index ) = rho;
+			dRhoPrevView( index ) = dRho;
 			uNormalPrevView( index ) = uNormal;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, OpenBC.openBCCount, cellLambda );

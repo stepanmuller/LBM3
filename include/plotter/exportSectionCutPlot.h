@@ -81,19 +81,19 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 
 	// 3) Initialize the sectionCut
 	SectionCutStruct SectionCut;
-	SectionCut.rhoArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.rhoArray.setValue( 1.f );
+	SectionCut.dRhoArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.dRhoArray.setValue( 0.f );
 	SectionCut.uxArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.uxArray.setValue( 0.f );
 	SectionCut.uyArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.uyArray.setValue( 0.f );
 	SectionCut.uzArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.uzArray.setValue( 0.f );
 	SectionCut.markerArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.markerArray.setValue( 1.f );
 	SectionCut.gridIDArray.setSizes( pixelsVertical, pixelsHorizontal ); SectionCut.gridIDArray.setValue( 0 );
 		
-	auto rhoArrayView = SectionCut.rhoArray.getView();
-	auto uxArrayView = SectionCut.uxArray.getView();
-	auto uyArrayView = SectionCut.uyArray.getView();
-	auto uzArrayView = SectionCut.uzArray.getView();
-	auto markerArrayView = SectionCut.markerArray.getView();
-	auto gridIDArrayView = SectionCut.gridIDArray.getView();
+	auto dRhoView = SectionCut.dRhoArray.getView();
+	auto uxView = SectionCut.uxArray.getView();
+	auto uyView = SectionCut.uyArray.getView();
+	auto uzView = SectionCut.uzArray.getView();
+	auto markerView = SectionCut.markerArray.getView();
+	auto gridIDView = SectionCut.gridIDArray.getView();
 	
 	// 4) Loop through all grid levels
 	for ( int level = 0; level < GRID_LEVEL_COUNT; level++ )
@@ -179,7 +179,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
             // Keep the solid mask categorical, using the nearest normal sample.
             const bool selectedSolid = alpha <= 0.5f ? lowerSolid : upperSolid;
             float marker = selectedSolid ? 1.f : 0.f;
-            float rho = 1.f, ux = 0.f, uy = 0.f, uz = 0.f;
+            float dRho = 0.f, ux = 0.f, uy = 0.f, uz = 0.f;
             if (!selectedSolid)
             {
                 // At a fluid/solid bracket use its fluid sample. Never blend
@@ -191,7 +191,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
                 getPreCollisionIndex(cellReadIndex, fReadIndex, readNBR, esotwistFlipper);
                 for (int direction = 0; direction < 27; ++direction)
                     f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
-                getRhoUxUyUz(rho, ux, uy, uz, f);
+                getDRhoUxUyUz(dRho, ux, uy, uz, f);
                 
                 // get position, we need it for the rotors
 				float x, y, z;
@@ -225,9 +225,9 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
                     getPreCollisionIndex(cellReadIndex, fReadIndex, upperNBR, esotwistFlipper);
                     for (int direction = 0; direction < 27; ++direction)
                         f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
-                    float rhoUpper, uxUpper, uyUpper, uzUpper;
-                    getRhoUxUyUz(rhoUpper, uxUpper, uyUpper, uzUpper, f);
-                    rho += alpha * (rhoUpper - rho);
+                    float dRhoUpper, uxUpper, uyUpper, uzUpper;
+                    getDRhoUxUyUz(dRhoUpper, uxUpper, uyUpper, uzUpper, f);
+                    dRho += alpha * (dRhoUpper - dRho);
                     ux += alpha * (uxUpper - ux);
                     uy += alpha * (uyUpper - uy);
                     uz += alpha * (uzUpper - uz);
@@ -261,10 +261,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 						ux += alpha * ( (ux - uxRotor) - ux);
 						uy += alpha * ( (uy - uyRotor) - uy);
 						uz += alpha * ( (uz - uzRotor) - uz);
-					}
-                    
-                    
-                    
+					} 
                 }
             }
 
@@ -276,12 +273,12 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 				{
 					const int x = indexHorizontal + shiftHorizontal - startHorizontal;
 					if (x < 0 || x >= pixelsHorizontal) continue;
-					rhoArrayView( y, x ) = rho;
-					uxArrayView( y, x ) = ux;
-					uyArrayView( y, x ) = uy;
-					uzArrayView( y, x ) = uz;
-					markerArrayView( y, x ) = marker;
-					gridIDArrayView( y, x ) = Info.gridID;
+					dRhoView( y, x ) = dRho;
+					uxView( y, x ) = ux;
+					uyView( y, x ) = uy;
+					uzView( y, x ) = uz;
+					markerView( y, x ) = marker;
+					gridIDView( y, x ) = Info.gridID;
 				}
 			}
 		};
@@ -289,7 +286,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	}
 	
 	SectionCutStructCPU SectionCutCPU;
-	SectionCutCPU.rhoArray = SectionCut.rhoArray;
+	SectionCutCPU.dRhoArray = SectionCut.dRhoArray;
 	SectionCutCPU.uxArray = SectionCut.uxArray;
 	SectionCutCPU.uyArray = SectionCut.uyArray;
 	SectionCutCPU.uzArray = SectionCut.uzArray;
@@ -309,13 +306,13 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	{
 		for (int indexHorizontal = 0; indexHorizontal < pixelsHorizontal; indexHorizontal++)
 		{
-			float rho = SectionCutCPU.rhoArray.getElement(indexVertical, indexHorizontal);
+			float dRho = SectionCutCPU.dRhoArray.getElement(indexVertical, indexHorizontal);
 			float ux = SectionCutCPU.uxArray.getElement(indexVertical, indexHorizontal);
 			float uy = SectionCutCPU.uyArray.getElement(indexVertical, indexHorizontal);
 			float uz = SectionCutCPU.uzArray.getElement(indexVertical, indexHorizontal);
 			float marker = SectionCutCPU.markerArray.getElement(indexVertical, indexHorizontal);
 			int gridID = SectionCutCPU.gridIDArray.getElement(indexVertical, indexHorizontal);
-			float p = rho;
+			float p = dRho;
 			
 			// Use the actual gridID to scale physical parameters properly
 			convertToPhysicalVelocity( ux, uy, uz, grids[gridID].Info );

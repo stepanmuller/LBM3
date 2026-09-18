@@ -84,7 +84,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	{
 		BC.dirichletRho = true;
 		BC.openBCID = 1;
-		BC.rho = 1.f;
+		BC.dRho = 0.f;
 	}
 }
 

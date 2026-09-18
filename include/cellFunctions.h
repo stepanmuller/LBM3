@@ -101,12 +101,10 @@ __host__ __device__ void getOuterNormal( 	const int& iCell, const int& jCell, co
 }
 
 __host__ __device__ void getFeq(
-	const float &rho, const float &ux, const float &uy, const float &uz, 
+	const float &dRho, const float &ux, const float &uy, const float &uz, 
 	float (&feq)[27]
 	)
 {
-	const float dRho = rho - 1.f;
-	
 	const float u2 = ux*ux + uy*uy + uz*uz;
 
 	const float cu0  = 0.f;
@@ -171,9 +169,8 @@ __host__ __device__ void getFeq(
 	feq[26] = w3 * (dRho + (3.f*cu26 + 4.5f*cu26*cu26 - 1.5f*u2) * (dRho + 1.f));	
 }
 
-__host__ __device__ inline float getFeqSingle( const float &rho, const float &ux, const float &uy, const float &uz, const int direction )
+__host__ __device__ inline float getFeqSingle( const float &dRho, const float &ux, const float &uy, const float &uz, const int direction )
 {
-    const float dRho = rho - 1.f;
     const float u2 = ux*ux + uy*uy + uz*uz;
     const float cu = CX_DIRECTIONS[direction] * ux + CY_DIRECTIONS[direction] * uy + CZ_DIRECTIONS[direction] * uz;
     return DIRECTION_WEIGHTS[direction] * (dRho + (3.f*cu + 4.5f*cu*cu - 1.5f*u2) * (dRho + 1.f));
@@ -182,31 +179,6 @@ __host__ __device__ inline float getFeqSingle( const float &rho, const float &ux
 __host__ __device__ void getFneq(const float (&f)[27], const float (&feq)[27], float (&fneq)[27])
 {
 	for ( int i = 0; i < 27; i++ ) fneq[i] = f[i] - feq[i];
-}
-
-__host__ __device__ void getRhoUxUyUz( float &rho, float &ux, float &uy, float &uz, const float (&f)[27])
-{
-	const float dRho = (((f[PPP]+f[MMM]) + (f[PMP]+f[MPM])) + ((f[PPM]+f[MMP]) + (f[PMM]+f[MPP])))
-					  + (((f[OPP]+f[OMM]) + (f[OPM]+f[OMP])) + ((f[POP]+f[MOM]) + (f[POM]+f[MOP])) + ((f[PPO]+f[MMO]) + (f[PMO]+f[MPO])))
-						+ ((f[POO]+f[MOO]) + (f[OPO]+f[OMO]) + (f[OOP]+f[OOM])) + f[OOO];			
-    
-    const float rhoInv = 1.f / (dRho + 1.f);
-    
-    const float momentumX = ((((f[PPP]-f[MMM]) + (f[PMP]-f[MPM])) + ((f[PPM]-f[MMP]) + (f[PMM]-f[MPP])))
-                          + (((f[POP]-f[MOM]) + (f[POM]-f[MOP])) + ((f[PPO]-f[MMO]) + (f[PMO]-f[MPO])))
-                            + (f[POO]-f[MOO]));
-
-    const float momentumY = ((((f[PPP]-f[MMM]) - (f[PMP]-f[MPM])) + ((f[PPM]-f[MMP]) - (f[PMM]-f[MPP])))
-                          + (((f[OPP]-f[OMM]) + (f[OPM]-f[OMP])) + ((f[PPO]-f[MMO]) - (f[PMO]-f[MPO])))
-                            + (f[OPO]-f[OMO]));
-
-    const float momentumZ = ((((f[PPP]-f[MMM]) + (f[PMP]-f[MPM])) - ((f[PPM]-f[MMP]) + (f[PMM]-f[MPP])))
-                          + (((f[OPP]-f[OMM]) - (f[OPM]-f[OMP])) + ((f[POP]-f[MOM]) - (f[POM]-f[MOP])))
-                            + (f[OOP]-f[OOM]));
-	rho = dRho + 1.f;
-    ux = momentumX * rhoInv;
-    uy = momentumY * rhoInv;
-    uz = momentumZ * rhoInv;
 }
 
 __host__ __device__ void getDRhoUxUyUz( float &dRho, float &ux, float &uy, float &uz, const float (&f)[27])
@@ -233,140 +205,6 @@ __host__ __device__ void getDRhoUxUyUz( float &dRho, float &ux, float &uy, float
     uz = momentumZ * rhoInv;
 }
 
-__host__ __device__ void getLocalDu( float (&f)[27], const float &nu, LocalDuStruct &localDu )
-{	
-    // D3Q27 weight moments needed by the well-conditioned transformation.
-    const float K_aa0 = 1.f / 36.f;
-    const float K_ab0 = 1.f / 9.f;
-    const float K_ac0 = 1.f / 36.f;
-    const float K_ba0 = 1.f / 9.f;
-    const float K_bb0 = 4.f / 9.f;
-    const float K_bc0 = 1.f / 9.f;
-    const float K_ca0 = 1.f / 36.f;
-    const float K_cb0 = 1.f / 9.f;
-    const float K_cc0 = 1.f / 36.f;
-    const float K_a00 = 1.f / 6.f;
-    const float K_b00 = 2.f / 3.f;
-    const float K_c00 = 1.f / 6.f;
-
-    // First part of the central-moment transformation, zeroth z moments.
-    const float k_aa0 = (f[MMP] + f[MMM]) + f[MMO];
-    const float k_ab0 = (f[MOP] + f[MOM]) + f[MOO];
-    const float k_ac0 = (f[MPP] + f[MPM]) + f[MPO];
-    const float k_ba0 = (f[OMP] + f[OMM]) + f[OMO];
-    const float k_bb0 = (f[OOP] + f[OOM]) + f[OOO];
-    const float k_bc0 = (f[OPP] + f[OPM]) + f[OPO];
-    const float k_ca0 = (f[PMP] + f[PMM]) + f[PMO];
-    const float k_cb0 = (f[POP] + f[POM]) + f[POO];
-    const float k_cc0 = (f[PPP] + f[PPM]) + f[PPO];
-
-    // The stored density is dRho. The physical density is 1 + dRho.
-    const float dRho =
-        ((k_aa0 + k_ab0) + k_ac0) +
-        ((k_ba0 + k_bb0) + k_bc0) +
-        ((k_ca0 + k_cb0) + k_cc0);
-    const float rho = 1.f + dRho;
-    const float rhoInv = 1.f / rho;
-
-    // The weights carry no momentum, so momentum is obtained directly from f_bar.
-    const float momentumX =
-        ((k_ca0 + k_cb0) + k_cc0) - ((k_aa0 + k_ab0) + k_ac0);
-    const float momentumY =
-        ((k_ac0 + k_bc0) + k_cc0) - ((k_aa0 + k_ba0) + k_ca0);
-    const float momentumZ =
-        (((f[MMP] - f[MMM]) + (f[MOP] - f[MOM])) + ((f[MPP] - f[MPM]) + (f[OMP] - f[OMM]))) +
-        (((f[OOP] - f[OOM]) + (f[OPP] - f[OPM])) + ((f[PMP] - f[PMM]) + (f[POP] - f[POM]))) +
-        (f[PPP] - f[PPM]);
-
-    // Apply the first half of the body force.
-    const float ux = momentumX * rhoInv;
-    const float uy = momentumY * rhoInv;
-    const float uz = momentumZ * rhoInv;
-
-    const float ux2 = ux * ux;
-    const float uy2 = uy * uy;
-    const float uz2 = uz * uz;
-
-    // -------------------------------------------------------------------------
-    // Well-conditioned populations -> central moments, Geier 2017, Eqs. 6-14.
-    // -------------------------------------------------------------------------
-
-    const float k_aa1 = (f[MMP] - f[MMM]) - uz * (k_aa0 + K_aa0);
-    const float k_ab1 = (f[MOP] - f[MOM]) - uz * (k_ab0 + K_ab0);
-    const float k_ac1 = (f[MPP] - f[MPM]) - uz * (k_ac0 + K_ac0);
-    const float k_ba1 = (f[OMP] - f[OMM]) - uz * (k_ba0 + K_ba0);
-    const float k_bb1 = (f[OOP] - f[OOM]) - uz * (k_bb0 + K_bb0);
-    const float k_bc1 = (f[OPP] - f[OPM]) - uz * (k_bc0 + K_bc0);
-    const float k_ca1 = (f[PMP] - f[PMM]) - uz * (k_ca0 + K_ca0);
-    const float k_cb1 = (f[POP] - f[POM]) - uz * (k_cb0 + K_cb0);
-    const float k_cc1 = (f[PPP] - f[PPM]) - uz * (k_cc0 + K_cc0);
-
-    const float k_aa2 = (f[MMP] + f[MMM]) - 2.f * uz * (f[MMP] - f[MMM]) + uz2 * (k_aa0 + K_aa0);
-    const float k_ab2 = (f[MOP] + f[MOM]) - 2.f * uz * (f[MOP] - f[MOM]) + uz2 * (k_ab0 + K_ab0);
-    const float k_ac2 = (f[MPP] + f[MPM]) - 2.f * uz * (f[MPP] - f[MPM]) + uz2 * (k_ac0 + K_ac0);
-    const float k_ba2 = (f[OMP] + f[OMM]) - 2.f * uz * (f[OMP] - f[OMM]) + uz2 * (k_ba0 + K_ba0);
-    const float k_bb2 = (f[OOP] + f[OOM]) - 2.f * uz * (f[OOP] - f[OOM]) + uz2 * (k_bb0 + K_bb0);
-    const float k_bc2 = (f[OPP] + f[OPM]) - 2.f * uz * (f[OPP] - f[OPM]) + uz2 * (k_bc0 + K_bc0);
-    const float k_ca2 = (f[PMP] + f[PMM]) - 2.f * uz * (f[PMP] - f[PMM]) + uz2 * (k_ca0 + K_ca0);
-    const float k_cb2 = (f[POP] + f[POM]) - 2.f * uz * (f[POP] - f[POM]) + uz2 * (k_cb0 + K_cb0);
-    const float k_cc2 = (f[PPP] + f[PPM]) - 2.f * uz * (f[PPP] - f[PPM]) + uz2 * (k_cc0 + K_cc0);
-
-    const float k_a00 = (k_ac0 + k_aa0) + k_ab0;
-    const float k_b00 = (k_bc0 + k_ba0) + k_bb0;
-    const float k_c00 = (k_cc0 + k_ca0) + k_cb0;
-    const float k_a01 = (k_ac1 + k_aa1) + k_ab1;
-    const float k_b01 = (k_bc1 + k_ba1) + k_bb1;
-    const float k_c01 = (k_cc1 + k_ca1) + k_cb1;
-    const float k_a02 = (k_ac2 + k_aa2) + k_ab2;
-    const float k_b02 = (k_bc2 + k_ba2) + k_bb2;
-    const float k_c02 = (k_cc2 + k_ca2) + k_cb2;
-
-    const float k_a10 = (k_ac0 - k_aa0) - uy * (k_a00 + K_a00);
-    const float k_b10 = (k_bc0 - k_ba0) - uy * (k_b00 + K_b00);
-    const float k_c10 = (k_cc0 - k_ca0) - uy * (k_c00 + K_c00);
-    const float k_a11 = (k_ac1 - k_aa1) - uy * k_a01;
-    const float k_b11 = (k_bc1 - k_ba1) - uy * k_b01;
-    const float k_c11 = (k_cc1 - k_ca1) - uy * k_c01;
-
-    const float k_a20 = (k_ac0 + k_aa0) - 2.f * uy * (k_ac0 - k_aa0) + uy2 * (k_a00 + K_a00);
-    const float k_b20 = (k_bc0 + k_ba0) - 2.f * uy * (k_bc0 - k_ba0) + uy2 * (k_b00 + K_b00);
-    const float k_c20 = (k_cc0 + k_ca0) - 2.f * uy * (k_cc0 - k_ca0) + uy2 * (k_c00 + K_c00);
-
-    // Use the same stored-density sum used for rho so collision and back-transform
-    // conserve exactly the same zeroth-order quantity in finite precision.
-    const float k_000 = dRho;
-    const float k_001 = (k_c01 + k_a01) + k_b01;
-    const float k_002 = (k_c02 + k_a02) + k_b02;
-    const float k_010 = (k_c10 + k_a10) + k_b10;
-    const float k_011 = (k_c11 + k_a11) + k_b11;
-    const float k_020 = (k_c20 + k_a20) + k_b20;
-
-    const float k_101 = (k_c01 - k_a01) - ux * k_001;
-    const float k_110 = (k_c10 - k_a10) - ux * k_010;
-
-    const float k_200 = (k_c00 + k_a00) - 2.f * ux * (k_c00 - k_a00) + ux2 * (k_000 + 1.f);
-
-    // -------------------------------------------------------------------------
-    // Central moments -> cumulants, Geier 2017, Eqs. 16-23.
-    // -------------------------------------------------------------------------
-
-    const float C_110 = k_110;
-    const float C_101 = k_101;
-    const float C_011 = k_011;
-    const float C_200 = k_200;
-    const float C_020 = k_020;
-    const float C_002 = k_002;
-        
-    const float omega1 = 1.f / (3.f * nu + 0.5f); //= 1.f / (3.f * (nu * BC.nuMultiplier) + 0.5f);
-	
-	localDu.duxdx = ( (0.5f * omega1) * (-2.f * C_200 + C_020 + C_002) + 0.5f * (dRho - C_200 - C_020 - C_002) ) / rho;
-	localDu.duydy = localDu.duxdx + (1.5f * omega1) * (C_200 - C_020) / rho;
-	localDu.duzdz = localDu.duxdx + (1.5f * omega1) * (C_200 - C_002) / rho;
-	localDu.duxdyCross = - (3.f * omega1) * C_110 / rho;
-	localDu.duydzCross = - (3.f * omega1) * C_011 / rho;
-	localDu.duxdzCross = - (3.f * omega1) * C_101 / rho;
-}
-
 __host__ __device__ void convertToPhysicalVelocity( float &ux, float &uy, float &uz, const InfoStruct &Info )
 {
 	ux = ux * (Info.res/1000.f) / Info.dtPhys;
@@ -374,12 +212,12 @@ __host__ __device__ void convertToPhysicalVelocity( float &ux, float &uy, float 
 	uz = uz * (Info.res/1000.f) / Info.dtPhys;
 }
 
-__host__ __device__ void convertToPhysicalPressure( float &rho, const InfoStruct &Info )
+__host__ __device__ void convertToPhysicalPressure( float &dRho, const InfoStruct &Info )
 {
-	// converts LBM rho to physical pressure, overwrites the variable (LBM rho -> physical p)
+	// converts LBM dRho to physical pressure, overwrites the variable (LBM dRho -> physical p)
 	float soundspeedPhys = INVSQRT3 * (Info.res/1000.f) / Info.dtPhys;
-	const float p = (rho - 1.f) * RHO_PHYS * soundspeedPhys * soundspeedPhys;
-	rho = p;
+	const float p = dRho * RHO_PHYS * soundspeedPhys * soundspeedPhys;
+	dRho = p;
 }
 
 __host__ __device__ void convertToPhysicalForce( float &gx, float &gy, float &gz, const InfoStruct &Info )

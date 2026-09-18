@@ -4,7 +4,7 @@ __host__ __device__ void applyMBBC(
 	float (&f)[27]
 )
 {
-	const float &rho = BC.rho;
+	const float rho = BC.dRho + 1.f;
 	const float &ux = BC.ux;
 	const float &uy = BC.uy;
 	const float &uz = BC.uz;

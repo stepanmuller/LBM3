@@ -12,7 +12,7 @@
 #include "./boundaryConditions/restoreRho.h"
 #include "./boundaryConditions/restoreUxUyUz.h"
 #include "./boundaryConditions/applyMBBC.h"
-#include "./boundaryConditions/getNonReflectiveRho.h"
+#include "./boundaryConditions/getNonReflectiveDRho.h"
 
 void updateSingleGrid( GridStruct &Grid )
 {	
@@ -85,14 +85,14 @@ void updateSingleGrid( GridStruct &Grid )
 		for ( int direction = 0; direction < 27; direction++ )	f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
 		
 		// calculate current state
-		float rho, ux, uy, uz;
-		getRhoUxUyUz( rho, ux, uy, uz, f );
+		float dRho, ux, uy, uz;
+		getDRhoUxUyUz( dRho, ux, uy, uz, f );
 		// setup BC struct and load the current state into it
 		// we will then pass the current state into the getLocalBC function so that BC can also be a function of the current state 
 		// example: get forcing for rotating domain as a function of rho, ux, uy, uz
 		BCStruct BC;
 		BC.wallID = wallID;
-		BC.rho = rho; BC.ux = ux; BC.uy = uy; BC.uz = uz;
+		BC.dRho = dRho; BC.ux = ux; BC.uy = uy; BC.uz = uz;
 		getLocalBC( BC, iCell, jCell, kCell, Info );
 		
 		// process the rotors
@@ -104,6 +104,7 @@ void updateSingleGrid( GridStruct &Grid )
 			// In case that gx, gy, gz is already non zero, for the rotor pretend that this forcing is already applied and results in shifted velocity
 			// This is because we want to ensure that after forcing, the target velocity is achieved, so the rotor must only supply
 			// the part of the force that is missing
+			const float rho = dRho + 1.f;
 			const float rhoInv = 1.f / rho;
 			const float uxPreRotor = ( ux * rho + BC.gx) * rhoInv;
 			const float uyPreRotor = ( uy * rho + BC.gy) * rhoInv;
@@ -184,7 +185,7 @@ void updateSingleGrid( GridStruct &Grid )
 	{
 		OpenBCArrayStruct &OpenBC = Grid.openBCs[ openBCID ];
 		auto indexView = OpenBC.indexArray.getConstView();
-		auto rhoPrevView = OpenBC.rhoPrevArray.getView();
+		auto dRhoPrevView = OpenBC.dRhoPrevArray.getView();
 		auto uNormalPrevView = OpenBC.uNormalPrevArray.getView();
 		auto dRhoCumulativeView = OpenBC.dRhoCumulativeArray.getView();
 		auto uNormalCumulativeView = OpenBC.uNormalCumulativeArray.getView();
@@ -247,7 +248,7 @@ void updateSingleGrid( GridStruct &Grid )
 			}
 			
 			// read rhoPrev, uNormalPrev
-			const float rhoPrev = rhoPrevView( index );
+			const float dRhoPrev = dRhoPrevView( index );
 			const float uNormalPrev = uNormalPrevView( index );
 			
 			// get BC
@@ -258,10 +259,10 @@ void updateSingleGrid( GridStruct &Grid )
 			// if it is an edge or corner cell, disable non reflectivity and switch to strict dirichlet,
 			// because non reflectivity is only defined for face cells
 			bool useNonReflective = true;
-			float rhoNonReflective = 1.f;
+			float dRhoNonReflective = 0.f;
 			if ( TNL::abs( outerNormalX ) + TNL::abs( outerNormalY ) + TNL::abs( outerNormalZ ) == 1 )
 			{
-				rhoNonReflective = getNonReflectiveRho( rhoZ, rhoPrev, uNormalPrev );
+				dRhoNonReflective = getNonReflectiveDRho( rhoZ, dRhoPrev, uNormalPrev );
 			}
 			else useNonReflective = false;
 			
@@ -269,14 +270,13 @@ void updateSingleGrid( GridStruct &Grid )
 			if ( BC.rhoReflectionTolerance >= 1.f ) useNonReflective = false;
 			
 			// adjust rho, ux, uy, uz by combining Dirichlet with non reflectivity
-			const float &dRhoMax = BC.rhoReflectionTolerance;
 			if ( BC.dirichletRho )
 			{
 				if ( useNonReflective )
 				{
-					const float rhoMin = rhoNonReflective - dRhoMax;
-					const float rhoMax = rhoNonReflective + dRhoMax;
-					BC.rho = std::clamp( BC.rho, rhoMin, rhoMax ); 
+					const float dRhoMin = dRhoNonReflective - BC.rhoReflectionTolerance;
+					const float dRhoMax = dRhoNonReflective + BC.rhoReflectionTolerance;
+					BC.dRho = std::clamp( BC.dRho, dRhoMin, dRhoMax ); 
 				}
 				restoreUxUyUz( outerNormalX, outerNormalY, outerNormalZ, BC, f );
 			}
@@ -285,8 +285,8 @@ void updateSingleGrid( GridStruct &Grid )
 				if ( useNonReflective )
 				{
 					// Schlaffer disertation 2013 eq (7.1) - (7.6)
-					float uNormalMin = ( rhoZ / ( rhoNonReflective + dRhoMax) ) - 1.f;
-					float uNormalMax = ( rhoZ / ( rhoNonReflective - dRhoMax) ) - 1.f;
+					float uNormalMin = ( rhoZ / ( dRhoNonReflective + 1.f + BC.rhoReflectionTolerance) ) - 1.f;
+					float uNormalMax = ( rhoZ / ( dRhoNonReflective + 1.f - BC.rhoReflectionTolerance) ) - 1.f;
 					if ( outerNormalX > 0 ) BC.ux = std::clamp( BC.ux, uNormalMin, uNormalMax );
 					if ( outerNormalX < 0 ) BC.ux = std::clamp( BC.ux, -uNormalMax, -uNormalMin );
 					if ( outerNormalY > 0 ) BC.uy = std::clamp( BC.uy, uNormalMin, uNormalMax );
@@ -315,11 +315,11 @@ void updateSingleGrid( GridStruct &Grid )
 			
 			// track previous and cumulative values
 			const float uNormal = (float)outerNormalX * BC.ux + (float)outerNormalY * BC.uy + (float)outerNormalZ * BC.uz;
-			rhoPrevView( index ) = BC.rho;
+			dRhoPrevView( index ) = BC.dRho;
 			uNormalPrevView( index ) = uNormal;
 			if ( trackFlow )
 			{
-				dRhoCumulativeView( index ) += ( BC.rho - 1.f );
+				dRhoCumulativeView( index ) += BC.dRho;
 				uNormalCumulativeView( index ) += uNormal;
 			}
 		};

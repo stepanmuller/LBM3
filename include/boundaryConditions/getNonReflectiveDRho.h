@@ -9,14 +9,15 @@
 
 // Based on Schlaffer disertation 2013, eq (6.30)
 
-__host__ __device__ float getNonReflectiveRho( const float &rhoZ, const float &rhoPrev, const float &uNormalPrev )
+__host__ __device__ float getNonReflectiveDRho( const float &rhoZ, const float &dRhoPrev, const float &uNormalPrev )
 {
 	
 	const float cs = INVSQRT3;
 	const float cs2 = 1.f / 3.f;
 	const float bracket = uNormalPrev + cs + 1.f;
+	const float rhoPrev = dRhoPrev + 1.f;
 	const float root = sqrtf( rhoPrev * rhoPrev * cs2 + 2.f * rhoPrev * rhoZ * bracket - rhoZ * rhoZ );
 	const float numerator = rhoPrev * cs2 + rhoZ * bracket + cs * root;
 	const float denominator = bracket * bracket + cs2;
-	return ( numerator / denominator );
+	return ( numerator / denominator ) - 1.f;
 }

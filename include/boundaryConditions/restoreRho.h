@@ -4,7 +4,7 @@ __host__ __device__ void restoreRho(
 	const float (&f)[27]
 )
 {
-	float &rho = BC.rho;
+	float rho = BC.dRho + 1.f;
 	const float &ux = BC.ux;
 	const float &uy = BC.uy;
 	const float &uz = BC.uz;
@@ -192,4 +192,5 @@ __host__ __device__ void restoreRho(
 		const float scmf = + f[0] + (2.f) * f[2] + (2.f) * f[4] + (2.f) * f[5] + (4.f) * f[8] + (4.f) * f[11] + (4.f) * f[14] + (8.f) * f[21];
 		rho = scmf / s;
 	}
+	BC.dRho = rho - 1.f;
 }

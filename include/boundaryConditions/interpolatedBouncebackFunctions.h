@@ -28,8 +28,8 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 	float fBuffer; 
 	// we use this to hold resulting fResult[inverseDirection] until we can overwrite fPost[inverseDirection]
 	// this is to avoid allocating all 26 floats for fResult
-	float rho, ux, uy, uz;
-	getRhoUxUyUz( rho, ux, uy, uz, fPost ); // we will need this to reconstruct fPre
+	float dRho, ux, uy, uz;
+	getDRhoUxUyUz( dRho, ux, uy, uz, fPost ); // we will need this to reconstruct fPre
 	const float omega1 = 1.f / (3.f * (nu * BC.nuMultiplier) + 0.5f);
 	// we will only read link lengths for links that exist
 	// those are all in the front ( non existing link lengths are not written and dont take any space in between)
@@ -64,15 +64,15 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 		if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;
 		// need to restore fPreOriginal[ direction ] from fPost
 		// Geier 2015 (E.4) 
-		float feqDirection = getFeqSingle( rho, ux, uy, uz, direction );
-		float feqInverseDirection = getFeqSingle( rho, ux, uy, uz, inverseDirection );
+		float feqDirection = getFeqSingle( dRho, ux, uy, uz, direction );
+		float feqInverseDirection = getFeqSingle( dRho, ux, uy, uz, inverseDirection );
 		float fPreDirection = 0.5f * ( fPost[ direction ] - fPost[ inverseDirection ] ) 
 						+ ( fPost[ direction ] + fPost[ inverseDirection ] - omega1 * ( feqDirection + feqInverseDirection ) ) / ( 2.f - 2.f * omega1 );
 		// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017, single node scheme eq (10)
 		const float eiDotFi = (float)CX_DIRECTIONS[ inverseDirection ] * BC.ux 
 							+ (float)CY_DIRECTIONS[ inverseDirection ] * BC.uy 
 							+ (float)CZ_DIRECTIONS[ inverseDirection ] * BC.uz;
-		const float wallMovementTerm = ( 2.f / ( 1.f + gamma ) ) * DIRECTION_WEIGHTS[ inverseDirection ] * eiDotFi * 3.f; 
+		const float wallMovementTerm = ( 2.f / ( 1.f + gamma ) ) * DIRECTION_WEIGHTS[ inverseDirection ] * eiDotFi * 3.f * (1.f + dRho); 
 		const float fResultInverseDirection = (( 1.f - gamma ) / ( 1.f + gamma )) * fPreDirection 
 											+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
 											+ ( gamma / ( 1.f + gamma ) ) * fPost[ direction ]

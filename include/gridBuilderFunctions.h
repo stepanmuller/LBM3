@@ -1247,10 +1247,10 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, BCIDMarkerLambda );
 		Grid.openBCs[ BCID ].openBCCount = TNL::sum( BCIDMarkerArray );
 		Grid.openBCs[ BCID ].indexArray.setSize( Grid.openBCs[ BCID ].openBCCount );
-		Grid.openBCs[ BCID ].rhoPrevArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+		Grid.openBCs[ BCID ].dRhoPrevArray.setSize( Grid.openBCs[ BCID ].openBCCount );
 		Grid.openBCs[ BCID ].uNormalPrevArray.setSize( Grid.openBCs[ BCID ].openBCCount );
-		Grid.openBCs[ BCID ].rhoCumulativeArray.setSize( Grid.openBCs[ BCID ].openBCCount );
-		Grid.openBCs[ BCID ].rhoCumulativeArray.setValue( 0.f );
+		Grid.openBCs[ BCID ].dRhoCumulativeArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+		Grid.openBCs[ BCID ].dRhoCumulativeArray.setValue( 0.f );
 		Grid.openBCs[ BCID ].uNormalCumulativeArray.setSize( Grid.openBCs[ BCID ].openBCCount );
 		Grid.openBCs[ BCID ].uNormalCumulativeArray.setValue( 0.f );
 		intArrayFromBoolArray( scanArray, BCIDMarkerArray );
