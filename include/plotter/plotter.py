@@ -231,17 +231,11 @@ def add_panel(
 
 	return image
 
-
 def create_exact_pixel_figure(n_vertical, n_horizontal, number_of_panels):
-	"""Create exact-size data axes and fullscreen-scaled UI elements."""
+	"""Create exact-size panels, doubling cell size until either target is met."""
 	if PIXELS_PER_CELL < 1 or not isinstance(PIXELS_PER_CELL, int):
 		raise ValueError("PIXELS_PER_CELL must be a positive integer.")
 
-	plot_width_px = n_horizontal * PIXELS_PER_CELL
-	plot_height_px = n_vertical * PIXELS_PER_CELL
-
-	# These are the desired decoration sizes after the image has been
-	# scaled to TARGET_SCREEN_WIDTH_PX x TARGET_SCREEN_HEIGHT_PX.
 	base_left_px = 60
 	base_right_px = 20
 	base_panel_gap_px = 80
@@ -255,7 +249,6 @@ def create_exact_pixel_figure(n_vertical, n_horizontal, number_of_panels):
 		+ base_right_px
 		+ (number_of_panels - 1) * base_panel_gap_px
 	)
-
 	base_vertical_ui_px = (
 		base_bottom_px
 		+ base_colorbar_height_px
@@ -269,55 +262,64 @@ def create_exact_pixel_figure(n_vertical, n_horizontal, number_of_panels):
 	if TARGET_SCREEN_HEIGHT_PX <= base_vertical_ui_px:
 		raise ValueError("TARGET_SCREEN_HEIGHT_PX is too small for the layout.")
 
-	total_data_width_px = number_of_panels * plot_width_px
+	pixels_per_cell = PIXELS_PER_CELL
 
-	# This is approximately the reciprocal of the scale factor that a
-	# fullscreen image viewer will apply to the completed PNG.
-	width_ui_scale = total_data_width_px / (
-		TARGET_SCREEN_WIDTH_PX - base_horizontal_ui_px
-	)
+	while True:
+		plot_width_px = n_horizontal * pixels_per_cell
+		plot_height_px = n_vertical * pixels_per_cell
 
-	height_ui_scale = plot_height_px / (
-		TARGET_SCREEN_HEIGHT_PX - base_vertical_ui_px
-	)
+		width_ui_scale = (
+			number_of_panels * plot_width_px
+			/ (TARGET_SCREEN_WIDTH_PX - base_horizontal_ui_px)
+		)
+		height_ui_scale = (
+			plot_height_px
+			/ (TARGET_SCREEN_HEIGHT_PX - base_vertical_ui_px)
+		)
+		ui_scale = max(
+			MIN_UI_SCALE,
+			width_ui_scale,
+			height_ui_scale,
+		)
 
-	ui_scale = max(
-		MIN_UI_SCALE,
-		width_ui_scale,
-		height_ui_scale,
-	)
+		# Integer coordinates preserve exact cell-to-pixel alignment.
+		def scaled_pixels(base_size):
+			return max(1, int(round(base_size * ui_scale)))
 
-	# Keep axes boundaries on integer output pixels.
-	def scaled_pixels(base_size):
-		return max(1, int(round(base_size * ui_scale)))
+		left_px = scaled_pixels(base_left_px)
+		right_px = scaled_pixels(base_right_px)
+		panel_gap_px = scaled_pixels(base_panel_gap_px)
+		bottom_px = scaled_pixels(base_bottom_px)
+		colorbar_height_px = scaled_pixels(base_colorbar_height_px)
+		colorbar_gap_px = scaled_pixels(base_colorbar_gap_px)
+		top_px = scaled_pixels(base_top_px)
 
-	left_px = scaled_pixels(base_left_px)
-	right_px = scaled_pixels(base_right_px)
-	panel_gap_px = scaled_pixels(base_panel_gap_px)
-	bottom_px = scaled_pixels(base_bottom_px)
-	colorbar_height_px = scaled_pixels(base_colorbar_height_px)
-	colorbar_gap_px = scaled_pixels(base_colorbar_gap_px)
-	top_px = scaled_pixels(base_top_px)
+		plot_bottom_px = (
+			bottom_px
+			+ colorbar_height_px
+			+ colorbar_gap_px
+		)
+		figure_width_px = (
+			left_px
+			+ number_of_panels * plot_width_px
+			+ (number_of_panels - 1) * panel_gap_px
+			+ right_px
+		)
+		figure_height_px = (
+			plot_bottom_px
+			+ plot_height_px
+			+ top_px
+		)
 
-	plot_bottom_px = (
-		bottom_px
-		+ colorbar_height_px
-		+ colorbar_gap_px
-	)
+		if (
+			figure_width_px >= TARGET_SCREEN_WIDTH_PX
+			or figure_height_px >= TARGET_SCREEN_HEIGHT_PX
+		):
+			break
 
-	figure_width_px = (
-		left_px
-		+ number_of_panels * plot_width_px
-		+ (number_of_panels - 1) * panel_gap_px
-		+ right_px
-	)
+		pixels_per_cell *= 2
 
-	figure_height_px = (
-		plot_bottom_px
-		+ plot_height_px
-		+ top_px
-	)
-
+	# Render everything once at the final size, keeping text sharp.
 	fig = plt.figure(
 		figsize=(figure_width_px / DPI, figure_height_px / DPI),
 		dpi=DPI,
@@ -356,6 +358,7 @@ def create_exact_pixel_figure(n_vertical, n_horizontal, number_of_panels):
 		"plot_width_px": plot_width_px,
 		"plot_height_px": plot_height_px,
 		"ui_scale": ui_scale,
+		"pixels_per_cell": pixels_per_cell,
 	}
 
 	return fig, axes, colorbar_axes, geometry
