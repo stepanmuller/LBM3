@@ -188,7 +188,7 @@ def plotTrackerCustom(data_file="/dev/shm/trackerData.bin",
 		values, labels = [], []
 		for slot in range(slots):
 			name = read_string(stream)
-			unit = read_string(stream) or "1"
+			unit = read_string(stream) or "[1]"
 			data = np.fromfile(stream, dtype=np.float32, count=count)
 			if data.size != count:
 				raise ValueError("Incomplete custom tracker history")
@@ -260,7 +260,7 @@ def plotTrackerCustom(data_file="/dev/shm/trackerData.bin",
 							  colors="black", linestyles="--", linewidth=1.5)
 					if window == 1:
 						ax.plot(iterations[-1], average, "o", color="black", markersize=3)
-					value_label = f"{average:.5g} [{unit}]"
+					value_label = f"{average:.5g} {unit}"
 				else:
 					value_label = "unavailable"
 				qualifier = " (finite samples)" if finite.size != window else ""

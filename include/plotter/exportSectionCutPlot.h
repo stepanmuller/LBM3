@@ -38,11 +38,11 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	
 	BoundsStruct TotalGridBounds;
 	TotalGridBounds.xMin = InfoFinest.ox - 0.5f * InfoFinest.res;
-	TotalGridBounds.xMax = InfoFinest.ox + InfoFinest.res * InfoFinest.cellCountX + 0.5f * InfoFinest.res;
+	TotalGridBounds.xMax = InfoFinest.ox + InfoFinest.res * (InfoFinest.cellCountX - 0.5f);
 	TotalGridBounds.yMin = InfoFinest.oy - 0.5f * InfoFinest.res;
-	TotalGridBounds.yMax = InfoFinest.oy + InfoFinest.res * InfoFinest.cellCountY + 0.5f * InfoFinest.res;
+	TotalGridBounds.yMax = InfoFinest.oy + InfoFinest.res * (InfoFinest.cellCountY - 0.5f);
 	TotalGridBounds.zMin = InfoFinest.oz - 0.5f * InfoFinest.res;
-	TotalGridBounds.zMax = InfoFinest.oz + InfoFinest.res * InfoFinest.cellCountZ + 0.5f * InfoFinest.res;
+	TotalGridBounds.zMax = InfoFinest.oz + InfoFinest.res * (InfoFinest.cellCountZ - 0.5f);
 	
 	if ( Bounds.xMin != 0.f || Bounds.xMax != 0.f || Bounds.yMin != 0.f || Bounds.yMax != 0.f || Bounds.zMin != 0.f ||Bounds.zMax != 0.f )
 	{
