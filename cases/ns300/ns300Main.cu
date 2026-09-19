@@ -2,11 +2,11 @@ constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = true;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
-constexpr float RES_GLOBAL = 2.64f;
+constexpr float RES_GLOBAL = 3.2f; // 2.64f;
 constexpr int GRID_LEVEL_COUNT = 4;
 constexpr int WALL_REFINEMENT_COUNT = 3;
 
-constexpr int ITERATION_COUNT = 100000;
+constexpr int ITERATION_COUNT = 80000; // 100000;
 constexpr int PLOTTER_PERIOD = 2000;
 constexpr int TRACKER_PERIOD = 1;
 
@@ -87,14 +87,14 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = - ( uzInlet ) * velocityMultiplier;
 		BC.openBCID = 0;
-		BC.rhoReflectionTolerance = 1.0e-7f;
+		BC.rhoReflectionTolerance = 3.8e-8f * RES_GLOBAL;
 	}
 	else if ( jCell == Info.cellCountY-1 ) // Outlet
 	{
 		BC.dirichletRho = true;
 		BC.openBCID = 1;
 		BC.dRho = 0.f;
-		BC.rhoReflectionTolerance = 1.0e-7f;
+		BC.rhoReflectionTolerance = 3.8e-8f * RES_GLOBAL;
 	}
 }
 
@@ -162,7 +162,7 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	// Detail in rotor frame
 	if ( GRID_LEVEL_COUNT >= 3 )
 	{
-		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[2].rotors[0].Info, kCut, iterationsFinished + 4 );
+		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[3].rotors[0].Info, kCut, iterationsFinished + 4 );
 		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	}
 	std::cout << std::endl;
@@ -188,9 +188,10 @@ int main(int argc, char **argv)
 	
 	grids[0].Info.useRotors = false;
 	grids[1].Info.useRotors = false;
+	grids[2].Info.useRotors = false;
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
-	grids[2].rotors[0].Info.radiansPerSecond = radiansPerSecond;
-	grids[2].rotors[0].Info.rotateAlongZ = true;
+	grids[3].rotors[0].Info.radiansPerSecond = radiansPerSecond;
+	grids[3].rotors[0].Info.rotateAlongZ = true;
 	
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
