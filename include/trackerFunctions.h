@@ -41,18 +41,25 @@ void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 	// set sizes and values
 	if constexpr (TRACK_OPEN_BOUNDARIES)
 	{
-		Tracker.volumetricFlowArray.setSizes( Tracker.openBCCount, ITERATION_COUNT ); 
+		Tracker.normalVelocityArray.setSizes( Tracker.openBCCount, ITERATION_COUNT ); 
 		Tracker.massFlowArray.setSizes( Tracker.openBCCount, ITERATION_COUNT ); 
+		Tracker.momentumThrustArray.setSizes( Tracker.openBCCount, ITERATION_COUNT ); 
 		Tracker.pressureArray.setSizes( Tracker.openBCCount, ITERATION_COUNT );
 		Tracker.pressurePowerArray.setSizes( Tracker.openBCCount, ITERATION_COUNT ); 
-		Tracker.momentumThrustArray.setSizes( Tracker.openBCCount, ITERATION_COUNT ); 
 		Tracker.normalKineticPowerArray.setSizes( Tracker.openBCCount, ITERATION_COUNT ); 
-		Tracker.volumetricFlowArray.setValue( 0.f ); 
+		Tracker.normalVelocityArray.setValue( 0.f ); 
 		Tracker.massFlowArray.setValue( 0.f ); 
+		Tracker.momentumThrustArray.setValue( 0.f ); 
 		Tracker.pressureArray.setValue( 0.f );
 		Tracker.pressurePowerArray.setValue( 0.f ); 
-		Tracker.momentumThrustArray.setValue( 0.f ); 
 		Tracker.normalKineticPowerArray.setValue( 0.f ); 
+		// now tiny arrays that only hold the value from the last iteration
+		Tracker.normalVelocity.setSize( Tracker.openBCCount ); 
+		Tracker.massFlow.setSize( Tracker.openBCCount ); 
+		Tracker.momentumThrust.setSize( Tracker.openBCCount ); 
+		Tracker.pressure.setSize( Tracker.openBCCount );
+		Tracker.pressurePower.setSize( Tracker.openBCCount ); 
+		Tracker.normalKineticPower.setSize( Tracker.openBCCount ); 
 	}
 	if constexpr (TRACK_WALL_FORCE)
 	{
@@ -68,6 +75,13 @@ void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 		Tracker.wallTxArray.setValue( 0.f ); 
 		Tracker.wallTyArray.setValue( 0.f ); 
 		Tracker.wallTzArray.setValue( 0.f );
+		// now tiny arrays that only hold the value from the last iteration
+		Tracker.wallFx.setSize( Tracker.wallCount ); 
+		Tracker.wallFy.setSize( Tracker.wallCount ); 
+		Tracker.wallFz.setSize( Tracker.wallCount );
+		Tracker.wallTx.setSize( Tracker.wallCount ); 
+		Tracker.wallTy.setSize( Tracker.wallCount ); 
+		Tracker.wallTz.setSize( Tracker.wallCount );
 	}
 	if constexpr (TRACK_ROTOR_FORCE)
 	{
@@ -83,6 +97,13 @@ void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 		Tracker.rotorTxArray.setValue( 0.f ); 
 		Tracker.rotorTyArray.setValue( 0.f ); 
 		Tracker.rotorTzArray.setValue( 0.f );
+		// now tiny arrays that only hold the value from the last iteration
+		Tracker.rotorFx.setSize( Tracker.rotorCount ); 
+		Tracker.rotorFy.setSize( Tracker.rotorCount ); 
+		Tracker.rotorFz.setSize( Tracker.rotorCount );
+		Tracker.rotorTx.setSize( Tracker.rotorCount ); 
+		Tracker.rotorTy.setSize( Tracker.rotorCount ); 
+		Tracker.rotorTz.setSize( Tracker.rotorCount );
 	}
 	
 	std::cout << "Done" << std::endl;
@@ -91,7 +112,10 @@ void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 
 void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 {
-	const int trackerIndex = grids[0].Info.iterationsFinished - 1; // this is the write position
+	// update iterationsFinished
+	Tracker.iterationsFinished = grids[0].Info.iterationsFinished;
+	// trackerIndex is the write position
+	const int trackerIndex = grids[0].Info.iterationsFinished - 1; 
 	
 	// 1) Open BC
 	if constexpr (TRACK_OPEN_BOUNDARIES)
@@ -99,11 +123,11 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 		for ( int openBCID = 0; openBCID < Tracker.openBCCount; openBCID++ )
 		{
 			float aream2 = 0.f;
-			float volumetricFlow = 0.f; 
+			float normalVelocity = 0.f; 
 			float massFlow = 0.f; 
+			float momentumThrust = 0.f;
 			float pressure = 0.f;
 			float pressurePower = 0.f;
-			float momentumThrust = 0.f;
 			float normalKineticPower = 0.f;
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ )
 			{
@@ -125,9 +149,9 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 						SixFloatArrayType resultArray;
 						resultArray[0] = uNormal;                    				// volumetricFlow
 						resultArray[1] = rho * uNormal;                    			// massFlow
-						resultArray[2] = dRho;                          			// pressure integral
-						resultArray[3] = dRho * uNormal;                     		// pressurePower
-						resultArray[4] = rho * uNormal * TNL::abs(uNormal);      	// momentumThrust
+						resultArray[2] = rho * uNormal * TNL::abs(uNormal);      	// momentumThrust
+						resultArray[3] = dRho;                          			// pressure integral
+						resultArray[4] = dRho * uNormal;                     		// pressurePower
 						resultArray[5] = 0.5f * rho * uNormal * uNormal * uNormal; 	// normalKineticPower
 						return resultArray;
 					};
@@ -145,26 +169,26 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 					const float velocityMultiplier = (Info.res/1000.f) / Info.dtPhys;
 					resultArray[0] *= cellAream2 * velocityMultiplier;
 					resultArray[1] *= cellAream2 * velocityMultiplier * RHO_PHYS;
-					convertToPhysicalPressure( resultArray[2], Info );
-					resultArray[2] *= cellAream2;
+					resultArray[2] *= cellAream2 * velocityMultiplier * velocityMultiplier * RHO_PHYS;
 					convertToPhysicalPressure( resultArray[3], Info );
-					resultArray[3] *= cellAream2 * velocityMultiplier;
-					resultArray[4] *= cellAream2 * velocityMultiplier * velocityMultiplier * RHO_PHYS;
+					resultArray[3] *= cellAream2;
+					convertToPhysicalPressure( resultArray[4], Info );
+					resultArray[4] *= cellAream2 * velocityMultiplier;
 					resultArray[5] *= cellAream2 * velocityMultiplier * velocityMultiplier * velocityMultiplier * RHO_PHYS;
 					
 					// accumulate
 					aream2 += Grid.openBCs[openBCID].trackFlowCount * cellAream2;
-					volumetricFlow     += resultArray[0];
+					normalVelocity     += resultArray[0];
 					massFlow           += resultArray[1];
-					pressure           += resultArray[2];
-					pressurePower      += resultArray[3];
-					momentumThrust     += resultArray[4];
+					momentumThrust     += resultArray[2];
+					pressure           += resultArray[3];
+					pressurePower      += resultArray[4];
 					normalKineticPower += resultArray[5];
 				}
 			}
-			// we have a pressure integral now, divide to get area averaged pressure
+			// we have a pressure and velocity integral now, divide to get area averaged pressure and velocity
+			normalVelocity /= aream2;
 			pressure /= aream2;
-			
 			// write the results
 			// if tracker period is > 1, also write (period-1) values backward and forward
 			// backward, because in those steps we did not launch updateTracker
@@ -174,14 +198,20 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 			{
 				const int sampleIndex = trackerIndex + shift;
 				if (sampleIndex < 0 || sampleIndex >= ITERATION_COUNT) continue;
-				Tracker.volumetricFlowArray( openBCID, sampleIndex ) = volumetricFlow; 
+				Tracker.normalVelocityArray( openBCID, sampleIndex ) = normalVelocity; 
 				Tracker.massFlowArray( openBCID, sampleIndex ) = massFlow;
+				Tracker.momentumThrustArray( openBCID, sampleIndex ) = momentumThrust;
 				Tracker.pressureArray( openBCID, sampleIndex ) = pressure;
 				Tracker.pressurePowerArray( openBCID, sampleIndex ) = pressurePower;
-				Tracker.momentumThrustArray( openBCID, sampleIndex ) = momentumThrust;
 				Tracker.normalKineticPowerArray( openBCID, sampleIndex ) = normalKineticPower;
 			}
-			
+			// update the small arrays
+			Tracker.normalVelocity( openBCID ) = normalVelocity; 
+			Tracker.massFlow( openBCID ) = massFlow;
+			Tracker.momentumThrust( openBCID ) = momentumThrust;
+			Tracker.pressure( openBCID ) = pressure;
+			Tracker.pressurePower( openBCID ) = pressurePower;
+			Tracker.normalKineticPower( openBCID ) = normalKineticPower;
 		}
 	}
 	
@@ -306,6 +336,13 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 				Tracker.rotorTyArray( rotorID, sampleIndex ) = ty;
 				Tracker.rotorTzArray( rotorID, sampleIndex ) = tz;
 			}
+			// update the small arrays
+			Tracker.rotorFx( rotorID ) = fx; 
+			Tracker.rotorFy( rotorID ) = fy;
+			Tracker.rotorFz( rotorID ) = fz;
+			Tracker.rotorTx( rotorID ) = tx;
+			Tracker.rotorTy( rotorID ) = ty;
+			Tracker.rotorTz( rotorID ) = tz;
 		}
 	}
 	
@@ -419,6 +456,13 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 				Tracker.wallTyArray( wallID, sampleIndex ) = ty;
 				Tracker.wallTzArray( wallID, sampleIndex ) = tz;
 			}
+			// update the small arrays
+			Tracker.wallFx( wallID ) = fx; 
+			Tracker.wallFy( wallID ) = fy;
+			Tracker.wallFz( wallID ) = fz;
+			Tracker.wallTx( wallID ) = tx;
+			Tracker.wallTy( wallID ) = ty;
+			Tracker.wallTz( wallID ) = tz;
 		}
 	}
 	

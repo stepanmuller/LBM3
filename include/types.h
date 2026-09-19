@@ -12,6 +12,11 @@
 #include <vector>
 #include <algorithm>
 #include <new>
+#include <array>
+#include <cstdio>
+#include <stdexcept>
+#include <unistd.h>
+
 
 #include <TNL/Algorithms/parallelFor.h>
 #include <TNL/Algorithms/AtomicOperations.h>
@@ -261,10 +266,17 @@ struct SectionCutStruct { 	FloatArray2DType dRhoArray; FloatArray2DType uxArray;
 struct SectionCutStructCPU { 	FloatArray2DTypeCPU dRhoArray; FloatArray2DTypeCPU uxArray; FloatArray2DTypeCPU uyArray; FloatArray2DTypeCPU uzArray; 
 								FloatArray2DTypeCPU markerArray; IntArray2DTypeCPU gridIDArray; };
 								
-struct TrackerStruct { 	int openBCCount = 0; int wallCount = 0; int rotorCount = 0;
-						FloatArray2DTypeCPU volumetricFlowArray; FloatArray2DTypeCPU massFlowArray; FloatArray2DTypeCPU pressureArray;
-						FloatArray2DTypeCPU pressurePowerArray; FloatArray2DTypeCPU momentumThrustArray; FloatArray2DTypeCPU normalKineticPowerArray; 
+struct TrackerStruct { 	int iterationsFinished = 0; int openBCCount = 0; int wallCount = 0; int rotorCount = 0; float averagePercent = 30.f;
+						FloatArray2DTypeCPU normalVelocityArray; FloatArray2DTypeCPU massFlowArray; FloatArray2DTypeCPU momentumThrustArray; 
+						FloatArray2DTypeCPU pressureArray; FloatArray2DTypeCPU pressurePowerArray; FloatArray2DTypeCPU normalKineticPowerArray; 
 						FloatArray2DTypeCPU wallFxArray; FloatArray2DTypeCPU wallFyArray; FloatArray2DTypeCPU wallFzArray;
 						FloatArray2DTypeCPU wallTxArray; FloatArray2DTypeCPU wallTyArray; FloatArray2DTypeCPU wallTzArray;
 						FloatArray2DTypeCPU rotorFxArray; FloatArray2DTypeCPU rotorFyArray; FloatArray2DTypeCPU rotorFzArray;
-						FloatArray2DTypeCPU rotorTxArray; FloatArray2DTypeCPU rotorTyArray; FloatArray2DTypeCPU rotorTzArray; };	
+						FloatArray2DTypeCPU rotorTxArray; FloatArray2DTypeCPU rotorTyArray; FloatArray2DTypeCPU rotorTzArray; 
+						// now tiny arrays that only hold the value from the last iteration, 1D dimension openBCCount, wallCount, rotorCount
+						FloatArrayTypeCPU normalVelocity; FloatArrayTypeCPU massFlow; FloatArrayTypeCPU momentumThrust; 
+						FloatArrayTypeCPU pressure; FloatArrayTypeCPU pressurePower; FloatArrayTypeCPU normalKineticPower; 
+						FloatArrayTypeCPU wallFx; FloatArrayTypeCPU wallFy; FloatArrayTypeCPU wallFz;
+						FloatArrayTypeCPU wallTx; FloatArrayTypeCPU wallTy; FloatArrayTypeCPU wallTz;
+						FloatArrayTypeCPU rotorFx; FloatArrayTypeCPU rotorFy; FloatArrayTypeCPU rotorFz;
+						FloatArrayTypeCPU rotorTx; FloatArrayTypeCPU rotorTy; FloatArrayTypeCPU rotorTz; };	
