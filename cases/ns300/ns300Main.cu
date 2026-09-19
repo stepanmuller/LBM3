@@ -25,10 +25,10 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathStator = "../../../../ns300/ns300_STATOR_ENLARGED_TIP_GAP.STL";
-//std::string STLPathStator = "../../../../ns300/ns300_STATOR.STL";
+std::string STLPathStator = "../../../../ns300/ns300_STATOR.STL";
 std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
 std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
+std::string STLPathTipGapBlocker = "../../../../ns300/ns300_TIP_GAP_BLOCKER.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -103,16 +103,22 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	const float r = std::sqrt( x * x + y * y );
 	const float vtPhys = radiansPerSecond * (r / 1000.f);
 	const float vt = vtPhys * ( uzInlet / uzInletPhys );
-	if ( BC.wallID == 0 ) 
+	if ( BC.wallID == 0 ) // stator
 	{
 		BC.ux = 0.f;
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
-	if ( BC.wallID == 1 || BC.wallID == 2 ) 
+	if ( BC.wallID == 1 ) // rotor shaft, hub, shroud
 	{
 		BC.ux = - vt * (y / r);
 		BC.uy = vt * (x / r);
+		BC.uz = 0.f;
+	}
+	if ( BC.wallID == 2 ) // tip gap blocker -> apply half of the rotation
+	{
+		BC.ux = 0.5f * ( - vt * (y / r) );
+		BC.uy = 0.5f * ( vt * (x / r) );
 		BC.uz = 0.f;
 	}
 	if ( kCell >= Info.cellCountZ-20 || jCell >= Info.cellCountY-20 ) BC.collisionLimiter = 0.f;
@@ -162,9 +168,10 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 int main(int argc, char **argv)
 {
 	// STLs
-	std::vector<STLStruct> gridStaticSTLs( 2 );
+	std::vector<STLStruct> gridStaticSTLs( 3 );
 	readSTL( gridStaticSTLs[0], STLPathStator );
 	readSTL( gridStaticSTLs[1], STLPathRotorShaft );
+	readSTL( gridStaticSTLs[2], STLPathTipGapBlocker );
 	
 	std::vector<STLStruct> rotorSTLs( 1 );
 	readSTL( rotorSTLs[0], STLPathRotorBlades );
