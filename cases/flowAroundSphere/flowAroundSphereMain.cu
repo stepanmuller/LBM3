@@ -1,4 +1,4 @@
-// This is a close copy of the drag crisis case shown in
+// This is a close copy of the drag crisis case shown by
 // Martin Geier, Andrea Pasquali, Martin Schönherr:
 // Parametrization of the cumulant lattice Boltzmann method for fourth order
 // accurate diffusion Part II: application to flow around a sphere at drag crisis
@@ -32,7 +32,7 @@ constexpr bool TRACK_OPEN_BOUNDARIES = true;
 constexpr float sphereDiameterPhys = 1000.f;											// mm
 constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
 
-constexpr int GRID_LEVEL_COUNT = 6;
+constexpr int GRID_LEVEL_COUNT = 5;
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (GRID_LEVEL_COUNT - 1));
 
@@ -59,27 +59,27 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	float xStart = 0.f; float xEnd = 0.f; float rLimit = 0.f;
 	if ( Info.gridID == 0 )
 	{
-		xStart = -1300.f;
-		xEnd = 3300.f;
-		rLimit = 1500.f;
+		xStart = -1200.f;
+		xEnd = 3250.f;
+		rLimit = 1350.f;
 	}
 	else if ( Info.gridID == 1 )
 	{
-		xStart = -950.f;
-		xEnd = 3000.f;
-		rLimit = 1100.f;
+		xStart = -850.f;
+		xEnd = 2950.f;
+		rLimit = 1050.f;
 	}
 	else if ( Info.gridID == 2 )
 	{
-		xStart = -750.f;
-		xEnd = 2900.f;
-		rLimit = 950.f;
+		xStart = -690.f;
+		xEnd = 2850.f;
+		rLimit = 900.f;
 	}
 	else if ( Info.gridID == 3 )
 	{
-		xStart = -640.f;
-		xEnd = 1300.f;
-		rLimit = 850.f;
+		xStart = -620.f;
+		xEnd = 1250.f;
+		rLimit = 830.f;
 	}
 	if ( Info.gridID < 4 )
 	{
