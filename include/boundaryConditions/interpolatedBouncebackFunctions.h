@@ -17,6 +17,25 @@
 // would need a rewrite. The link length evaluation below would require a serious rewrite
 // that would evaluate the link lengths using integer arithmetic.
 
+// Population increment for changing only the first central moments by (gx, gy, gz).
+// Uses the midpoint fluid velocity from applyCollision, in lattice units.
+// This is an increment, so shifting stored populations by their weights has no effect.
+__cuda_callable__ inline float getGeierForcePopulationSingle(
+    const float ux, const float uy, const float uz,
+    const float gx, const float gy, const float gz, const int direction )
+{
+    const int i = CX_DIRECTIONS[direction];
+    const int j = CY_DIRECTIONS[direction];
+    const int k = CZ_DIRECTIONS[direction];
+    const float ax = 1.f - i * i + (1.5f * i * i - 1.f) * ux * ux + 0.5f * i * ux;
+    const float ay = 1.f - j * j + (1.5f * j * j - 1.f) * uy * uy + 0.5f * j * uy;
+    const float az = 1.f - k * k + (1.5f * k * k - 1.f) * uz * uz + 0.5f * k * uz;
+
+    return gx * ((3.f * i * i - 2.f) * ux + 0.5f * i) * ay * az
+         + gy * ((3.f * j * j - 2.f) * uy + 0.5f * j) * ax * az
+         + gz * ((3.f * k * k - 2.f) * uz + 0.5f * k) * ax * ay;
+}
+
 // Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
 // Single node scheme eq (10)
 // Set l = gamma which also agrees with Martin Geier, 2015
@@ -30,6 +49,18 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 	// this is to avoid allocating all 26 floats for fResult
 	float dRho, ux, uy, uz;
 	getDRhoUxUyUz( dRho, ux, uy, uz, fPost ); // we will need this to reconstruct fPre
+	
+	const bool hasForcing = BC.gx != 0.f || BC.gy != 0.f || BC.gz != 0.f;
+	if ( hasForcing )
+	{
+		// fPost carries jPre + g. Recover the collision midpoint (jPre + g/2) / rho.
+		// BC.g is the full lattice momentum increment, not an acceleration.
+		const float halfRhoInv = 0.5f / (1.f + dRho);
+		ux -= BC.gx * halfRhoInv;
+		uy -= BC.gy * halfRhoInv;
+		uz -= BC.gz * halfRhoInv;
+	}
+	
 	const float omega1 = 1.f / (3.f * (nu * BC.nuMultiplier) + 0.5f);
 	// we will only read link lengths for links that exist
 	// those are all in the front ( non existing link lengths are not written and dont take any space in between)
@@ -64,10 +95,21 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 		if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;
 		// need to restore fPreOriginal[ direction ] from fPost
 		// Geier 2015 (E.4) 
+		// Need to extend this formula to account for forcing! This caused trouble where rotor cell was also wall adjacent
 		float feqDirection = getFeqSingle( dRho, ux, uy, uz, direction );
 		float feqInverseDirection = getFeqSingle( dRho, ux, uy, uz, inverseDirection );
 		float fPreDirection = 0.5f * ( fPost[ direction ] - fPost[ inverseDirection ] ) 
 						+ ( fPost[ direction ] + fPost[ inverseDirection ] - omega1 * ( feqDirection + feqInverseDirection ) ) / ( 2.f - 2.f * omega1 );
+		// Forcing correction here:
+		if ( hasForcing )
+		{
+			const float forceDirection = getGeierForcePopulationSingle( ux, uy, uz, BC.gx, BC.gy, BC.gz, direction );
+			const float forceInverseDirection = getGeierForcePopulationSingle( ux, uy, uz, BC.gx, BC.gy, BC.gz, inverseDirection );
+			// Undo the output half-force before E.4, then the input half-force after it.
+			// Both force populations and feq above use the same midpoint velocity.
+			fPreDirection -= ((4.f - 3.f * omega1) * forceDirection + omega1 * forceInverseDirection)
+							 / (4.f - 4.f * omega1);
+		}
 		// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017, single node scheme eq (10)
 		const float eiDotFi = (float)CX_DIRECTIONS[ inverseDirection ] * BC.ux 
 							+ (float)CY_DIRECTIONS[ inverseDirection ] * BC.uy 

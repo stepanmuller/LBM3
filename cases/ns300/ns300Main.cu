@@ -162,7 +162,7 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	// Detail in rotor frame
 	if ( GRID_LEVEL_COUNT >= 3 )
 	{
-		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[3].rotors[0].Info, kCut, iterationsFinished + 4 );
+		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[GRID_LEVEL_COUNT-2].rotors[0].Info, kCut, iterationsFinished + 4 );
 		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	}
 	std::cout << std::endl;
@@ -188,10 +188,10 @@ int main(int argc, char **argv)
 	
 	grids[0].Info.useRotors = false;
 	grids[1].Info.useRotors = false;
-	grids[2].Info.useRotors = false;
+	grids[GRID_LEVEL_COUNT-2].Info.useRotors = false;
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
-	grids[3].rotors[0].Info.radiansPerSecond = radiansPerSecond;
-	grids[3].rotors[0].Info.rotateAlongZ = true;
+	grids[GRID_LEVEL_COUNT-1].rotors[0].Info.radiansPerSecond = radiansPerSecond;
+	grids[GRID_LEVEL_COUNT-1].rotors[0].Info.rotateAlongZ = true;
 	
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
