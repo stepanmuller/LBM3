@@ -1163,12 +1163,15 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Wall.wallAdjacentCount, wallDataLambda );
 	// allocate force tracker
-	Grid.Wall.gxArray.setSize( Grid.Wall.wallAdjacentCount );
-	Grid.Wall.gyArray.setSize( Grid.Wall.wallAdjacentCount );
-	Grid.Wall.gzArray.setSize( Grid.Wall.wallAdjacentCount );
-	Grid.Wall.gxArray.setValue( 0.f );
-	Grid.Wall.gyArray.setValue( 0.f );
-	Grid.Wall.gzArray.setValue( 0.f );
+	if constexpr (TRACK_WALL_FORCE)
+	{
+		Grid.Wall.gxArray.setSize( Grid.Wall.wallAdjacentCount );
+		Grid.Wall.gyArray.setSize( Grid.Wall.wallAdjacentCount );
+		Grid.Wall.gzArray.setSize( Grid.Wall.wallAdjacentCount );
+		Grid.Wall.gxArray.setValue( 0.f );
+		Grid.Wall.gyArray.setValue( 0.f );
+		Grid.Wall.gzArray.setValue( 0.f );
+	}
 	
 	if ( !iAmFinest )
 	{
@@ -1249,10 +1252,13 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		Grid.openBCs[ BCID ].indexArray.setSize( Grid.openBCs[ BCID ].openBCCount );
 		Grid.openBCs[ BCID ].dRhoPrevArray.setSize( Grid.openBCs[ BCID ].openBCCount );
 		Grid.openBCs[ BCID ].uNormalPrevArray.setSize( Grid.openBCs[ BCID ].openBCCount );
-		Grid.openBCs[ BCID ].dRhoCumulativeArray.setSize( Grid.openBCs[ BCID ].openBCCount );
-		Grid.openBCs[ BCID ].dRhoCumulativeArray.setValue( 0.f );
-		Grid.openBCs[ BCID ].uNormalCumulativeArray.setSize( Grid.openBCs[ BCID ].openBCCount );
-		Grid.openBCs[ BCID ].uNormalCumulativeArray.setValue( 0.f );
+		if constexpr (TRACK_OPEN_BOUNDARIES)
+		{
+			Grid.openBCs[ BCID ].dRhoCumulativeArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+			Grid.openBCs[ BCID ].dRhoCumulativeArray.setValue( 0.f );
+			Grid.openBCs[ BCID ].uNormalCumulativeArray.setSize( Grid.openBCs[ BCID ].openBCCount );
+			Grid.openBCs[ BCID ].uNormalCumulativeArray.setValue( 0.f );
+		}
 		intArrayFromBoolArray( scanArray, BCIDMarkerArray );
 		TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
 		auto scanView2 = scanArray.getConstView();
@@ -1360,7 +1366,8 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 		Info.gridMemoryBytes = 27LL * (long long)Info.cellCount * 4LL; // fArray
 		Info.gridMemoryBytes += 2LL * (long long)Info.cellCount * 4LL; // IJK shifter, wallMap
 		Info.gridMemoryBytes += 6LL * (long long)Grid.IJKNBR.iArray.getSize() * 4LL; // compressed iArray, jArray, kArray, jPlusArray, kPlusArray, jkPlusArray
-		Info.gridMemoryBytes += 12LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // index array + wall data + linkLengths + wall force tracker
+		Info.gridMemoryBytes += 9LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // index array + wall data + linkLengths
+		if constexpr (TRACK_WALL_FORCE) Info.gridMemoryBytes += 3LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // wall force tracker
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
 		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
@@ -1368,11 +1375,12 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 		{
 			Info.gridMemoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMapArray.getSize() * 4LL; // rotorMap
 			Info.gridMemoryBytes += 65LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // indexArray, interpolationArray
-			Info.gridMemoryBytes += 81LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // rotor force tracker
+			if constexpr (TRACK_ROTOR_FORCE) Info.gridMemoryBytes += 81LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // rotor force tracker
 		}
 		for ( int openBCID = 0; openBCID < (int)Grid.openBCs.size(); openBCID++ )
 		{
-			Info.gridMemoryBytes += 5LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // indexList, rhoPrev, uNormalPrev, rhoCumulative, uNormalCumulative
+			Info.gridMemoryBytes += 3LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // indexList, rhoPrev, uNormalPrev
+			if constexpr (TRACK_OPEN_BOUNDARIES) Info.gridMemoryBytes += 2LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // rhoCumulative, uNormalCumulative
 		}
 		std::cout << "	Level " << level << " with " << Info.cellCount << "	cells requires	" << Info.gridMemoryBytes / 1048576.0 << "	MiB ... " << std::flush;;
 		

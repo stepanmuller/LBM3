@@ -169,12 +169,11 @@ void updateSingleGrid( GridStruct &Grid )
 		}
 	
 		// last step: write force
-		if ( TRACK_WALL_FORCE && trackForce )
-		{
-			gxWallView( wallMap ) += gxWall;
-			gyWallView( wallMap ) += gyWall;
-			gzWallView( wallMap ) += gzWall;
-		}
+		if constexpr (!TRACK_WALL_FORCE) return;
+		if ( !trackForce ) return;
+		gxWallView( wallMap ) += gxWall;
+		gyWallView( wallMap ) += gyWall;
+		gzWallView( wallMap ) += gzWall;
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );
 	
@@ -317,11 +316,10 @@ void updateSingleGrid( GridStruct &Grid )
 			const float uNormal = (float)outerNormalX * BC.ux + (float)outerNormalY * BC.uy + (float)outerNormalZ * BC.uz;
 			dRhoPrevView( index ) = BC.dRho;
 			uNormalPrevView( index ) = uNormal;
-			if ( TRACK_OPEN_BOUNDARIES && trackFlow )
-			{
-				dRhoCumulativeView( index ) += BC.dRho;
-				uNormalCumulativeView( index ) += uNormal;
-			}
+			if constexpr (!TRACK_OPEN_BOUNDARIES) return;
+			if (!trackFlow) return;
+			dRhoCumulativeView( index ) += BC.dRho;
+			uNormalCumulativeView( index ) += uNormal;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, OpenBC.openBCCount, cellLambda );
 	}

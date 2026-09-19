@@ -1,6 +1,6 @@
-constexpr bool TRACK_WALL_FORCE = false;
-constexpr bool TRACK_ROTOR_FORCE = false;
-constexpr bool TRACK_OPEN_BOUNDARIES = false;
+constexpr bool TRACK_WALL_FORCE = true;
+constexpr bool TRACK_ROTOR_FORCE = true;
+constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
 constexpr float RES_GLOBAL = 2.0f; 	
 constexpr int GRID_LEVEL_COUNT = 3;
@@ -194,8 +194,7 @@ int main(int argc, char **argv)
 		
 		if ( iterationsFinished % TRACKER_PERIOD == 0 )
 		{
-			const int trackerIndex = iterationsFinished - 1;
-			//updateTracker( trackerIndex, Tracker, grids );
+			updateTracker( Tracker, grids );
 		}
 		
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )

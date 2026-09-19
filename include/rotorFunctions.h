@@ -283,7 +283,8 @@ __cuda_callable__ void processRotor( BCStruct &BC, const float &rho, const float
 	BC.gz += gzRotor;
 	
 	// if trackForce is true, write rotor forcing
-	if ( !TRACK_ROTOR_FORCE || !trackForce ) return;
+	if constexpr (!TRACK_ROTOR_FORCE) return;
+	if ( !trackForce ) return;
 	
 	projectForcingIntoRotorFrame( gxRotor, gyRotor, gzRotor, InfoRotor, InfoGlobal );
 	
@@ -542,12 +543,15 @@ void buildRotors( GridStruct &Grid, std::vector<STLStruct> &rotorSTLs )
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, nonZeroBlockCount, resultLambda );
 		
-		Rotor.gxArray.setSize( nonZeroBlockCount * 27 );
-		Rotor.gyArray.setSize( nonZeroBlockCount * 27 );
-		Rotor.gzArray.setSize( nonZeroBlockCount * 27 );
-		Rotor.gxArray.setValue( 0.f );
-		Rotor.gyArray.setValue( 0.f );
-		Rotor.gzArray.setValue( 0.f );
+		if constexpr (TRACK_ROTOR_FORCE)
+		{
+			Rotor.gxArray.setSize( nonZeroBlockCount * 27 );
+			Rotor.gyArray.setSize( nonZeroBlockCount * 27 );
+			Rotor.gzArray.setSize( nonZeroBlockCount * 27 );
+			Rotor.gxArray.setValue( 0.f );
+			Rotor.gyArray.setValue( 0.f );
+			Rotor.gzArray.setValue( 0.f );
+		}
 	}
 	
 	long long memoryBytes = 0LL;
@@ -555,7 +559,7 @@ void buildRotors( GridStruct &Grid, std::vector<STLStruct> &rotorSTLs )
 	{
 		memoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMapArray.getSize() * 4LL; // rotorMap
 		memoryBytes += 65LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // indexArray, interpolationArray
-		memoryBytes += 81LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // rotor force tracker
+		if constexpr (TRACK_ROTOR_FORCE) memoryBytes += 81LL * (long long)Grid.rotors[ rotorID ].indexArray.getSize() * 4LL; // rotor force tracker
 	}
 	
 	// prepare rotor views
