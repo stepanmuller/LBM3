@@ -1,23 +1,13 @@
 #pragma once
 
 #include "../types.h"
-#include <array>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <stdexcept>
-#include <string>
-#include <vector>
-#include <unistd.h>
 
 inline void plotTracker(const TrackerStruct& Tracker)
 {
 	const double averagePercent = (double)Tracker.averagePercent;
 	
-    if constexpr (!(TRACK_WALL_FORCE || TRACK_ROTOR_FORCE || TRACK_OPEN_BOUNDARIES)) {
-        if (!Tracker.TRACK_CUSTOM_VARIABLES) return;
-    }
+    if constexpr (!(TRACK_WALL_FORCE || TRACK_ROTOR_FORCE || TRACK_OPEN_BOUNDARIES))
+        return;
 
     const int count = Tracker.iterationsFinished;
     if (count == 0) return; // No recorded history yet.
@@ -105,67 +95,4 @@ inline void plotTracker(const TrackerStruct& Tracker)
         for (int id = 0; id < Tracker.rotorCount; ++id)
             exportObject("rotor", "Rotor", id, histories);
     }
-    if (Tracker.TRACK_CUSTOM_VARIABLES) {
-        // Custom payload: int32 count, int32 slots; for each slot:
-        // uint32 name byte count + UTF-8 bytes, uint32 unit byte count +
-        // UTF-8 bytes, then count float32 history values.
-        // Missing metadata is resolved by Python, independently per slot.
-        if (count < 0 || count > ITERATION_COUNT ||
-            Tracker.customArray.getSize<0>() != 6 ||
-            Tracker.customArray.getSize<1>() < static_cast<std::size_t>(count)) {
-            std::cerr << "Warning: invalid custom tracker shape/count. Continuing simulation.\n";
-            return;
-        }
-        std::cout << "Exporting custom variables tracker ... " << std::flush;
-        char dataPath[] = "/dev/shm/lbmTrackerCustomXXXXXX";
-        const int descriptor = mkstemp(dataPath);
-        if (descriptor < 0) {
-            std::cerr << "Warning: cannot create custom tracker shared-memory file. Continuing simulation.\n";
-            return;
-        }
-        FILE* fp = fdopen(descriptor, "wb");
-        if (!fp) {
-            close(descriptor);
-            std::remove(dataPath);
-            std::cerr << "Warning: cannot open custom tracker stream. Continuing simulation.\n";
-            return;
-        }
-        try {
-            const std::int32_t header[2] = {static_cast<std::int32_t>(count), 6};
-            bool ok = std::fwrite(header, sizeof(header[0]), 2, fp) == 2;
-            auto writeString = [&](const std::string& text) {
-                // Keep metadata bounded; this also prevents uint32 truncation.
-                if (text.size() > 1048576)
-                    throw std::runtime_error("Custom tracker metadata is too long");
-                const auto length = static_cast<std::uint32_t>(text.size());
-                if (std::fwrite(&length, sizeof(length), 1, fp) != 1) ok = false;
-                if (length && std::fwrite(text.data(), 1, length, fp) != length) ok = false;
-            };
-            std::vector<float> row(count);
-            for (int slot = 0; slot < 6; ++slot) {
-                writeString(static_cast<std::size_t>(slot) < Tracker.customNames.size()
-                            ? Tracker.customNames[slot] : std::string{});
-                writeString(static_cast<std::size_t>(slot) < Tracker.customUnits.size()
-                            ? Tracker.customUnits[slot] : std::string{});
-                for (int sample = 0; sample < count; ++sample)
-                    row[sample] = Tracker.customArray(slot, sample);
-                if (std::fwrite(row.data(), sizeof(float), row.size(), fp) != row.size()) ok = false;
-            }
-            const int closeStatus = std::fclose(fp);
-            fp = nullptr;
-            if (!ok || closeStatus != 0)
-                throw std::runtime_error("Cannot write complete custom tracker payload");
-            const std::string command = "python3 '" + script + "' custom '"
-                + dataPath + "' --average-percent " + std::to_string(averagePercent);
-            if (std::system(command.c_str()) != 0)
-                std::cerr << "Warning: custom tracker plot failed. Continuing simulation.\n";
-        }
-        catch (const std::exception& error) {
-            if (fp) std::fclose(fp);
-            std::cerr << "Warning: custom tracker export failed: " << error.what()
-                      << ". Continuing simulation.\n";
-        }
-        std::remove(dataPath);
-    }
-
 }

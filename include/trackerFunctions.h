@@ -105,7 +105,11 @@ void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 		Tracker.rotorTy.setSize( Tracker.rotorCount ); 
 		Tracker.rotorTz.setSize( Tracker.rotorCount );
 	}
-	
+	if (Tracker.TRACK_CUSTOM_VARIABLES)
+	{
+		Tracker.customArray.setSizes( 6, ITERATION_COUNT ); 
+		Tracker.customArray.setValue( 0.f ); 
+	}
 	std::cout << "Done" << std::endl;
 	std::cout << std::endl;
 }
@@ -487,4 +491,23 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 		Grid.Wall.gyArray.setValue( 0.f );
 		Grid.Wall.gzArray.setValue( 0.f );
 	}
+}
+
+void trackCustomVariables( TrackerStruct& Tracker, std::initializer_list<float> values )
+{
+    const int count = static_cast<int>(values.size());
+    
+    const int trackerIndex = Tracker.iterationsFinished - 1;
+
+    int variableID = 0;
+    for (const float value : values)
+    {
+        for (int shift = 1 - TRACKER_PERIOD; shift < TRACKER_PERIOD; shift++ )
+        {
+            const int sampleIndex = trackerIndex + shift;
+            if (sampleIndex < 0 || sampleIndex >= ITERATION_COUNT) continue;
+            Tracker.customArray( variableID, sampleIndex ) = value;
+        }
+        variableID++;
+    }
 }

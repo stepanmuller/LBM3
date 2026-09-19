@@ -6,7 +6,7 @@ constexpr float RES_GLOBAL = 4.0f;
 constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int WALL_REFINEMENT_COUNT = 3;
 
-constexpr int ITERATION_COUNT = 50000;
+constexpr int ITERATION_COUNT = 60000;
 constexpr int PLOTTER_PERIOD = 500;
 constexpr int TRACKER_PERIOD = 1;
 
@@ -84,14 +84,14 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = - ( uzInlet ) * velocityMultiplier;
 		BC.openBCID = 0;
-		BC.rhoReflectionTolerance = 0.0000002f;
+		BC.rhoReflectionTolerance = 1.5e-7f;
 	}
 	else if ( jCell == Info.cellCountY-1 ) // Outlet
 	{
 		BC.dirichletRho = true;
 		BC.openBCID = 1;
 		BC.dRho = 0.f;
-		BC.rhoReflectionTolerance = 0.0000002f;
+		BC.rhoReflectionTolerance = 1.5e-7f;
 	}
 }
 
@@ -183,6 +183,9 @@ int main(int argc, char **argv)
 	grids[2].rotors[0].Info.rotateAlongZ = true;
 	
 	TrackerStruct Tracker;
+	Tracker.TRACK_CUSTOM_VARIABLES = true;
+	Tracker.customNames = { "Mass flow", "Head", "Hydraulic efficiency", "Hydraulic input power" };
+	Tracker.customUnits = { "kg/s", "m", "%", "kW" };
 	initializeTracker( Tracker, grids );
 	
 	plotGrids( 0, grids );
@@ -198,6 +201,14 @@ int main(int argc, char **argv)
 		if ( iterationsFinished % TRACKER_PERIOD == 0 )
 		{
 			updateTracker( Tracker, grids );
+			const float torqueTotal = Tracker.rotorTz[0] + Tracker.wallTz[1];
+			const float inputPower = torqueTotal * radiansPerSecond;
+			const float outputPower = Tracker.pressurePower[0] + Tracker.normalKineticPower[0] + Tracker.pressurePower[1] + Tracker.normalKineticPower[1];
+			const float etaPercent = 100.f * outputPower / inputPower;
+			const float massFlow = 0.5f * ( - Tracker.massFlow[0] + Tracker.massFlow[1] );
+			const float head = outputPower / ( massFlow * 9.81f );
+			const float inputPowerKw = inputPower * 0.001f;
+			trackCustomVariables( Tracker, { massFlow, head, etaPercent, inputPowerKw });
 		}
 		
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )

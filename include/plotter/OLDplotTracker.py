@@ -162,129 +162,16 @@ def plotTrackerBoundary(data_file="/dev/shm/trackerData.bin",
     ], data_file, output_directory, average_percent)
 
 
-def plotTrackerCustom(data_file="/dev/shm/trackerData.bin",
-                      output_directory="results/tracker", average_percent=20.0):
-	if not 0 < average_percent <= 100:
-		raise ValueError("average_percent must be in (0, 100]")
-	def read_string(stream):
-		raw = stream.read(4)
-		if len(raw) != 4:
-			raise ValueError("Incomplete custom metadata length")
-		length = int(np.frombuffer(raw, dtype=np.uint32)[0])
-		if length > 1048576:
-			raise ValueError("Custom metadata is too long")
-		raw = stream.read(length)
-		if len(raw) != length:
-			raise ValueError("Incomplete custom metadata")
-		return raw.decode("utf-8").strip()
-
-	with open(data_file, "rb") as stream:
-		header = np.fromfile(stream, dtype=np.int32, count=2)
-		if header.size != 2:
-			raise ValueError("Incomplete custom tracker header")
-		count, slots = map(int, header)
-		if count < 1 or slots != 6:
-			raise ValueError("Invalid custom sample or slot count")
-		values, labels = [], []
-		for slot in range(slots):
-			name = read_string(stream)
-			unit = read_string(stream) or "1"
-			data = np.fromfile(stream, dtype=np.float32, count=count)
-			if data.size != count:
-				raise ValueError("Incomplete custom tracker history")
-			labels.append((name or f"Custom variable {slot + 1}", f"[{unit}]", unit))
-			values.append(data)
-		if stream.read(1):
-			raise ValueError("Unexpected trailing custom tracker data")
-	iterations = np.arange(1, count + 1)
-	window = max(1, int(count * average_percent / 100))
-	output_directory = Path(output_directory)
-	output_directory.mkdir(parents=True, exist_ok=True)
-	slug = "custom"
-	output_path = output_directory / f"{slug}.png"
-
-	style = {
-		"text.usetex": False,
-		"font.family": "serif",
-		"font.serif": ["cmr10", "DejaVu Serif"],
-		"mathtext.fontset": "cm",
-		"axes.formatter.use_mathtext": True,
-		"font.size": 16,
-		"axes.labelsize": 16,
-		"axes.titlesize": 18,
-		"xtick.labelsize": 16,
-		"ytick.labelsize": 16,
-		"axes.spines.top": False,
-		"axes.spines.right": False,
-		"axes.unicode_minus": False,
-		"savefig.bbox": None,
-	}
-	with plt.rc_context(style):
-		fig, axes = plt.subplots(3, 2, figsize=(19.2, 10.8), dpi=200,
-								 sharex=True, layout="constrained")
-		try:
-			fig.suptitle("Custom variables", fontsize=24)
-			for component, (title, ylabel, unit) in enumerate(labels):
-				row, column = component % 3, component // 3
-				ax = axes[row, column]
-				data = values[component].astype(np.float64)
-				data[~np.isfinite(data)] = np.nan
-				ax.plot(iterations, data, color="0.30", linewidth=1.1)
-				ax.set_title(title, loc="left")
-				ax.set_ylabel(ylabel)
-				ax.set_xlim(0, count)
-				ax.margins(y=0.12)
-				# Scale y-axis using the last two averaging intervals.
-				recent = data[-min(count, 2 * window):]
-				recent = recent[np.isfinite(recent)]
-				if recent.size:
-					ymin, ymax = recent.min(), recent.max()
-					padding = 0.05 * (ymax - ymin)
-					# Ensure valid limits for constant or zero data.
-					if padding == 0:
-						padding = max(abs(ymin) * 0.05, 1e-7)
-					ax.set_ylim(ymin - padding, ymax + padding)
-				ax.grid(True, color="0.88", linewidth=0.6)
-				ax.set_axisbelow(True)
-				ax.xaxis.set_major_locator(MaxNLocator(nbins=7, integer=True))
-				ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
-				ax.ticklabel_format(axis="y", style="sci", scilimits=(-3, 4))
-				ax.tick_params(axis="x", labelbottom=(row == 2))
-				if row == 2:
-					ax.set_xlabel("Iterations finished [1]")
-				tail = data[-window:]
-				finite = tail[np.isfinite(tail)]
-				if finite.size:
-					average = finite.mean()
-					ax.hlines(average, iterations[-window], iterations[-1],
-							  colors="black", linestyles="--", linewidth=1.5)
-					if window == 1:
-						ax.plot(iterations[-1], average, "o", color="black", markersize=3)
-					value_label = f"{average:.5g} [{unit}]"
-				else:
-					value_label = "unavailable"
-				qualifier = " (finite samples)" if finite.size != window else ""
-				ax.text(0.98, 0.96,
-						f"Last {average_percent:g}% mean{qualifier}: {value_label}",
-						transform=ax.transAxes, ha="right", va="top", fontsize=16,
-						bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.92, pad=4))
-			fig.savefig(output_path, dpi=200, bbox_inches=None, facecolor="white")
-		finally:
-			plt.close(fig)
-	print(f"Exported to {output_path}", flush=True)
-	return output_path
-
-
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("kind", choices=["wall", "rotor", "boundary", "custom"])
+	parser.add_argument("kind", choices=["wall", "rotor", "boundary"])
 	parser.add_argument("data_file", nargs="?", default="/dev/shm/trackerData.bin")
 	parser.add_argument("--output-directory", default="results/tracker")
 	parser.add_argument("--average-percent", type=float, default=20.0)
 	args = parser.parse_args()
 	try:
 		{"wall": plotTrackerWall, "rotor": plotTrackerRotor,
-		 "boundary": plotTrackerBoundary, "custom": plotTrackerCustom}[args.kind](
+		 "boundary": plotTrackerBoundary}[args.kind](
 			args.data_file, args.output_directory, args.average_percent)
 	except Exception as error:
 		print(f"Tracker export failed: {error}", file=sys.stderr)

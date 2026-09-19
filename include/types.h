@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include <unistd.h>
+#include <initializer_list>
 
 
 #include <TNL/Algorithms/parallelFor.h>
@@ -273,6 +274,8 @@ struct TrackerStruct { 	int iterationsFinished = 0; int openBCCount = 0; int wal
 						FloatArray2DTypeCPU wallTxArray; FloatArray2DTypeCPU wallTyArray; FloatArray2DTypeCPU wallTzArray;
 						FloatArray2DTypeCPU rotorFxArray; FloatArray2DTypeCPU rotorFyArray; FloatArray2DTypeCPU rotorFzArray;
 						FloatArray2DTypeCPU rotorTxArray; FloatArray2DTypeCPU rotorTyArray; FloatArray2DTypeCPU rotorTzArray; 
+						// single custom variable array to hold up to 6 custom definitions
+						bool TRACK_CUSTOM_VARIABLES = false; FloatArray2DTypeCPU customArray; std::vector<std::string> customNames; std::vector<std::string> customUnits;
 						// now tiny arrays that only hold the value from the last iteration, 1D dimension openBCCount, wallCount, rotorCount
 						FloatArrayTypeCPU normalVelocity; FloatArrayTypeCPU massFlow; FloatArrayTypeCPU momentumThrust; 
 						FloatArrayTypeCPU pressure; FloatArrayTypeCPU pressurePower; FloatArrayTypeCPU normalKineticPower; 

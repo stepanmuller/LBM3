@@ -222,12 +222,12 @@ void updateSingleGrid( GridStruct &Grid )
 			int outerNormalX, outerNormalY, outerNormalZ;
 			getOuterNormal( iCell, jCell, kCell, outerNormalX, outerNormalY, outerNormalZ, Info ); 
 			
-			// read known f only, calculate rhoZ along the way
+			// read known f only, calculate dRhoZ along the way
 			float f[27];
 			int cellIndex[27];
 			int fIndex[27];
 			getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper );
-			float rhoZ = 0.f;
+			float dRhoZ = 0.f;
 			for ( int direction = 0; direction < 27; direction++ )
 			{
 				const bool unknown = (	outerNormalX * CX_DIRECTIONS[direction] < 0 ||
@@ -236,14 +236,15 @@ void updateSingleGrid( GridStruct &Grid )
 				if ( unknown ) continue;
 				
 				f[direction] = fView(fIndex[direction], cellIndex[direction]);
-				// open boundary conditions are not well conditioned -> compensate
-				f[direction] += DIRECTION_WEIGHTS[direction];
 				
 				const int product =   outerNormalX * CX_DIRECTIONS[ direction ]
 									+ outerNormalY * CY_DIRECTIONS[ direction ]
 									+ outerNormalZ * CZ_DIRECTIONS[ direction ];
-				if ( product == 0 )	rhoZ += f[direction];
-				else rhoZ += 2.f * f[direction];
+				if ( product == 0 )	dRhoZ += f[direction];
+				else dRhoZ += 2.f * f[direction];
+				
+				// open boundary conditions are not well conditioned -> compensate
+				f[direction] += DIRECTION_WEIGHTS[direction];
 			}
 			
 			// read rhoPrev, uNormalPrev
@@ -261,7 +262,7 @@ void updateSingleGrid( GridStruct &Grid )
 			float dRhoNonReflective = 0.f;
 			if ( TNL::abs( outerNormalX ) + TNL::abs( outerNormalY ) + TNL::abs( outerNormalZ ) == 1 )
 			{
-				dRhoNonReflective = getNonReflectiveDRho( rhoZ, dRhoPrev, uNormalPrev );
+				dRhoNonReflective = getNonReflectiveDRho( dRhoZ, dRhoPrev, uNormalPrev );
 			}
 			else useNonReflective = false;
 			
@@ -284,8 +285,8 @@ void updateSingleGrid( GridStruct &Grid )
 				if ( useNonReflective )
 				{
 					// Schlaffer disertation 2013 eq (7.1) - (7.6)
-					float uNormalMin = ( rhoZ / ( dRhoNonReflective + 1.f + BC.rhoReflectionTolerance) ) - 1.f;
-					float uNormalMax = ( rhoZ / ( dRhoNonReflective + 1.f - BC.rhoReflectionTolerance) ) - 1.f;
+					float uNormalMin = ( (dRhoZ + 1.f) / ( dRhoNonReflective + 1.f + BC.rhoReflectionTolerance) ) - 1.f;
+					float uNormalMax = ( (dRhoZ + 1.f) / ( dRhoNonReflective + 1.f - BC.rhoReflectionTolerance) ) - 1.f;
 					if ( outerNormalX > 0 ) BC.ux = std::clamp( BC.ux, uNormalMin, uNormalMax );
 					if ( outerNormalX < 0 ) BC.ux = std::clamp( BC.ux, -uNormalMax, -uNormalMin );
 					if ( outerNormalY > 0 ) BC.uy = std::clamp( BC.uy, uNormalMin, uNormalMax );
