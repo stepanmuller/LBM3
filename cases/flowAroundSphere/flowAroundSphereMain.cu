@@ -1,8 +1,35 @@
+// This is a close copy of the drag crisis case shown in
+// Martin Geier, Andrea Pasquali, Martin Schönherr:
+// Parametrization of the cumulant lattice Boltzmann method for fourth order
+// accurate diffusion Part II: application to flow around a sphere at drag crisis
+// 2017
+
+// Geier 2017 coarse settings
+constexpr int cellsPerSphereDiameter = 410;
+constexpr float uxInlet = 0.015625; 
+constexpr int ITERATION_COUNT = 60000;
+
+// Geier 2017 medium settings
+//constexpr int cellsPerSphereDiameter = 512;
+//constexpr float uxInlet = 0.0125f; 
+//constexpr int ITERATION_COUNT = 60000;
+
+// Geier 2017 fine settings
+//constexpr int cellsPerSphereDiameter = 640;
+//constexpr float uxInlet = 0.01f; 
+//constexpr int ITERATION_COUNT = 90000;
+
 constexpr float reynoldsNumber = 100000.f;
-constexpr int cellsPerSphereDiameter = 410; // 512;
+constexpr int PLOTTER_PERIOD = 500;
+
+// End of case settings. Nothing below needs to be modified.
+
+constexpr int TRACKER_PERIOD = 1;
+constexpr bool TRACK_WALL_FORCE = true;
+constexpr bool TRACK_ROTOR_FORCE = false;
+constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
 constexpr float sphereDiameterPhys = 1000.f;											// mm
-constexpr float uxInlet = 0.015625; // 0.0125f; 										// also works as nominal LBM Mach number
 constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
 
 constexpr int GRID_LEVEL_COUNT = 6;
@@ -13,8 +40,6 @@ constexpr float NU_PHYS = uxInletPhys * (sphereDiameterPhys / 1000.f) / reynolds
 constexpr float RHO_PHYS = 1.225f;														// kg/m3 air
 constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 			// s
 
-constexpr int ITERATION_COUNT = 30000; //60000;
-constexpr int PLOTTER_PERIOD = 500;
 
 #include "../../include/types.h"
 
@@ -72,7 +97,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 											const InfoStruct& Info )
 {
-	//BC.ux = uxInlet;
+	//BC.ux = uxInlet; // Geier seems to use zero initial condition based on the Figure 6
 }
 
 __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
@@ -83,7 +108,9 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.dirichletRho = true;
 		BC.dRho = 0.f;
 		BC.openBCID = 1;
-		BC.rhoReflectionTolerance = 0.00001f * 0.2f * 0.1f;
+		BC.rhoReflectionTolerance = 8e-4f * uxInlet * uxInlet; 
+		// first scale because timestep gets smaller and so per one second we would get more reflection, 
+		// second scale because as LBM Mach number gets smaller, values of dRho get smaller
 	}
 	else if ( iCell == 0 && jCell != 0 && jCell != Info.cellCountY-1 && kCell != 0 && kCell != Info.cellCountZ-1  ) // Inlet
 	{
@@ -115,25 +142,28 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.uz = 0.f;
 	}
 	if ( Info.gridID == 0 ) BC.collisionLimiter = 0.f; // use more stable K15 collision for grid 0 where open BC happen
-	//BC.collisionLimiter = 0.f;
-}
-
-void exportHistoryData( const std::vector<float>& historyDragCoefficient, 
-                        const int &currentIteration, int fileNumber ) {
-    FILE* fp = fopen("/dev/shm/historyData.bin", "wb");
-    if (!fp) return;
-    int count = std::min({ITERATION_COUNT-1, currentIteration}) + 1;
-    fwrite(&count, sizeof(int), 1, fp);
-    fwrite(historyDragCoefficient.data(), sizeof(float), count, fp);
-    fclose(fp);
-    std::string cmd = "python3 historyPlotter.py " + std::to_string(fileNumber) + " &";
-    if (system(cmd.c_str()) != 0) {}
 }
 
 #include "../../include/gridBuilderFunctions.h"
 #include "../../include/updateGrid.h"
 #include "../../include/trackerFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
+#include "../../include/plotter/plotTracker.h"
+
+void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
+{
+	// XY section cut
+	const int kCut = grids[ GRID_LEVEL_COUNT-1 ].Info.cellCountZ / 2;
+	exportSectionCutPlotXY( grids, kCut, iterationsFinished );
+	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	// Detail 1
+	if ( GRID_LEVEL_COUNT > 1 )
+	{
+		exportSectionCutPlotXY( grids, grids[1].Info.Bounds, kCut, iterationsFinished + 1 );
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	}
+	std::cout << std::endl;
+}
 
 int main(int argc, char **argv)
 {
@@ -156,56 +186,43 @@ int main(int argc, char **argv)
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	
 	TrackerStruct Tracker;
+	Tracker.TRACK_CUSTOM_VARIABLES = true;
+	Tracker.customNames = { "Sphere Drag Coefficient" };
+	Tracker.customUnits = { "[1]" };
+	Tracker.averagePercent = 38.f; // Geier uses around 38% averaging interval
 	initializeTracker( Tracker, grids );
 	
-	std::vector<float> historyDragCoefficient( ITERATION_COUNT+1, 0.f );
+	plotGrids( 0, grids );
 	
 	TNL::Timer lapTimer;
 	lapTimer.reset();
 	lapTimer.start();
 	
-	for ( int iteration = 0; iteration <= ITERATION_COUNT; iteration++ )
+	for ( int iterationsFinished = 1; iterationsFinished <= ITERATION_COUNT; iterationsFinished++ )
 	{
 		updateAllGrids( grids, 0 );
 		
-		float gxSum = TNL::sum( grids[GRID_LEVEL_COUNT-1].Wall.gxArray );
-		grids[GRID_LEVEL_COUNT-1].Wall.gxArray.setValue( 0.f );
-		gxSum /= (float)grids[GRID_LEVEL_COUNT-1].Info.updatesSinceTrackerReset;
-		grids[GRID_LEVEL_COUNT-1].Info.updatesSinceTrackerReset = 0;
-		float gy = 0.f; float gz = 0.f;
-		convertToPhysicalForce( gxSum, gy, gz, grids[GRID_LEVEL_COUNT-1].Info );
-		const float drag = - gxSum;
-		const float dragCoefficient = (8 * drag) / (RHO_PHYS * uxInletPhys * uxInletPhys * 3.14159f * (sphereDiameterPhys / 1000.f) * (sphereDiameterPhys / 1000.f));
-		historyDragCoefficient[iteration] = dragCoefficient;
+		if ( iterationsFinished % TRACKER_PERIOD == 0 )
+		{
+			updateTracker( Tracker, grids );
+			const float drag = - Tracker.wallFx[0];
+			const float dragCoefficient = (8.f * drag) / (RHO_PHYS * uxInletPhys * uxInletPhys * 3.14159f * (sphereDiameterPhys / 1000.f) * (sphereDiameterPhys / 1000.f));
+			trackCustomVariables( Tracker, { dragCoefficient });
+		}
 		
-		if ( iteration % PLOTTER_PERIOD == 0 )
+		if ( iterationsFinished % PLOTTER_PERIOD == 0 )
 		{
 			lapTimer.stop();
-			std::cout << "Finished iteration " << iteration << std::endl;
+			std::cout << "Iterations finished: " << iterationsFinished << std::endl;
 			auto lapTime = lapTimer.getRealTime();
 			const float updateCount = (float)fluidUpdatesPerIteration * (float)PLOTTER_PERIOD;
 			const float glups = updateCount / lapTime / 1000000000.f;
-			if ( iteration > 0) std::cout << "GLUPS: " << glups << std::endl;
+			std::cout << "GLUPS: " << glups << std::endl;
 			
-			if ( iteration > 0 ) exportHistoryData( historyDragCoefficient, iteration, 0 );
+			plotTracker( Tracker );
 			
-			// XY section cut
-			const int kCut = grids[ GRID_LEVEL_COUNT-1 ].Info.cellCountZ / 2;
-			exportSectionCutPlotXY( grids, kCut, iteration );
-			if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			// Detail 1
-			if ( GRID_LEVEL_COUNT > 1 )
-			{
-				exportSectionCutPlotXY( grids, grids[1].Info.Bounds, kCut, iteration + 1 );
-				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			}
-			// Detail 2
-			if ( GRID_LEVEL_COUNT > 2 )
-			{
-				exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iteration + 2 );
-				if (system("python3 ../../include/plotter/plotter.py") != 0) {}
-			}
-			std::cout << std::endl;
+			plotGrids( iterationsFinished, grids );
+			
 			lapTimer.reset();
 			lapTimer.start();
 		}
