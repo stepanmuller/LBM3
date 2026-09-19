@@ -2,12 +2,12 @@ constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = true;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
-constexpr float RES_GLOBAL = 4.0f; 	
+constexpr float RES_GLOBAL = 2.f; // 3.f; // 4.f;
 constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int WALL_REFINEMENT_COUNT = 3;
 
-constexpr int ITERATION_COUNT = 60000;
-constexpr int PLOTTER_PERIOD = 500;
+constexpr int ITERATION_COUNT = 120000; // 80000; // 60000;
+constexpr int PLOTTER_PERIOD = 2000;
 constexpr int TRACKER_PERIOD = 1;
 
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water

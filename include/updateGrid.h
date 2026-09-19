@@ -285,8 +285,8 @@ void updateSingleGrid( GridStruct &Grid )
 				if ( useNonReflective )
 				{
 					// Schlaffer disertation 2013 eq (7.1) - (7.6)
-					float uNormalMin = ( (dRhoZ + 1.f) / ( dRhoNonReflective + 1.f + BC.rhoReflectionTolerance) ) - 1.f;
-					float uNormalMax = ( (dRhoZ + 1.f) / ( dRhoNonReflective + 1.f - BC.rhoReflectionTolerance) ) - 1.f;
+					float uNormalMin = ( (dRhoZ - dRhoNonReflective - BC.rhoReflectionTolerance ) / ( dRhoNonReflective + 1.f + BC.rhoReflectionTolerance) );
+					float uNormalMax = ( (dRhoZ - dRhoNonReflective + BC.rhoReflectionTolerance ) / ( dRhoNonReflective + 1.f - BC.rhoReflectionTolerance) );
 					if ( outerNormalX > 0 ) BC.ux = std::clamp( BC.ux, uNormalMin, uNormalMax );
 					if ( outerNormalX < 0 ) BC.ux = std::clamp( BC.ux, -uNormalMax, -uNormalMin );
 					if ( outerNormalY > 0 ) BC.uy = std::clamp( BC.uy, uNormalMin, uNormalMax );
