@@ -162,7 +162,7 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	// Detail in rotor frame
 	if ( GRID_LEVEL_COUNT >= 3 )
 	{
-		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[GRID_LEVEL_COUNT-2].rotors[0].Info, kCut, iterationsFinished + 4 );
+		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, kCut, iterationsFinished + 4 );
 		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	}
 	std::cout << std::endl;
