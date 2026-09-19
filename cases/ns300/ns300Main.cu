@@ -2,11 +2,11 @@ constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = true;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
-constexpr float RES_GLOBAL = 2.f; // 3.f; // 4.f;
-constexpr int GRID_LEVEL_COUNT = 3;
+constexpr float RES_GLOBAL = 2.64f;
+constexpr int GRID_LEVEL_COUNT = 4;
 constexpr int WALL_REFINEMENT_COUNT = 3;
 
-constexpr int ITERATION_COUNT = 120000; // 80000; // 60000;
+constexpr int ITERATION_COUNT = 100000;
 constexpr int PLOTTER_PERIOD = 2000;
 constexpr int TRACKER_PERIOD = 1;
 
@@ -48,17 +48,20 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	if ( Info.gridID == 1 )
 	{
 		refinementMarker = false;
-		if ( rz < 170.f && z < 140.f ) refinementMarker = true;
+		if ( rz < 180.f && z < 150.f ) refinementMarker = true;
 	}
-	if ( Info.gridID == 2 ) // additional refinement for the tip gap
+	if ( Info.gridID == 2 )
 	{
+		float zMin = -1.f;
+		float zMax = 124.f;
+		float rzMax = 164.f;
+		if ( z > 70.f ) rzMax = 127.f + ( 91.f - z);
+		if ( z > 91.f ) rzMax = 127.f;
+		float rzMin = 58.f;
+		if ( z > 68.f ) rzMin = 58.f + ( z - 68.f );
+
 		refinementMarker = false;
-		if ( rz < 134.f && rz > 129.4f && z < 126.5f && z > 103.5f ) refinementMarker = true;
-	}
-	if ( Info.gridID == 3 ) // additional refinement for the tip gap
-	{
-		refinementMarker = false;
-		if ( rz < 130.5f && rz > 129.8f && z < 125.5f && z > 104.5f ) refinementMarker = true;
+		if ( rz > rzMin && rz < rzMax && z < zMax && z > zMin ) refinementMarker = true;
 	}
 }
 
@@ -84,14 +87,14 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = - ( uzInlet ) * velocityMultiplier;
 		BC.openBCID = 0;
-		BC.rhoReflectionTolerance = 1.5e-7f;
+		BC.rhoReflectionTolerance = 1.0e-7f;
 	}
 	else if ( jCell == Info.cellCountY-1 ) // Outlet
 	{
 		BC.dirichletRho = true;
 		BC.openBCID = 1;
 		BC.dRho = 0.f;
-		BC.rhoReflectionTolerance = 1.5e-7f;
+		BC.rhoReflectionTolerance = 1.0e-7f;
 	}
 }
 
