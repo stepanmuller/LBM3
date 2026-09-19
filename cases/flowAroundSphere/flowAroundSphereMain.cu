@@ -34,7 +34,7 @@ constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity se
 
 constexpr int GRID_LEVEL_COUNT = 6;
 constexpr int WALL_REFINEMENT_COUNT = 6;
-constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (6 - 1)); // (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (GRID_LEVEL_COUNT - 1));
+constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (GRID_LEVEL_COUNT - 1));
 
 constexpr float NU_PHYS = uxInletPhys * (sphereDiameterPhys / 1000.f) / reynoldsNumber;	// m2/s
 constexpr float RHO_PHYS = 1.225f;														// kg/m3 air
