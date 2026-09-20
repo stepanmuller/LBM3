@@ -249,12 +249,123 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 		fullNBRList[MMM] = kMinusView( jMinusView( NBR.iMinus ) );	
 		fullNBRList[PPP] = jPlusView( kPlusView( NBR.iPlus ) );  	
 		
-		// now look at each neighbour if they are a true geometric wall neighbour 
-		// -> that means the fluid-wall link exists
+		// prepare variables that track geometrical validity of the neighbours
+		bool isGeometric[27]; for ( int i = 0; i < 27; i++ ) isGeometric[i] = true;
+		
+		// inside the domain, we demand that all 26 neighbours exist. The only case when an internal cell
+		// in "fluid" state does not have at least one valid geometric neighbour, is in the outermost layer of an interface.
+		// in the outermost layer of an interface, pre collision distributions are supplied by the interface, and 
+		// no IBB links are needed. It was experienced the hard way that leaving IBB links switched on here would lead to
+		// failures in the way neighbours are accessed, and eventual incorrect streaming between walls, fluids and over-a-hole neighbours.
+		// So, this variable will track if ALL 26 neighbours exist for any cell inside the domain:
+		bool allComplete = true;
+		
+		// The boundary needs a separate treatment. On a boundary, we want to assign IBB links in the tangential direction. We 
+		// track the directions separately:
+		bool iPlusComplete = true;
+		bool jPlusComplete = true;
+		bool kPlusComplete = true;
+		bool iMinusComplete = true;
+		bool jMinusComplete = true;
+		bool kMinusComplete = true;
+		
+		// now, for a boundary cell:
+		// if you try catching a neighbour in a position where it *could* exist but it doesnt,
+		// switch all groups which involve this missing place OFF.
+		// if you try catching a neighbour that would be OUTSIDE the domain, and so it cannot exist
+		// anyway, do not turn off any groups, keep them valid, and only disable the single link
+		// that is pointing out of the domain.
+		
+		// So now, do a loop that fills these 7 bools
+		for ( int direction = 1; direction < 27; direction++ )
+		{
+			// calculate the expected position where we want to find the neighbour
+			const int cx = CX_DIRECTIONS[direction]; 
+			const int cy = CY_DIRECTIONS[direction]; 
+			const int cz = CZ_DIRECTIONS[direction];
+			const int iExpected = iCell + cx; 
+			const int jExpected = jCell + cy; 
+			const int kExpected = kCell + cz;
+			
+			// check if nbr fills the position we need to fill
+			const int nbr = fullNBRList[direction];
+			const int iActual = iView( nbr ); 
+			const int jActual = jView( nbr ); 
+			const int kActual = kView( nbr );
+			
+			if ( iActual == iExpected && jActual == jExpected && kActual == kExpected ) continue;
+			
+			// if we got past this if, the neighbour is not valid; this means either there is no existing
+			// cell in this position, OR it cannot be reached using this particular i -> j -> k neighbour path,
+			// either way turn it off
+			isGeometric[ direction ] = false;
+			
+			if ( iExpected < 0 || iExpected >= Info.cellCountX 
+					|| jExpected < 0 || jExpected >= Info.cellCountY 
+					|| kExpected < 0 || kExpected >= Info.cellCountZ ) continue;
+					
+			// if we got past this if, it is also clear that the neighbour could have existed 
+			//-> proceed to turning off all relevant bools.
+			allComplete = false;
+			if ( cx > 0 ) iPlusComplete = false;
+			if ( cy > 0 ) jPlusComplete = false;
+			if ( cz > 0 ) kPlusComplete = false;
+			if ( cx < 0 ) iMinusComplete = false;
+			if ( cy < 0 ) jMinusComplete = false;
+			if ( cz < 0 ) kMinusComplete = false;
+		}
+		
+		// Handle INTERNAL cell (not boundary) branch first
+		if ( iCell != 0 && iCell != Info.cellCountX-1 && jCell != 0 && jCell != Info.cellCountY-1 && kCell != 0 && kCell != Info.cellCountZ-1 )
+		{
+			if ( !allComplete ) return; // early exit if internal cell does not have fully complete neighbours
+			
+			// if we got here, this is an internal cell with all links valid. Proceed to browsing the neighbours
+			// and enable link for every neighbour that is a wall.
+			
+			for ( int direction = 1; direction < 27; direction++ )
+			{
+				const int nbr = fullNBRList[direction];
+				if ( !wallMarkerView(nbr) ) continue; 
+				
+				bool nbrIsInterface = false;
+				if ( !iAmCoarsest )
+				{
+					if ( parentMapView( nbr ) >= 0 ) nbrIsInterface = true;
+				}
+				if ( !iAmFinest )
+				{ 
+					if ( fineToCoarseMarkerView( nbr ) ) nbrIsInterface = true;
+					if ( coarseToFineMarkerView( nbr ) ) nbrIsInterface = true;
+				}
+				// nbr is a true geometric wall neighbour and will be correctly reached -> mark the link existence
+				linkExistenceMarkerView( direction, index ) = true;
+				// if me or nbr is interface, mark that this link pierces an interface 
+				// -> linkLength will be forced to 0.5f later
+				if ( iAmInterface || nbrIsInterface ) linkPiercesInterfaceMarkerView( direction, index ) = true;
+			}
+			return;
+		}
+		
+		// if we got here, we are dealing with a BOUNDARY cell
+		// loop over the neighbours. If the neighbour is not geometric, skip it.
+		// If the neighbour is a part of any of the disabled groups, also skip it.
 		for ( int direction = 1; direction < 27; direction++ )
 		{
 			const int nbr = fullNBRList[direction];
+			if ( !isGeometric[direction] ) continue;
 			if ( !wallMarkerView(nbr) ) continue; 
+			
+			const int cx = CX_DIRECTIONS[direction]; 
+			const int cy = CY_DIRECTIONS[direction]; 
+			const int cz = CZ_DIRECTIONS[direction];
+			
+			if ( cx > 0 ) { if ( !iPlusComplete ) continue;}
+			if ( cy > 0 ) { if ( !jPlusComplete ) continue;}
+			if ( cz > 0 ) { if ( !kPlusComplete ) continue;}
+			if ( cx < 0 ) { if ( !iMinusComplete ) continue;}
+			if ( cy < 0 ) { if ( !jMinusComplete ) continue;}
+			if ( cz < 0 ) { if ( !kMinusComplete ) continue;}
 			
 			bool nbrIsInterface = false;
 			if ( !iAmCoarsest )
@@ -266,25 +377,11 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 				if ( fineToCoarseMarkerView( nbr ) ) nbrIsInterface = true;
 				if ( coarseToFineMarkerView( nbr ) ) nbrIsInterface = true;
 			}
-			
-			// if we got here, nbr is a wall, check its position
-			const int cx = CX_DIRECTIONS[direction]; 
-			const int cy = CY_DIRECTIONS[direction]; 
-			const int cz = CZ_DIRECTIONS[direction];
-			const int iExpected = iCell + cx; 
-			const int jExpected = jCell + cy; 
-			const int kExpected = kCell + cz;
-			const int iActual = iView( nbr ); 
-			const int jActual = jView( nbr ); 
-			const int kActual = kView( nbr );
-			if ( iActual == iExpected && jActual == jExpected && kActual == kExpected ) 
-			{
-				// nbr is a true geometric wall neighbour -> mark the link existence
-				linkExistenceMarkerView( direction, index ) = true;
-				// if me or nbr is interface, mark that this link pierces an interface 
-				// -> linkLength will be forced to 0.5f later
-				if ( iAmInterface || nbrIsInterface ) linkPiercesInterfaceMarkerView( direction, index ) = true;
-			}
+			// nbr is a true geometric wall neighbour and will be correctly reached -> mark the link existence
+			linkExistenceMarkerView( direction, index ) = true;
+			// if me or nbr is interface, mark that this link pierces an interface 
+			// -> linkLength will be forced to 0.5f later
+			if ( iAmInterface || nbrIsInterface ) linkPiercesInterfaceMarkerView( direction, index ) = true;
 		}
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, wallAdjacentCellCount, cellLambda );	
