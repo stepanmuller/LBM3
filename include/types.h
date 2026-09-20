@@ -186,7 +186,7 @@ struct SkeletonGridStruct { InfoStruct Info; BoolArrayType keepCellMarkerArray; 
 
 struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct NBR; 
 							FloatArray2DType fArray; 
-							IntArrayType parentMapArray; IntArrayType wallIDArray; IntArrayType wallAdjacentCellList;
+							IntArrayType parentMapArray; IntArrayType wallIDArray; IntArrayType wallIDArrayFull; IntArrayType wallAdjacentCellList;
 							BoolArray2DType linkExistenceMarkerArray; FloatArray2DType linkLengthArray; BoolArray2DType linkPiercesInterfaceMarkerArray;
 							BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray; 
 							BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;

@@ -648,9 +648,22 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 		bodyWallMarkerArray = bodyWallMarkerArray * !GridBuilder.wallMarkerArray;
 		auto bodyWallMarkerView = bodyWallMarkerArray.getConstView();
 		auto wallIDView = GridBuilder.wallIDArray.getView();
+		auto parentMapView = GridBuilder.parentMapArray.getConstView();
+		auto parentWallIDFullView = GridBuilderCoarse.wallIDArrayFull.getConstView();
 		auto wallIDLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{	
-			if ( bodyWallMarkerView( cell ) ) wallIDView( cell ) = wallID;	
+			if ( !bodyWallMarkerView( cell ) ) return;
+			int assignedWallID = wallID;
+			if (!iAmCoarsest)
+			{
+				const int parentCell = parentMapView(cell);
+				if (parentCell >= 0)
+				{
+					const int parentWallID = parentWallIDFullView(parentCell);
+					if (parentWallID >= 0) assignedWallID = parentWallID; // enforce parent wallID inheritance
+				}
+			}
+			wallIDView(cell) = assignedWallID;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, wallIDLambda );
 	}
@@ -670,19 +683,18 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	
 	// 4) Build compact wall adjacent list and compact the wallID array
 	GridBuilder.wallAdjacentCellList.setSize( wallAdjacentCellCount );
-	IntArrayType wallIDArrayCopy;
-	wallIDArrayCopy = GridBuilder.wallIDArray;
+	GridBuilder.wallIDArrayFull = GridBuilder.wallIDArray;
 	GridBuilder.wallIDArray.resize( wallAdjacentCellCount );
 	auto wallAdjacentCellListView = GridBuilder.wallAdjacentCellList.getView();
-	auto wallIDCopyView = wallIDArrayCopy.getConstView();
+	auto wallIDFullView = GridBuilder.wallIDArrayFull.getConstView();
 	auto wallIDCompactView = GridBuilder.wallIDArray.getView();
 	auto compactionLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{	
-		if ( wallIDCopyView( cell ) >= 0 ) 
+		if ( wallIDFullView( cell ) >= 0 ) 
 		{
 			const int compactIndex = wallAdjacentScanView( cell );
 			wallAdjacentCellListView( compactIndex ) = cell;	
-			wallIDCompactView( compactIndex ) = wallIDCopyView( cell );
+			wallIDCompactView( compactIndex ) = wallIDFullView( cell );
 		}
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, compactionLambda );
