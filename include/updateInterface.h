@@ -295,10 +295,10 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		constexpr float kxxMyyAvg = 0.f;
 		constexpr float kxxMzzAvg = 0.f;
 		
-		const float LaplaceRho = - 3.f * (ax * ax + by * by + cz * cz) - 6.f * (bx * ay + cx * az + cy * bz);
+		//const float LaplaceRho = - 3.f * (ax * ax + by * by + cz * cz) - 6.f * (bx * ay + cx * az + cy * bz);
 		
 		// get interpolated variables for the coarse cell
-		const float dRho = d000 - 0.25f * LaplaceRho;
+		const float dRho = d000;// - 0.125f * LaplaceRho; // d000 - 0.25f * LaplaceRho; // correction contrary to Virtual Fluids suggested by GPT 6 Astra, will have to look at it properly 
 		const float ux = a000; 
 		const float uy = b000; 
 		const float uz = c000;
@@ -534,7 +534,7 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
         const float b111 = ((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[2] - uyStencil[5]) + (uyStencil[1] - uyStencil[6]));
         const float c111 = ((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[2] - uzStencil[5]) + (uzStencil[1] - uzStencil[6]));
         
-        const float LaplaceRho = -3.f * (a100 * a100 + b010 * b010 + c001 * c001) - 6.f * (b100 * a010 + c100 * a001 + c010 * b001);
+        // const float LaplaceRho = -3.f * (a100 * a100 + b010 * b010 + c001 * c001) - 6.f * (b100 * a010 + c100 * a001 + c010 * b001);
 		
 		constexpr float kxyAvg = 0.f;
 		constexpr float kyzAvg = 0.f;
@@ -566,8 +566,8 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			const float dy = dyArray[i];
 			const float dz = dzArray[i];
 			// get interpolated variables for the fine cell
-			const float dRho = d000 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz 
-								+ 3.f * dx * dx * LaplaceRho;
+			const float dRho = d000 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz;
+								// - ( 3.f / 32.f ) * LaplaceRho; // + 3.f * dx * dx * LaplaceRho; // correction contrary to Virtual Fluids suggested by GPT 6 Astra, will have to look at it properly 
 			const float ux = a000 + a100 * dx + a010 * dy + a001 * dz + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
 								+ a200 * dx * dx + a020 * dy * dy + a002 * dz * dz; 
 			const float uy = b000 + b100 * dx + b010 * dy + b001 * dz + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
