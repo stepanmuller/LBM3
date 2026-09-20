@@ -415,17 +415,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	static GridBuilderStruct dummyGridBuilder; // if I am the coarsest grid myself, here Im fooling C++ to think there is a coarser grid than me, muhehe
     GridBuilderStruct &GridBuilderCoarse = iAmCoarsest ? dummyGridBuilder : gridBuilders[ level - 1 ];
 	
-	// 1) Mark fluid cells and add one layer of walls
-	markWallCells( GridBuilder.keepCellMarkerArray, Voxelizer.rayMapTotal, GridBuilder );
-	GridBuilder.keepCellMarkerArray = !GridBuilder.keepCellMarkerArray; // now keepCellMarkerArray marks fluid cells only
-	BoolArrayType markerSource;
-	markerSource = GridBuilder.keepCellMarkerArray;
-	spreadMarkers( GridBuilder.keepCellMarkerArray, markerSource, GridBuilder ); // added one layer of walls
-	
-	// 2) Remove deeply refined cells
-	if ( !iAmFinest ) GridBuilder.keepCellMarkerArray = GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray; 
-	
-	// 3) Because we changed the coarser grid, we must rebuild the parentMapArray and parentInterfaceMarkerArray
+	// 1) Because we changed the coarser grid, we must rebuild the parentMapArray and parentInterfaceMarkerArray
 	if ( !iAmCoarsest )
 	{
 		IJKArrayStruct IJKWanted;
@@ -447,10 +437,26 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 	}
 	
-	// 4) Enforce keep cells that are part of the parent interface. 
+	// 2) Mark fluid cells
+	markWallCells( GridBuilder.keepCellMarkerArray, Voxelizer.rayMapTotal, GridBuilder );
+	GridBuilder.keepCellMarkerArray = !GridBuilder.keepCellMarkerArray; // now keepCellMarkerArray marks fluid cells only
+	
+	// 3) Enforce keep cells that are part of the parent interface
+	// At the interface, fluid state is inherited from the parent. Therefore we better treat the whole interface as possible fluid
+	// and keep it all, and only on top of it add the wall layer (step 4)
 	if ( !iAmCoarsest ) GridBuilder.keepCellMarkerArray += GridBuilder.parentInterfaceMarkerArray; 
 	
-	// 5) Delete the outermost layer of interface fine cells
+	// 4) add one layer of walls
+	BoolArrayType markerSource;
+	markerSource = GridBuilder.keepCellMarkerArray;
+	spreadMarkers( GridBuilder.keepCellMarkerArray, markerSource, GridBuilder ); // added one layer of walls
+	
+	// 5) Remove deeply refined cells
+	if ( !iAmFinest ) GridBuilder.keepCellMarkerArray = GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray; 
+	
+
+	
+	// 6) Delete the outermost layer of interface fine cells
 	// This is because Geier's interpolation cube sends information from 8 coarse cells
 	// to 8 fine cells in their center. The outermost layer is excessive.
 	// We identify this by spreading from the parentFineToCoarse array
@@ -476,12 +482,12 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 		GridBuilder.needValuesFromCoarseMarkerArray *= !markerSource;
 	}
 	
-	// 6) Build fullToKeep map
+	// 7) Build fullToKeep map
 	IntArrayType fullToKeepMapArray( Info.cellCount );
 	intArrayFromBoolArray( fullToKeepMapArray, GridBuilder.keepCellMarkerArray );
 	TNL::Algorithms::inplaceExclusiveScan( fullToKeepMapArray, 0, Info.cellCount, TNL::Plus{} );
 	
-	// 7) Transform necessary information from full grid to the keep grid
+	// 8) Transform necessary information from full grid to the keep grid
 	// We need IJK, parentMapArray, needValuesFromCoarseMarkerArray,
 	// fineToCoarseInterfaceMarkerArray, coarseToFineInterfaceMarkerArray	
 	// starting a scope so that temporary arrays then go out of scope
@@ -529,10 +535,10 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, fullToKeepLambda );	
 	}
 	
-	// 7) set new cellCount
+	// 9) set new cellCount
 	Info.cellCount = TNL::sum( GridBuilder.keepCellMarkerArray );
 	
-	// 8) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
+	// 10) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
 	GridBuilder.IJK.iArray.resize( Info.cellCount );
 	GridBuilder.IJK.jArray.resize( Info.cellCount );
 	GridBuilder.IJK.kArray.resize( Info.cellCount );
@@ -549,16 +555,16 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	if (!iAmFinest) GridBuilder.fineToCoarseMarkerArray.resize( Info.cellCount );
 	if (!iAmFinest) GridBuilder.coarseToFineMarkerArray.resize( Info.cellCount );
 	
-	// 9) Forget the no longer necessary arrays
+	// 11) Forget the no longer necessary arrays
 	GridBuilder.SkeletonGrid.keepCellMarkerArray.resize( 0 );
 	GridBuilder.deepRefinementMarkerArray.resize( 0 );
 	GridBuilder.refinementMarkerArray.resize( 0 );
 	
-	// 10) Rebuild our NBR Plus
+	// 12) Rebuild our NBR Plus
 	buildNBRPlus( GridBuilder );
 	markGeometricNBRPlus( GridBuilder );
 	
-	// 11) Build our NBR Minus
+	// 13) Build our NBR Minus
 	auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
 	auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
 	auto jMinusView = GridBuilder.NBR.jMinusArray.getView();
@@ -570,7 +576,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
 	
-	// 12) fill grid bounds
+	// 14) fill grid bounds
 	Info.Bounds.xMin = Info.ox + Info.res * TNL::min( GridBuilder.IJK.iArray ) - 0.5f * Info.res;
 	Info.Bounds.xMax = Info.ox + Info.res * TNL::max( GridBuilder.IJK.iArray ) + 0.5f * Info.res;
 	Info.Bounds.yMin = Info.oy + Info.res * TNL::min( GridBuilder.IJK.jArray ) - 0.5f * Info.res;
@@ -578,7 +584,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	Info.Bounds.zMin = Info.oz + Info.res * TNL::min( GridBuilder.IJK.kArray ) - 0.5f * Info.res;
 	Info.Bounds.zMax = Info.oz + Info.res * TNL::max( GridBuilder.IJK.kArray ) + 0.5f * Info.res;
 	
-	// 13) Recursion
+	// 15) Recursion
 	if ( !iAmFinest ) deleteExcessCells( gridBuilders, voxelizers, level + 1 );
 	else std::cout << std::endl;
 }
