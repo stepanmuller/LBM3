@@ -454,8 +454,6 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	// 5) Remove deeply refined cells
 	if ( !iAmFinest ) GridBuilder.keepCellMarkerArray = GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray; 
 	
-
-	
 	// 6) Delete the outermost layer of interface fine cells
 	// This is because Geier's interpolation cube sends information from 8 coarse cells
 	// to 8 fine cells in their center. The outermost layer is excessive.
