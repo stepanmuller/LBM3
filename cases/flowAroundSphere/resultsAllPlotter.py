@@ -240,7 +240,7 @@ yStyleList.append("o")
 
 yLegendList.append("LBM3 K17 coarse, D/res = 410, limiter 0.1")
 xList.append(np.array([1140000]))
-yList.append(np.array([0.175]))
+yList.append(np.array([0.18275]))
 yColorList.append("Green")
 yStyleList.append("o") 
 
