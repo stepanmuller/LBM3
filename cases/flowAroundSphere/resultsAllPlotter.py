@@ -185,33 +185,65 @@ yLegendList.append("Cumulant AllOne, D/res = 320")
 yColorList.append("purple")
 yStyleList.append("X") 
 """
+
+# Geier, D/res = 410
+xList.append(np.array([10000, 20000, 40000, 80000, 100000, 140000, 200000, 240000, 400000, 600000, 800000, 1140000]))
+yList.append(np.array([0.447, 0.475, 0.489, 0.499, 0.480, 0.482, 0.470, 0.480, 0.455, 0.436, 0.304, 0.274]))
+yLegendList.append("Geier K17 coarse, D/res = 410")
+yColorList.append("Black")
+yStyleList.append("o") 
+
+"""
+# Geier, D/res = 512
+xList.append(np.array([10000, 20000, 40000, 80000, 100000, 140000, 200000, 240000, 400000, 600000, 800000, 1140000]))
+yList.append(np.array([0.428, 0.505, 0.504, 0.495, 0.488, 0.480, 0.455, 0.341, 0.193, 0.160, 0.171, 0.143]))
+yLegendList.append("Geier K17 medium, D/res = 512")
+yColorList.append("Black")
+yStyleList.append("+") 
+
+
+# Geier, D/res = 640
+xList.append(np.array([100000, 200000, 240000, 1140000]))
+yList.append(np.array([0.477, 0.239, 0.111, 0.140]))
+yLegendList.append("Geier K17 fine, D/res = 640")
+yColorList.append("Black")
+yStyleList.append("X") 
+"""
+"""
 # Cumulant AllOne, D/res = 160, LES Sm 0.1
 xList.append(np.array([100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000, 10000000]))
 yList.append(np.array([1.150, 0.832, 0.624, 0.514, 0.467, 0.468, 0.481, 0.5, 0.501, 0.507, 0.504, 0.503, 0.505, 0.519, 0.523, 0.519]))
-yLegendList.append("Cumulant AllOne, D/res = 160, LES 0.1")
-yColorList.append("black")
-yStyleList.append("X") 
-
-# DIAD Cumulant AllOne, D/res = 640, LES Sm 0.1
-xList.append(np.array([1000000]))
-yList.append(np.array([0.210]))
-yLegendList.append("DIAD Cumulant AllOne, D/res = 640, LES 0.1")
-yColorList.append("red")
+yLegendList.append("PeriodicShift LBM K15 with errors, D/res = 160, LES 0.1")
+yColorList.append("orange")
 yStyleList.append("X") 
 
 # Metacentrum, DIAD Cumulant AllOne, D/res = 800, LES Sm 0.1
 xList.append(np.array([50000, 100000, 200000, 300000, 400000, 500000, 600000, 800000, 1000000]))
 yList.append(np.array([0.442, 0.363, 0.3, 0.293, 0.320, 0.295, 0.278, 0.312, 0.316]))
-yLegendList.append("Metacentrum, DIAD Cumulant AllOne, D/res = 800, LES 0.1")
+yLegendList.append("PeriodicShift LBM K15 with errors, D/res = 800, LES 0.1")
 yColorList.append("purple")
 yStyleList.append("X") 
 
-# LBM3, D/res = 400, 20 IBB link steps
-xList.append(np.array([100000]))
-yList.append(np.array([0.376]))
-yLegendList.append("LBM3, D/res = 400, 20 IBB link step")
-yColorList.append("Orange")
+# DIAD Cumulant AllOne, D/res = 640, LES Sm 0.1
+xList.append(np.array([1000000]))
+yList.append(np.array([0.210]))
+yLegendList.append("PeriodicShift LBM K15 with errors, D/res = 640, LES 0.1")
+yColorList.append("red")
 yStyleList.append("X") 
+"""
+
+yLegendList.append("LBM3 K17 coarse, D/res = 410, limiter 0.01")
+xList.append(np.array([100000, 1140000]))
+yList.append(np.array([0.47734, 0.48781]))
+yColorList.append("Red")
+yStyleList.append("o") 
+
+yLegendList.append("LBM3 K17 coarse, D/res = 410, limiter 0.1")
+xList.append(np.array([1140000]))
+yList.append(np.array([0.175]))
+yColorList.append("Green")
+yStyleList.append("o") 
+
 
 # ==========================================
 # 2. PLOT STYLING (LaTeX Enabled)
@@ -225,7 +257,7 @@ plt.rcParams.update({
     "axes.labelsize": 20,
     "xtick.labelsize": 20,
     "ytick.labelsize": 20,
-    "legend.fontsize": 20,
+    "legend.fontsize": 15,
 })
 
 

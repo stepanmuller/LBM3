@@ -4,7 +4,7 @@
 // accurate diffusion Part II: application to flow around a sphere at drag crisis
 // 2017
 
-constexpr float reynoldsNumber = 100000.f;
+constexpr float reynoldsNumber = 1140000.f;
 
 // Geier 2017 coarse settings
 constexpr int cellsPerSphereDiameter = 410;
@@ -136,6 +136,9 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 									const InfoStruct& Info )
 {
+	// setting collision limiter to 1 or 100 leads to a crash
+	// however leaving default 0.01 in the collision limiter entirely fails to capture the drag crisis on the coarse level
+	BC.collisionLimiter = 0.1f; // try increasing collision limiter from 0.01 to 0.1
 	if ( BC.wallID == 0 ) 
 	{
 		BC.ux = 0.f;
