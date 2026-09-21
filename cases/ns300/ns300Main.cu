@@ -1,14 +1,20 @@
+// coarse
+//constexpr float RES_GLOBAL = 4.f; 
+//constexpr int GRID_LEVEL_COUNT = 4;
+//constexpr int ITERATION_COUNT = 80000; 
+
+// medium
+constexpr float RES_GLOBAL = 3.2f; // 2.64f;
+constexpr int GRID_LEVEL_COUNT = 4;
+constexpr int ITERATION_COUNT = 80000; // 100000;
+
+constexpr int PLOTTER_PERIOD = 2000;
+
+constexpr int WALL_REFINEMENT_COUNT = 3;
+constexpr int TRACKER_PERIOD = 1;
 constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = true;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
-
-constexpr float RES_GLOBAL = 3.2f; // 2.64f;
-constexpr int GRID_LEVEL_COUNT = 4;
-constexpr int WALL_REFINEMENT_COUNT = 3;
-
-constexpr int ITERATION_COUNT = 80000; // 100000;
-constexpr int PLOTTER_PERIOD = 2000;
-constexpr int TRACKER_PERIOD = 1;
 
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
@@ -27,6 +33,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 std::string STLPathStator = "../../../../ns300/ns300_STATOR.STL";
 std::string STLPathRotorShaft = "../../../../ns300/ns300_ROTOR_SHAFT.STL";
+std::string STLPathRotorShroud = "../../../../ns300/ns300_ROTOR_SHROUD.STL";
 std::string STLPathRotorBlades = "../../../../ns300/ns300_ROTOR_BLADES.STL";
 std::string STLPathTipGapBlocker = "../../../../ns300/ns300_TIP_GAP_BLOCKER.STL";
 
@@ -52,11 +59,11 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	}
 	if ( Info.gridID == 2 )
 	{
-		float zMin = -1.f;
+		float zMin = -3.f;
 		float zMax = 124.f;
 		float rzMax = 164.f;
-		if ( z > 70.f ) rzMax = 127.f + ( 91.f - z);
-		if ( z > 91.f ) rzMax = 127.f;
+		if ( z > 68.f ) rzMax = 127.f + ( 92.f - z);
+		if ( z > 92.f ) rzMax = 127.f;
 		float rzMin = 58.f;
 		if ( z > 68.f ) rzMin = 58.f + ( z - 68.f );
 
@@ -112,16 +119,18 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
-	if ( BC.wallID == 1 ) // rotor shaft, hub, shroud
+	if ( BC.wallID == 1 || BC.wallID == 2 ) // rotor shaft and shroud
 	{
 		BC.ux = - vt * (y / r);
 		BC.uy = vt * (x / r);
 		BC.uz = 0.f;
 	}
-	if ( BC.wallID == 2 ) // tip gap blocker -> apply half of the rotation
+	if ( BC.wallID == 3 ) // tip gap blocker -> interpolate rotation linearly
 	{
-		BC.ux = 0.5f * ( - vt * (y / r) );
-		BC.uy = 0.5f * ( vt * (x / r) );
+		float rotationPart = ( r - 128.f ) / 2.3f;
+		rotationPart = std::clamp( rotationPart, 0.f, 1.f );
+		BC.ux = rotationPart * ( - vt * (y / r) );
+		BC.uy = rotationPart * ( vt * (x / r) );
 		BC.uz = 0.f;
 	}
 	if ( kCell >= Info.cellCountZ-20 || jCell >= Info.cellCountY-20 ) BC.collisionLimiter = 0.f;
@@ -171,10 +180,11 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 int main(int argc, char **argv)
 {
 	// STLs
-	std::vector<STLStruct> gridStaticSTLs( 3 );
+	std::vector<STLStruct> gridStaticSTLs( 4 );
 	readSTL( gridStaticSTLs[0], STLPathStator );
 	readSTL( gridStaticSTLs[1], STLPathRotorShaft );
-	readSTL( gridStaticSTLs[2], STLPathTipGapBlocker );
+	readSTL( gridStaticSTLs[2], STLPathRotorShroud );
+	readSTL( gridStaticSTLs[3], STLPathTipGapBlocker );
 	
 	std::vector<STLStruct> rotorSTLs( 1 );
 	readSTL( rotorSTLs[0], STLPathRotorBlades );
@@ -212,7 +222,7 @@ int main(int argc, char **argv)
 		if ( iterationsFinished % TRACKER_PERIOD == 0 )
 		{
 			updateTracker( Tracker, grids );
-			const float torqueTotal = Tracker.rotorTz[0] + Tracker.wallTz[1];
+			const float torqueTotal = Tracker.rotorTz[0] + Tracker.wallTz[1] + Tracker.wallTz[2]; // rotor + shaft + shroud
 			const float inputPower = torqueTotal * radiansPerSecond;
 			const float outputPower = Tracker.pressurePower[0] + Tracker.normalKineticPower[0] + Tracker.pressurePower[1] + Tracker.normalKineticPower[1];
 			const float etaPercent = 100.f * outputPower / inputPower;
