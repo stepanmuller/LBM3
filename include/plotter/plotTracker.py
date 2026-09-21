@@ -192,7 +192,7 @@ def plotTrackerCustom(data_file="/dev/shm/trackerData.bin",
 			data = np.fromfile(stream, dtype=np.float32, count=count)
 			if data.size != count:
 				raise ValueError("Incomplete custom tracker history")
-			labels.append((name or f"Custom variable {slot + 1}", f"[{unit}]", unit))
+			labels.append((name or f"Custom variable {slot + 1}", f"{unit}", unit))
 			values.append(data)
 		if stream.read(1):
 			raise ValueError("Unexpected trailing custom tracker data")

@@ -4,6 +4,8 @@
 // accurate diffusion Part II: application to flow around a sphere at drag crisis
 // 2017
 
+constexpr float reynoldsNumber = 100000.f;
+
 // Geier 2017 coarse settings
 constexpr int cellsPerSphereDiameter = 410;
 constexpr float uxInlet = 0.015625; 
@@ -19,8 +21,7 @@ constexpr int ITERATION_COUNT = 60000;
 //constexpr float uxInlet = 0.01f; 
 //constexpr int ITERATION_COUNT = 90000;
 
-constexpr float reynoldsNumber = 100000.f;
-constexpr int PLOTTER_PERIOD = 500;
+constexpr int PLOTTER_PERIOD = 2000;
 
 // End of case settings. Nothing below needs to be modified.
 
@@ -30,14 +31,14 @@ constexpr bool TRACK_ROTOR_FORCE = false;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
 constexpr float sphereDiameterPhys = 1000.f;											// mm
-constexpr float uxInletPhys = uxInlet; 													// m/s, physical velocity set to same as LBM velocity
+constexpr float uxInletPhys = 1.f; 														// m/s, physical velocity
 
-constexpr int GRID_LEVEL_COUNT = 5;
+constexpr int GRID_LEVEL_COUNT = 6;
 constexpr int WALL_REFINEMENT_COUNT = 6;
-constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (GRID_LEVEL_COUNT - 1));
+constexpr float RES_GLOBAL = (sphereDiameterPhys / cellsPerSphereDiameter) * (1u << (6 - 1)); // hard coded 6 levels here
 
 constexpr float NU_PHYS = uxInletPhys * (sphereDiameterPhys / 1000.f) / reynoldsNumber;	// m2/s
-constexpr float RHO_PHYS = 1.225f;														// kg/m3 air
+constexpr float RHO_PHYS = 1.f;															// kg/m3
 constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 			// s
 
 
@@ -97,7 +98,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 											const InfoStruct& Info )
 {
-	//BC.ux = uxInlet; // Geier seems to use zero initial condition based on the Figure 6
+	BC.ux = uxInlet; 
 }
 
 __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
