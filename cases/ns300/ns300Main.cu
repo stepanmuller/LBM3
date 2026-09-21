@@ -4,9 +4,14 @@
 //constexpr int ITERATION_COUNT = 80000; 
 
 // medium
-constexpr float RES_GLOBAL = 3.2f; // 2.64f;
+//constexpr float RES_GLOBAL = 3.2f; 
+//constexpr int GRID_LEVEL_COUNT = 4;
+//constexpr int ITERATION_COUNT = 80000;
+
+// fine
+constexpr float RES_GLOBAL = 2.64f;
 constexpr int GRID_LEVEL_COUNT = 4;
-constexpr int ITERATION_COUNT = 80000; // 100000;
+constexpr int ITERATION_COUNT = 100000;
 
 constexpr int PLOTTER_PERIOD = 2000;
 
@@ -59,11 +64,11 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	}
 	if ( Info.gridID == 2 )
 	{
-		float zMin = -3.f;
+		float zMin = -1.f;
 		float zMax = 124.f;
 		float rzMax = 164.f;
-		if ( z > 68.f ) rzMax = 127.f + ( 92.f - z);
-		if ( z > 92.f ) rzMax = 127.f;
+		if ( z > 70.f ) rzMax = 127.f + ( 91.f - z);
+		if ( z > 91.f ) rzMax = 127.f;
 		float rzMin = 58.f;
 		if ( z > 68.f ) rzMin = 58.f + ( z - 68.f );
 
