@@ -124,13 +124,24 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 		// Analysis on the force evaluation by the momentum exchange 
 		// method and a localized r­filling scheme for the lattice Boltzmann method, 2025
 		// eq (15)
-		// stored f are well conditioned -> compensate (here it does not cancel out)
-		gxWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CX_DIRECTIONS[ direction ] - BC.ux ) 
-				  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux );
-		gyWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CY_DIRECTIONS[ direction ] - BC.uy ) 
-				  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy );
-		gzWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CZ_DIRECTIONS[ direction ] - BC.uz ) 
-				  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz );																	
+		// stored f are well conditioned 
+		// here it does not cancel out unless the whole object is submerged in fluid
+		// but the background part is found to be very large compared to the regular part which is ugly and bad for numerics
+		// so we comment out the version with background and keep well conditioned one. For fully submerged bodies this gives the same result.
+		
+		//gxWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CX_DIRECTIONS[ direction ] - BC.ux ) 
+		//		  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux );
+		//gyWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CY_DIRECTIONS[ direction ] - BC.uy ) 
+		//		  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy );
+		//gzWall += - (fPost[ direction ] + DIRECTION_WEIGHTS[direction]) * ( CZ_DIRECTIONS[ direction ] - BC.uz ) 
+		//		  + (fResultInverseDirection + DIRECTION_WEIGHTS[inverseDirection]) * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz );
+				  
+		gxWall += - (fPost[ direction ]) * ( CX_DIRECTIONS[ direction ] - BC.ux ) 
+				  + (fResultInverseDirection) * ( CX_DIRECTIONS[ inverseDirection ] - BC.ux );
+		gyWall += - (fPost[ direction ]) * ( CY_DIRECTIONS[ direction ] - BC.uy ) 
+				  + (fResultInverseDirection) * ( CY_DIRECTIONS[ inverseDirection ] - BC.uy );
+		gzWall += - (fPost[ direction ]) * ( CZ_DIRECTIONS[ direction ] - BC.uz ) 
+				  + (fResultInverseDirection) * ( CZ_DIRECTIONS[ inverseDirection ] - BC.uz );																			
 		
 		if ( direction%2 == 0 ) // this means the opposite direction was already processed -> we can overwrite fPost
 		{
