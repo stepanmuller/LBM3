@@ -99,14 +99,14 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = - ( uzInlet ) * velocityMultiplier;
 		BC.openBCID = 0;
-		BC.rhoReflectionTolerance = 3.8e-8f * RES_GLOBAL;
+		BC.rhoReflectionTolerance = 0.038f * Info.res * uzInlet * uzInlet * uzInlet;
 	}
 	else if ( jCell == Info.cellCountY-1 ) // Outlet
 	{
 		BC.dirichletRho = true;
 		BC.openBCID = 1;
 		BC.dRho = 0.f;
-		BC.rhoReflectionTolerance = 3.8e-8f * RES_GLOBAL;
+		BC.rhoReflectionTolerance = 0.038f * Info.res * uzInlet * uzInlet * uzInlet;
 	}
 }
 
@@ -118,6 +118,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	const float r = std::sqrt( x * x + y * y );
 	const float vtPhys = radiansPerSecond * (r / 1000.f);
 	const float vt = vtPhys * ( uzInlet / uzInletPhys );
+	if ( Info.gridID > 0 ) BC.collisionLimiter = 0.1f; // just trying this
 	if ( BC.wallID == 0 ) // stator
 	{
 		BC.ux = 0.f;
