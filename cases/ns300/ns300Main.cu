@@ -1,19 +1,29 @@
 // coarse
 //constexpr float RES_GLOBAL = 4.f; 
+// constexpr float uzInlet = 0.01f; 
 //constexpr int GRID_LEVEL_COUNT = 4;
 //constexpr int ITERATION_COUNT = 80000; 
 
 // medium
 //constexpr float RES_GLOBAL = 3.2f; 
+// constexpr float uzInlet = 0.01f; 
 //constexpr int GRID_LEVEL_COUNT = 4;
 //constexpr int ITERATION_COUNT = 80000;
 
-// fine
-constexpr float RES_GLOBAL = 2.64f;
-constexpr int GRID_LEVEL_COUNT = 4;
-constexpr int ITERATION_COUNT = 100000;
 
-constexpr int PLOTTER_PERIOD = 2000;
+// fine
+//constexpr float RES_GLOBAL = 2.64f;
+//constexpr float uzInlet = 0.01f; 
+//constexpr int GRID_LEVEL_COUNT = 4;
+//constexpr int ITERATION_COUNT = 100000;
+
+// fine slow
+constexpr float RES_GLOBAL = 2.64f;
+constexpr float uzInlet = 0.005f; // LBM inlet Mach setting. Note that the rotor blades travel about 5x faster than this value.	
+constexpr int GRID_LEVEL_COUNT = 4;
+constexpr int ITERATION_COUNT = 200000; 														
+
+constexpr int PLOTTER_PERIOD = 4000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
 constexpr int TRACKER_PERIOD = 1;
@@ -24,7 +34,6 @@ constexpr bool TRACK_OPEN_BOUNDARIES = true;
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
 
-constexpr float uzInlet = 0.01f; 															// also works as nominal LBM Mach number	
 constexpr float massFlowPhys = 335.f;														// kg/s
 constexpr float RInlet = 150.f;																// mm
 constexpr float inletAreamm2 = 3.14159f * RInlet * RInlet;									// mm2
