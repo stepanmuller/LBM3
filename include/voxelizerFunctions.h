@@ -708,7 +708,12 @@ void initializeVoxelizers( std::vector<VoxelizerStruct> &voxelizers, const std::
 		memoryBytes += 4LL * (long long)Voxelizer.rayMaps[rayMapIndex].rayMapArray.getSize() + 8LL * (long long)Voxelizer.rayMaps[rayMapIndex].hitCounterScanArray.getSize();
 	}
 	Voxelizer.rayMapTotal.gridID = Voxelizer.Info.gridID;
-	Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
+	if ( rayMapCount > 0 ) Voxelizer.rayMapTotal = Voxelizer.rayMaps[0];
+	else 
+	{
+		Voxelizer.rayMapTotal.hitCounterScanArray.setSize( Voxelizer.Info.cellCountX * Voxelizer.Info.cellCountY + 1 );
+		Voxelizer.rayMapTotal.hitCounterScanArray.setValue( 0LL );
+	}
 	for ( int bonusIndex = 1; bonusIndex < rayMapCount; bonusIndex++ )
 	{
 		sumRayMaps( Voxelizer.rayMapTotal, Voxelizer.rayMaps[bonusIndex] );
