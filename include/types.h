@@ -130,10 +130,10 @@ struct InfoStruct { float gridID = 0; unsigned long long gridMemoryBytes = 0LL;
 					
 struct BCStruct { 	float dRho = 0.f; float ux = 0.f; float uy = 0.f; float uz = 0.f; 
 					float gx = 0.f; float gy = 0.f; float gz = 0.f; 
-					int wallID = -1; float overwriteIBBLinks = -1.f;
+					int wallID = -1; int openBCID = 0; float overwriteIBBLinks = -1.f;
 					bool dirichletU = false; bool dirichletRho = false; 
-					float rhoReflectionTolerance = 0.0001f; int openBCID = 0; 
-					float collisionLimiter = 0.01f; float nuMultiplier = 1.f; };
+					bool nonReflective = true; float nonReflectiveBeta = 7.f; 
+					float collisionLimiter = 0.02f; float nuMultiplier = 1.f; };
 					
 // IJK holds cell indexes on X, Y, Z axes within the Grid that owns it
 struct IJKArrayStructCPU; // just declaring first
@@ -221,7 +221,7 @@ struct RotorViewStruct{ RotorInfoStruct Info;
 using RotorViewsType = std::vector<RotorViewStruct, TNL::Allocators::CudaManaged<RotorViewStruct>>;	
 
 struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
-							FloatArrayType dRhoPrevArray; FloatArrayType uNormalPrevArray; 
+							FloatArrayType dRhoRefArray; FloatArrayType uNormalRefArray; 
 							FloatArrayType dRhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
 		
 struct GridStruct { InfoStruct Info; 

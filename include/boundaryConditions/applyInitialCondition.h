@@ -45,8 +45,8 @@ void applyInitialCondition( GridStruct &Grid )
 	{
 		OpenBCArrayStruct &OpenBC = Grid.openBCs[ openBCID ];
 		auto indexView = OpenBC.indexArray.getConstView();
-		auto dRhoPrevView = OpenBC.dRhoPrevArray.getView();
-		auto uNormalPrevView = OpenBC.uNormalPrevArray.getView();
+		auto dRhoRefView = OpenBC.dRhoRefArray.getView();
+		auto uNormalRefView = OpenBC.uNormalRefArray.getView();
 		// loop over open boundary cells
 		auto cellLambda = [=] __cuda_callable__ ( const int index ) mutable
 		{
@@ -75,8 +75,8 @@ void applyInitialCondition( GridStruct &Grid )
 			
 			// fill those as previous values
 			const float uNormal = (float)outerNormalX * ux + (float)outerNormalY * uy + (float)outerNormalZ * uz;
-			dRhoPrevView( index ) = dRho;
-			uNormalPrevView( index ) = uNormal;
+			dRhoRefView( index ) = dRho;
+			uNormalRefView( index ) = uNormal;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, OpenBC.openBCCount, cellLambda );
 	}

@@ -109,7 +109,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.dirichletRho = true;
 		BC.dRho = 0.f;
 		BC.openBCID = 1;
-		BC.rhoReflectionTolerance = 8e-4f * uxInlet * uxInlet; 
+		BC.nonReflective = true;
 		// first scale because timestep gets smaller and so per one second we would get more reflection, 
 		// second scale because as LBM Mach number gets smaller, values of dRho get smaller
 	}
@@ -119,7 +119,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.ux = uxInlet;
 		BC.uy = 0.f;
 		BC.uz = 0.f;
-		BC.rhoReflectionTolerance = 1.f;
+		BC.nonReflective = false;
 		BC.openBCID = 0;
 	}
 	else // Every other boundary cell is strict dirichlet velocity
@@ -128,7 +128,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.ux = uxInlet;
 		BC.uy = 0.f;
 		BC.uz = 0.f;
-		BC.rhoReflectionTolerance = 1.f;
+		BC.nonReflective = false;
 		BC.openBCID = 2;
 	}
 }

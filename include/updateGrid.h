@@ -12,7 +12,6 @@
 #include "./boundaryConditions/restoreRho.h"
 #include "./boundaryConditions/restoreUxUyUz.h"
 #include "./boundaryConditions/applyMBBC.h"
-#include "./boundaryConditions/getNonReflectiveDRho.h"
 
 void updateSingleGrid( GridStruct &Grid )
 {	
@@ -184,8 +183,8 @@ void updateSingleGrid( GridStruct &Grid )
 	{
 		OpenBCArrayStruct &OpenBC = Grid.openBCs[ openBCID ];
 		auto indexView = OpenBC.indexArray.getConstView();
-		auto dRhoPrevView = OpenBC.dRhoPrevArray.getView();
-		auto uNormalPrevView = OpenBC.uNormalPrevArray.getView();
+		auto dRhoRefView = OpenBC.dRhoRefArray.getView();
+		auto uNormalRefView = OpenBC.uNormalRefArray.getView();
 		auto dRhoCumulativeView = OpenBC.dRhoCumulativeArray.getView();
 		auto uNormalCumulativeView = OpenBC.uNormalCumulativeArray.getView();
 		// loop over open boundary cells
@@ -247,52 +246,63 @@ void updateSingleGrid( GridStruct &Grid )
 				f[direction] += DIRECTION_WEIGHTS[direction];
 			}
 			
-			// read rhoPrev, uNormalPrev
-			const float dRhoPrev = dRhoPrevView( index );
-			const float uNormalPrev = uNormalPrevView( index );
+			// read rhoRef, uNormalRef
+			const float dRhoRef = dRhoRefView( index );
+			const float uNormalRef = uNormalRefView( index );
 			
 			// get BC
 			BCStruct BC;
 			getOpenBC( BC, iCell, jCell, kCell, Info );
 			
-			// get non reflective rho value if the cell is a face cell
 			// if it is an edge or corner cell, disable non reflectivity and switch to strict dirichlet,
 			// because non reflectivity is only defined for face cells
-			bool useNonReflective = true;
-			float dRhoNonReflective = 0.f;
-			if ( TNL::abs( outerNormalX ) + TNL::abs( outerNormalY ) + TNL::abs( outerNormalZ ) == 1 )
+			if ( TNL::abs( outerNormalX ) + TNL::abs( outerNormalY ) + TNL::abs( outerNormalZ ) != 1 )
 			{
-				dRhoNonReflective = getNonReflectiveDRho( dRhoZ, dRhoPrev, uNormalPrev );
+				BC.nonReflective = false;
 			}
-			else useNonReflective = false;
 			
-			// also disable non reflectivity if BC.rhoReflectionTolerance >= 1.f
-			if ( BC.rhoReflectionTolerance >= 1.f ) useNonReflective = false;
-			
-			// adjust rho, ux, uy, uz by combining Dirichlet with non reflectivity
+			// adjust rho, ux, uy, uz to avoid reflection if nonReflective is enabled
+			// either way, also restore the missing quantities
 			if ( BC.dirichletRho )
 			{
-				if ( useNonReflective )
+				if ( BC.nonReflective )
 				{
-					const float dRhoMin = dRhoNonReflective - BC.rhoReflectionTolerance;
-					const float dRhoMax = dRhoNonReflective + BC.rhoReflectionTolerance;
-					BC.dRho = std::clamp( BC.dRho, dRhoMin, dRhoMax ); 
+					const float dRhoTarget = BC.dRho;
+					const float cs = INVSQRT3;
+					const float rhoTarget = dRhoTarget + 1.f;
+					const float rhoTerm = ( ( dRhoZ - dRhoTarget ) / rhoTarget);
+					const float numerator = 2.f * ( uNormalRef + cs * rhoTerm );
+					const float rootContent = ( 1.f + cs - uNormalRef ) * ( 1.f + cs - uNormalRef ) + 4.f * ( uNormalRef + cs * rhoTerm );
+					const float denominator = 1.f + cs - uNormalRef + std::sqrt( rootContent );
+					const float uNormal = numerator / denominator;
+					BC.dRho = ( dRhoZ - uNormal ) / ( 1.f + uNormal );
 				}
 				restoreUxUyUz( outerNormalX, outerNormalY, outerNormalZ, BC, f );
 			}
 			else if ( BC.dirichletU )
 			{
-				if ( useNonReflective )
+				if ( BC.nonReflective )
 				{
-					// Schlaffer disertation 2013 eq (7.1) - (7.6)
-					float uNormalMin = ( (dRhoZ - dRhoNonReflective - BC.rhoReflectionTolerance ) / ( dRhoNonReflective + 1.f + BC.rhoReflectionTolerance) );
-					float uNormalMax = ( (dRhoZ - dRhoNonReflective + BC.rhoReflectionTolerance ) / ( dRhoNonReflective + 1.f - BC.rhoReflectionTolerance) );
-					if ( outerNormalX > 0 ) BC.ux = std::clamp( BC.ux, uNormalMin, uNormalMax );
-					if ( outerNormalX < 0 ) BC.ux = std::clamp( BC.ux, -uNormalMax, -uNormalMin );
-					if ( outerNormalY > 0 ) BC.uy = std::clamp( BC.uy, uNormalMin, uNormalMax );
-					if ( outerNormalY < 0 ) BC.uy = std::clamp( BC.uy, -uNormalMax, -uNormalMin );
-					if ( outerNormalZ > 0 ) BC.uz = std::clamp( BC.uz, uNormalMin, uNormalMax );
-					if ( outerNormalZ < 0 ) BC.uz = std::clamp( BC.uz, -uNormalMax, -uNormalMin );
+					float uNormalTarget = 0.f;
+					if ( outerNormalX > 0 ) uNormalTarget =   BC.ux;
+					if ( outerNormalX < 0 ) uNormalTarget = - BC.ux;
+					if ( outerNormalY > 0 ) uNormalTarget =   BC.uy;
+					if ( outerNormalY < 0 ) uNormalTarget = - BC.uy;
+					if ( outerNormalZ > 0 ) uNormalTarget =   BC.uz;
+					if ( outerNormalZ < 0 ) uNormalTarget = - BC.uz;
+					const float cs = INVSQRT3;
+					const float rhoRef = dRhoRef + 1.f;
+					const float rhoTerm = ( ( dRhoZ - dRhoRef ) / rhoRef);
+					const float numerator = 2.f * ( uNormalTarget + cs * rhoTerm );
+					const float rootContent = ( 1.f + cs - uNormalTarget ) * ( 1.f + cs - uNormalTarget ) + 4.f * ( uNormalTarget + cs * rhoTerm );
+					const float denominator = 1.f + cs - uNormalTarget + std::sqrt( rootContent );
+					const float uNormal = numerator / denominator;
+					if ( outerNormalX > 0 ) BC.ux =   uNormal;
+					if ( outerNormalX < 0 ) BC.ux = - uNormal;
+					if ( outerNormalY > 0 ) BC.uy =   uNormal;
+					if ( outerNormalY < 0 ) BC.uy = - uNormal;
+					if ( outerNormalZ > 0 ) BC.uz =   uNormal;
+					if ( outerNormalZ < 0 ) BC.uz = - uNormal;
 				}
 				restoreRho( outerNormalX, outerNormalY, outerNormalZ, BC, f );
 			}
@@ -313,10 +323,28 @@ void updateSingleGrid( GridStruct &Grid )
 				}
 			}
 			
-			// track previous and cumulative values
+			// track reference values
 			const float uNormal = (float)outerNormalX * BC.ux + (float)outerNormalY * BC.uy + (float)outerNormalZ * BC.uz;
-			dRhoPrevView( index ) = BC.dRho;
-			uNormalPrevView( index ) = uNormal;
+			const float beta = BC.nonReflectiveBeta; // the larger beta is, the lower influence early iterations have on current reference values
+			float alpha = beta / ( Info.iterationsFinished + beta + 10.f ); // using 10 just to avoid strong oscilation if iterationsFinished is < 10
+			// if alpha gets very close to float precision, it could happen that the reference is effectively not updated at all
+			// so then we boost alpha and only update the reference every 3^k iterations (choosing 3 to avoid aliasing with interface updates)
+			int updateEvery = 1;
+			while (alpha < 1.e-5f)
+			{
+				alpha *= 3.f;
+				updateEvery *= 3; // 1, 3, 9, 27, ...
+			}
+
+			const bool updateReferenceThisTime =
+				(Info.iterationsFinished % updateEvery == 0);
+			
+			if (updateReferenceThisTime)
+			{
+				dRhoRefView(index) = fmaf(alpha, BC.dRho - dRhoRef, dRhoRef);
+				uNormalRefView(index) = fmaf(alpha, uNormal - uNormalRef, uNormalRef);
+			}
+			// track cumulative values
 			if constexpr (!TRACK_OPEN_BOUNDARIES) return;
 			if (!trackFlow) return;
 			dRhoCumulativeView( index ) += BC.dRho;

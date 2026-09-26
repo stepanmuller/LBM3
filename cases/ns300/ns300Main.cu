@@ -1,15 +1,20 @@
+// very coarse
+constexpr float RES_GLOBAL = 4.f; 
+constexpr float uzInlet = 0.01f; 
+constexpr int GRID_LEVEL_COUNT = 3;
+constexpr int ITERATION_COUNT = 60000; 
+
 // coarse
-//constexpr float RES_GLOBAL = 4.f; 
+// constexpr float RES_GLOBAL = 4.f; 
 // constexpr float uzInlet = 0.01f; 
-//constexpr int GRID_LEVEL_COUNT = 4;
-//constexpr int ITERATION_COUNT = 80000; 
+// constexpr int GRID_LEVEL_COUNT = 4;
+// constexpr int ITERATION_COUNT = 60000; 
 
 // medium
 //constexpr float RES_GLOBAL = 3.2f; 
 // constexpr float uzInlet = 0.01f; 
 //constexpr int GRID_LEVEL_COUNT = 4;
 //constexpr int ITERATION_COUNT = 80000;
-
 
 // fine
 //constexpr float RES_GLOBAL = 2.64f;
@@ -18,10 +23,10 @@
 //constexpr int ITERATION_COUNT = 100000;
 
 // fine slow
-constexpr float RES_GLOBAL = 2.64f;
-constexpr float uzInlet = 0.005f; // LBM inlet Mach setting. Note that the rotor blades travel about 5x faster than this value.	
-constexpr int GRID_LEVEL_COUNT = 4;
-constexpr int ITERATION_COUNT = 200000; 														
+// constexpr float RES_GLOBAL = 2.64f;
+// constexpr float uzInlet = 0.005f; // LBM inlet Mach setting. Note that the rotor blades travel about 5x faster than this value.	
+// constexpr int GRID_LEVEL_COUNT = 4;
+// constexpr int ITERATION_COUNT = 200000; 														
 
 constexpr int PLOTTER_PERIOD = 4000;
 
@@ -108,14 +113,14 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = - ( uzInlet ) * velocityMultiplier;
 		BC.openBCID = 0;
-		BC.rhoReflectionTolerance = 0.038f * Info.res * uzInlet * uzInlet * uzInlet;
+		BC.nonReflective = true;
 	}
 	else if ( jCell == Info.cellCountY-1 ) // Outlet
 	{
 		BC.dirichletRho = true;
 		BC.openBCID = 1;
 		BC.dRho = 0.f;
-		BC.rhoReflectionTolerance = 0.038f * Info.res * uzInlet * uzInlet * uzInlet;
+		BC.nonReflective = true;
 	}
 }
 
@@ -127,7 +132,6 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	const float r = std::sqrt( x * x + y * y );
 	const float vtPhys = radiansPerSecond * (r / 1000.f);
 	const float vt = vtPhys * ( uzInlet / uzInletPhys );
-	if ( Info.gridID > 0 ) BC.collisionLimiter = 0.1f; // just trying this
 	if ( BC.wallID == 0 ) // stator
 	{
 		BC.ux = 0.f;
