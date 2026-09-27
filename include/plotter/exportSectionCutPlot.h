@@ -232,11 +232,12 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
                     uy += alpha * (uyUpper - uy);
                     uz += alpha * (uzUpper - uz);
                     
-                    
-                    
                     // get position, we need it for the rotors
 					float x, y, z;
-					getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+					getXYZFromIJKCellIndex( iCell + (plane == ZY ? 1 : 0),
+											jCell + (plane == ZX ? 1 : 0),
+											kCell + (plane == XY ? 1 : 0),
+											x, y, z, Info);
 					// here we also need to browse through rotors and find rotor fraction,
 					// if marker was zero till here set it to rotor fraction
 					// process the rotors
@@ -250,7 +251,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 							markerUpper += rotorFraction;
 						}
 					}
-					markerUpper = std::clamp( marker, 0.f, 1.f );
+					markerUpper = std::clamp( markerUpper, 0.f, 1.f );
 					marker += alpha * (markerUpper - marker);
 					
 					// if a rotor frame with non zero rotation is supplied, shift ux, uy, uz to the frame of this rotor

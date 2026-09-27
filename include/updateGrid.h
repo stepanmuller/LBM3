@@ -109,8 +109,8 @@ void updateSingleGrid( GridStruct &Grid )
 			const float uyPreRotor = ( uy * rho + BC.gy) * rhoInv;
 			const float uzPreRotor = ( uz * rho + BC.gz) * rhoInv;
 			// it can also happen that there are more slightly overlapping rotors ( gear pump! )
-			// because of this, we will be tracking the cumulative rotor fraction
-			float rotorFractionCumulative = 0.f;
+			// because of this, we will be tracking the cumulative rotor forcing fraction
+			float forcingFractionCumulative = 0.f;
 			// when browsing a rotor:
 			// 1) find its fraction
 			// 2) if rotorFractionCumulative + fraction > 1, 
@@ -121,10 +121,11 @@ void updateSingleGrid( GridStruct &Grid )
 			// 4) after the rotor processing, check if rotorFractionCumulative >= 1, break if so
 			for (int rotorID = 0; rotorID < rotorCount; rotorID++)
 			{
-				processRotor( BC, rho, uxPreRotor, uyPreRotor, uzPreRotor, x, y, z, rotorFractionCumulative, trackForce, Info, rotorViews[rotorID] );
+				processRotor( BC, rho, uxPreRotor, uyPreRotor, uzPreRotor, x, y, z, forcingFractionCumulative, trackForce, Info, rotorViews[rotorID] );
 				// this adds rotor forcing to the BC forcing
-				if ( rotorFractionCumulative >= 1.f ) break;
+				if ( forcingFractionCumulative >= 1.f ) break;
 			}
+			if ( forcingFractionCumulative > 0.f ) BC.collisionLimiter *= 1.f - std::clamp(forcingFractionCumulative, 0.f, 1.f);
 		}
 		
 		applyCollision( f, BC, Info.nu );

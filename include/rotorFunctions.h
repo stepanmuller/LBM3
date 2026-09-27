@@ -209,7 +209,7 @@ __cuda_callable__ void getRotorFraction( float& rotorFraction,
 
 __cuda_callable__ void processRotor( BCStruct &BC, const float &rho, const float &uxPreRotor, const float &uyPreRotor, const float &uzPreRotor, 
 										const float& xGlobal, const float& yGlobal, const float& zGlobal, 
-										float &rotorFractionCumulative, const bool &trackForce,
+										float &forcingFractionCumulative, const bool &trackForce,
 										const InfoStruct& InfoGlobal, RotorViewStruct &RotorView )
 {
 	const RotorInfoStruct& InfoRotor = RotorView.Info;
@@ -267,16 +267,19 @@ __cuda_callable__ void processRotor( BCStruct &BC, const float &rho, const float
 	float gxRotor, gyRotor, gzRotor;
 	getRotorForcing( gxRotor, gyRotor, gzRotor, xGlobal, yGlobal, zGlobal, rho, uxPreRotor, uyPreRotor, uzPreRotor, InfoRotor, InfoGlobal );
 	
-	if ( rotorFractionCumulative + rotorFraction > 1.f )
-	{
-		rotorFraction = 1.f - rotorFractionCumulative;
-		rotorFractionCumulative = 1.f;
-	}
-	else rotorFractionCumulative += rotorFraction;
+	// forcing fraction is a function of rotor fraction
+	float forcingFraction = rotorFraction * rotorFraction * ( 3.f - 2.f * rotorFraction );
 	
-	gxRotor *= rotorFraction;
-	gyRotor *= rotorFraction;
-	gzRotor *= rotorFraction;
+	if ( forcingFractionCumulative + forcingFraction > 1.f )
+	{
+		forcingFraction = 1.f - forcingFractionCumulative;
+		forcingFractionCumulative = 1.f;
+	}
+	else forcingFractionCumulative += forcingFraction;
+	
+	gxRotor *= forcingFraction;
+	gyRotor *= forcingFraction;
+	gzRotor *= forcingFraction;
 
 	BC.gx += gxRotor;
 	BC.gy += gyRotor;
