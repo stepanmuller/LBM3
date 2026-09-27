@@ -1,18 +1,18 @@
 // very coarse
-constexpr float RES_GLOBAL = 4.f; 
-constexpr float uzInlet = 0.01f; 
-constexpr int GRID_LEVEL_COUNT = 3;
-constexpr int ITERATION_COUNT = 60000; 
+//constexpr float RES_GLOBAL = 4.f; 
+//constexpr float uzInlet = 0.01f; 
+//constexpr int GRID_LEVEL_COUNT = 3;
+//constexpr int ITERATION_COUNT = 60000; 
 
 // coarse
-// constexpr float RES_GLOBAL = 4.f; 
-// constexpr float uzInlet = 0.01f; 
-// constexpr int GRID_LEVEL_COUNT = 4;
-// constexpr int ITERATION_COUNT = 60000; 
+constexpr float RES_GLOBAL = 4.f; 
+constexpr float uzInlet = 0.01f; 
+constexpr int GRID_LEVEL_COUNT = 4;
+constexpr int ITERATION_COUNT = 60000; 
 
 // medium
 //constexpr float RES_GLOBAL = 3.2f; 
-// constexpr float uzInlet = 0.01f; 
+//constexpr float uzInlet = 0.01f; 
 //constexpr int GRID_LEVEL_COUNT = 4;
 //constexpr int ITERATION_COUNT = 80000;
 
@@ -163,34 +163,30 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
-	int iCut, jCut, kCut;
-	const float xTemp = 0.f; const float yTemp = 0.f; const float zTemp = 0.f;
 	// ZY section cut shows the inlet pipe
 	float xCut = 0.f;
-	getIJKCellIndexFromXYZ( iCut, jCut, kCut, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info);
-	exportSectionCutPlotZY( grids, iCut, iterationsFinished + 0 );
+	exportSectionCutPlotZY( grids, xCut, iterationsFinished + 0 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	// Detail
 	if ( GRID_LEVEL_COUNT >= 3 )
 	{
-		exportSectionCutPlotZY( grids, grids[2].Info.Bounds, iCut, iterationsFinished + 1 );
+		exportSectionCutPlotZY( grids, grids[2].Info.Bounds, xCut, iterationsFinished + 1 );
 		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	}
 	// XY section cut shows the rotor and the outlet pipe
 	float zCut = 32.5f;
-	getIJKCellIndexFromXYZ( iCut, jCut, kCut, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
-	exportSectionCutPlotXY( grids, kCut, iterationsFinished + 2 );
+	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 2 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	// Detail
 	if ( GRID_LEVEL_COUNT >= 3 )
 	{
-		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, kCut, iterationsFinished + 3 );
+		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, zCut, iterationsFinished + 3 );
 		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	}
 	// Detail in rotor frame
 	if ( GRID_LEVEL_COUNT >= 3 )
 	{
-		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, kCut, iterationsFinished + 4 );
+		exportSectionCutPlotXY( grids, grids[2].Info.Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, zCut, iterationsFinished + 4 );
 		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	}
 	std::cout << std::endl;

@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr long long EXPORT_RESOLUTION_PIXEL_LIMIT = 16000000;
+constexpr long long FLOW_REPORT_PIXEL_LIMIT = 16000000;
 
 #include "../NBRFunctions.h"
 #include "../esotwistStreamingFunctions.h"
@@ -10,7 +10,7 @@ constexpr long long EXPORT_RESOLUTION_PIXEL_LIMIT = 16000000;
 enum PlaneEnum { XY, ZY, ZX };
 
 // Version with linear interpolation in normal direction for cells that are coarser than image resolution
-void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, RotorInfoStruct &rotorFrameInfo, 
+void getFlowReportGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
 									const int &cutIndex, const int &plotNumber, PlaneEnum plane )
 {
 	if (grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT))
@@ -64,7 +64,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 								startHorizontal = kStartFinest; startVertical = iStartFinest; }
 	long long pixelCount = (long long)pixelsHorizontal * (long long)pixelsVertical;
 	
-	while ( pixelCount > EXPORT_RESOLUTION_PIXEL_LIMIT && imageLevel > 0 )
+	while ( pixelCount > FLOW_REPORT_PIXEL_LIMIT && imageLevel > 0 )
 	{
 		imageLevel--; 
 		pixelsHorizontal /= 2; startHorizontal /= 2;
@@ -73,7 +73,7 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	}
 	
     if (pixelsHorizontal <= 0 || pixelsVertical <= 0 ||
-        pixelCount > EXPORT_RESOLUTION_PIXEL_LIMIT)
+        pixelCount > FLOW_REPORT_PIXEL_LIMIT)
     {
         std::cerr << "Section cut: empty crop or image exceeds the resolution limit.\n";
         return;
@@ -334,130 +334,22 @@ void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &
 	fclose(fp);
 }
 
-// Yes bounds, yes rotor frame.
-// Define these overloads first so the simpler overloads can forward to them.
-void exportSectionCutPlotXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-                            RotorInfoStruct &RotorInfo, const float &zCut,
-                            const int &plotNumber )
-{
-    if ( grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT) )
-    {
-        std::cerr << "Section cut: not enough grid levels.\n";
-        return;
-    }
-
-    std::cout << "Exporting XY section cut plot " << plotNumber << " ... " << std::flush;
-
-    const InfoStruct &Info = grids[GRID_LEVEL_COUNT - 1].Info;
-    int iCell, jCell, kCell;
-    getIJKCellIndexFromXYZ( iCell, jCell, kCell, Info.ox, Info.oy, zCut, Info );
-
-    exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, kCell, plotNumber, XY );
-}
-
-void exportSectionCutPlotZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-                            RotorInfoStruct &RotorInfo, const float &xCut,
-                            const int &plotNumber )
-{
-    if ( grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT) )
-    {
-        std::cerr << "Section cut: not enough grid levels.\n";
-        return;
-    }
-
-    std::cout << "Exporting ZY section cut plot " << plotNumber << " ... " << std::flush;
-
-    const InfoStruct &Info = grids[GRID_LEVEL_COUNT - 1].Info;
-    int iCell, jCell, kCell;
-    getIJKCellIndexFromXYZ( iCell, jCell, kCell, xCut, Info.oy, Info.oz, Info );
-
-    exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, iCell, plotNumber, ZY );
-}
-
-void exportSectionCutPlotZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-                            RotorInfoStruct &RotorInfo, const float &yCut,
-                            const int &plotNumber )
-{
-    if ( grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT) )
-    {
-        std::cerr << "Section cut: not enough grid levels.\n";
-        return;
-    }
-
-    std::cout << "Exporting ZX section cut plot " << plotNumber << " ... " << std::flush;
-
-    const InfoStruct &Info = grids[GRID_LEVEL_COUNT - 1].Info;
-    int iCell, jCell, kCell;
-    getIJKCellIndexFromXYZ( iCell, jCell, kCell, Info.ox, yCut, Info.oz, Info );
-
-    exportSectionCutPlotGeneral( grids, Bounds, RotorInfo, jCell, plotNumber, ZX );
-}
-
-// No bounds, no rotor frame
-void exportSectionCutPlotXY( std::vector<GridStruct> &grids, const float &zCut,
-                            const int &plotNumber )
-{
-    BoundsStruct Bounds;
-    RotorInfoStruct RotorInfo;
-    exportSectionCutPlotXY( grids, Bounds, RotorInfo, zCut, plotNumber );
-}
-
-void exportSectionCutPlotZY( std::vector<GridStruct> &grids, const float &xCut,
-                            const int &plotNumber )
-{
-    BoundsStruct Bounds;
-    RotorInfoStruct RotorInfo;
-    exportSectionCutPlotZY( grids, Bounds, RotorInfo, xCut, plotNumber );
-}
-
-void exportSectionCutPlotZX( std::vector<GridStruct> &grids, const float &yCut,
-                            const int &plotNumber )
-{
-    BoundsStruct Bounds;
-    RotorInfoStruct RotorInfo;
-    exportSectionCutPlotZX( grids, Bounds, RotorInfo, yCut, plotNumber );
-}
-
 // Yes bounds, no rotor frame
-void exportSectionCutPlotXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-                            const float &zCut, const int &plotNumber )
+void getFlowReportXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &zCut, const int &plotNumber )
 {
-    RotorInfoStruct RotorInfo;
-    exportSectionCutPlotXY( grids, Bounds, RotorInfo, zCut, plotNumber );
+	float xTemp = 0.f; float yTemp = 0.f; int iCell, jCell, kCell;
+	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info );
+	getFlowReportGeneral( grids, Bounds, kCell, plotNumber, XY );
 }
-
-void exportSectionCutPlotZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-                            const float &xCut, const int &plotNumber )
+void getFlowReportZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &xCut, const int &plotNumber )
 {
-    RotorInfoStruct RotorInfo;
-    exportSectionCutPlotZY( grids, Bounds, RotorInfo, xCut, plotNumber );
+	float zTemp = 0.f; float yTemp = 0.f; int iCell, jCell, kCell;
+	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info );
+	getFlowReportGeneral( grids, Bounds, iCell, plotNumber, ZY );
 }
-
-void exportSectionCutPlotZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-                            const float &yCut, const int &plotNumber )
+void getFlowReportZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &yCut, const int &plotNumber )
 {
-    RotorInfoStruct RotorInfo;
-    exportSectionCutPlotZX( grids, Bounds, RotorInfo, yCut, plotNumber );
-}
-
-// No bounds, yes rotor frame
-void exportSectionCutPlotXY( std::vector<GridStruct> &grids, RotorInfoStruct &RotorInfo,
-                            const float &zCut, const int &plotNumber )
-{
-    BoundsStruct Bounds;
-    exportSectionCutPlotXY( grids, Bounds, RotorInfo, zCut, plotNumber );
-}
-
-void exportSectionCutPlotZY( std::vector<GridStruct> &grids, RotorInfoStruct &RotorInfo,
-                            const float &xCut, const int &plotNumber )
-{
-    BoundsStruct Bounds;
-    exportSectionCutPlotZY( grids, Bounds, RotorInfo, xCut, plotNumber );
-}
-
-void exportSectionCutPlotZX( std::vector<GridStruct> &grids, RotorInfoStruct &RotorInfo,
-                            const float &yCut, const int &plotNumber )
-{
-    BoundsStruct Bounds;
-    exportSectionCutPlotZX( grids, Bounds, RotorInfo, yCut, plotNumber );
+	float xTemp = 0.f; float zTemp = 0.f; int iCell, jCell, kCell;
+	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xTemp, yCut, zTemp, grids[GRID_LEVEL_COUNT-1].Info );
+	getFlowReportGeneral( grids, Bounds, jCell, plotNumber, ZX );
 }

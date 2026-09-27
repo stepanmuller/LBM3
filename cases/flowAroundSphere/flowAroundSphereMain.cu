@@ -157,13 +157,13 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
 	// XY section cut
-	const int kCut = grids[ GRID_LEVEL_COUNT-1 ].Info.cellCountZ / 2;
-	exportSectionCutPlotXY( grids, kCut, iterationsFinished );
+	const float zCut = 0.f;
+	exportSectionCutPlotXY( grids, zCut, iterationsFinished );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	// Detail 1
 	if ( GRID_LEVEL_COUNT > 1 )
 	{
-		exportSectionCutPlotXY( grids, grids[1].Info.Bounds, kCut, iterationsFinished + 1 );
+		exportSectionCutPlotXY( grids, grids[1].Info.Bounds, zCut, iterationsFinished + 1 );
 		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	}
 	std::cout << std::endl;
