@@ -1,9 +1,9 @@
-constexpr float RES_GLOBAL = 0.8f; 
+constexpr float RES_GLOBAL = 1.f; 
 constexpr float uzInlet = 0.01f; 
 constexpr int GRID_LEVEL_COUNT = 4;
-constexpr int ITERATION_COUNT = 10000; 												
+constexpr int ITERATION_COUNT = 60000; 												
 
-constexpr int PLOTTER_PERIOD = 500;
+constexpr int PLOTTER_PERIOD = 1000;
 
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr int TRACKER_PERIOD = 1;
@@ -81,6 +81,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.ux = 0.f;
 		BC.uy = 0.f;
 		BC.uz = uzInlet;
+		BC.nonReflective = false;
 	}
 	else if ( kCell == Info.cellCountZ-1 && rz > 25.f ) 
 	{	// lake outlet
