@@ -283,3 +283,9 @@ struct TrackerStruct { 	int iterationsFinished = 0; int openBCCount = 0; int wal
 						FloatArrayTypeCPU wallTx; FloatArrayTypeCPU wallTy; FloatArrayTypeCPU wallTz;
 						FloatArrayTypeCPU rotorFx; FloatArrayTypeCPU rotorFy; FloatArrayTypeCPU rotorFz;
 						FloatArrayTypeCPU rotorTx; FloatArrayTypeCPU rotorTy; FloatArrayTypeCPU rotorTz; };	
+						
+struct FlowReportStruct { 	float normalVelocity = 0.f; float massFlow = 0.f; float momentumThrust = 0.f;
+							float pressure = 0.f; float pressurePower = 0.f; float normalKineticPower = 0.f; };	
+							
+struct FlowReductionResult { 	float velocity = 0.f; float densityVelocity = 0.f;	float momentum = 0.f;
+								float dRho = 0.f; float kinetic = 0.f; int cellCount = 0; };				

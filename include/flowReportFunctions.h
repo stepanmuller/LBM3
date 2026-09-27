@@ -10,8 +10,8 @@ constexpr long long FLOW_REPORT_PIXEL_LIMIT = 16000000;
 enum PlaneEnum { XY, ZY, ZX };
 
 // Version with linear interpolation in normal direction for cells that are coarser than image resolution
-void getFlowReportGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-									const int &cutIndex, const int &plotNumber, PlaneEnum plane )
+void getFlowReportGeneral( 	FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds,
+							const int &cutIndex, const int &plotNumber, PlaneEnum plane )
 {
 	if (grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT))
     {
@@ -286,70 +286,107 @@ void getFlowReportGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds,
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );
 	}
 	
-	SectionCutStructCPU SectionCutCPU;
-	SectionCutCPU.dRhoArray = SectionCut.dRhoArray;
-	SectionCutCPU.uxArray = SectionCut.uxArray;
-	SectionCutCPU.uyArray = SectionCut.uyArray;
-	SectionCutCPU.uzArray = SectionCut.uzArray;
-	SectionCutCPU.markerArray = SectionCut.markerArray;
-	SectionCutCPU.gridIDArray = SectionCut.gridIDArray;
-	
-	FILE* fp = fopen("/dev/shm/sim_data.bin", "wb");
-    if (!fp)
-    {
-        perror("Section cut: cannot open /dev/shm/sim_data.bin");
-        return;
-    }
-	int header[4] = {plotNumber, (int)pixelsVertical, (int)pixelsHorizontal, 6};
-	fwrite(header, sizeof(int), 4, fp);
-	
-	for (int indexVertical = 0; indexVertical < pixelsVertical; indexVertical++)
+	// Now, do reduction on the section cut similar to how the tracker does it on open boundaries
+	// Use this to fill the FlowReport struct
+	// The normal direction here is not outer normal from a boundary, but 
+	// it is the direction thats normal AND points in positive direction with respect to the coord system
+	// so if the cut plane is submerged inside the grid, take the positive normal
+	// apply unit conversion just like in the tracker
+	auto fetch = [=] __cuda_callable__ ( const int index ) -> FlowReductionResult
 	{
-		for (int indexHorizontal = 0; indexHorizontal < pixelsHorizontal; indexHorizontal++)
-		{
-			float dRho = SectionCutCPU.dRhoArray.getElement(indexVertical, indexHorizontal);
-			float ux = SectionCutCPU.uxArray.getElement(indexVertical, indexHorizontal);
-			float uy = SectionCutCPU.uyArray.getElement(indexVertical, indexHorizontal);
-			float uz = SectionCutCPU.uzArray.getElement(indexVertical, indexHorizontal);
-			float marker = SectionCutCPU.markerArray.getElement(indexVertical, indexHorizontal);
-			int gridID = SectionCutCPU.gridIDArray.getElement(indexVertical, indexHorizontal);
-			float p = dRho;
-			
-			// Use the actual gridID to scale physical parameters properly
-			convertToPhysicalVelocity( ux, uy, uz, grids[gridID].Info );
-			convertToPhysicalPressure( p, grids[gridID].Info );
-			
-			// Get resolution
-			const float res = grids[gridID].Info.res;
-			
-			float uHorizontal, uVertical, uNormal;
-			if ( plane == XY ) 		{ uHorizontal = ux; uVertical = uy; uNormal = uz; }
-			else if ( plane == ZY ) { uHorizontal = uz; uVertical = uy; uNormal = ux; }
-			else 					{ uHorizontal = uz; uVertical = ux; uNormal = uy; }
-			
-			float data[6] = {p, uHorizontal, uVertical, uNormal, marker, res};
-			fwrite(data, sizeof(float), 6, fp);
-		}
-	}
-	fclose(fp);
+		FlowReductionResult result{};
+
+		const int row = index / pixelsHorizontal;
+		const int column = index % pixelsHorizontal;
+
+		// Marker is the solid fraction. Count only fluid pixels.
+		if ( !(markerView(row, column) < 0.5f) ) return result;
+
+		const float dRho = dRhoView(row, column);
+		const float u = plane == XY ? uzView(row, column)
+					  : plane == ZY ? uxView(row, column)
+									: uyView(row, column);
+
+		// (1 + dRho) * u, with one final rounding.
+		const float rhoU = fmaf(dRho, u, u);
+
+		result.velocity        = u;
+		result.densityVelocity = dRho * u;
+		result.momentum        = rhoU * TNL::abs(u); // Signed, as in Tracker.
+		result.dRho            = dRho;
+		result.kinetic         = 0.5f * rhoU * u * u;
+		result.cellCount       = 1;
+
+		return result;
+	};
+
+	auto reduction = [] __cuda_callable__ ( const FlowReductionResult &a, const FlowReductionResult &b ) -> FlowReductionResult
+	{
+		FlowReductionResult result;
+
+		result.velocity        = a.velocity        + b.velocity;
+		result.densityVelocity = a.densityVelocity + b.densityVelocity;
+		result.momentum        = a.momentum        + b.momentum;
+		result.dRho            = a.dRho            + b.dRho;
+		result.kinetic         = a.kinetic         + b.kinetic;
+		result.cellCount       = a.cellCount       + b.cellCount;
+
+		return result;
+	};
+
+	const FlowReductionResult totals = TNL::Algorithms::reduce<TNL::Devices::Cuda>( 0, static_cast<int>(pixelCount), fetch, reduction, FlowReductionResult{} );
+
+	// Also clear any previous report when the section contains no fluid.
+	FlowReport = FlowReportStruct{};
+	if ( totals.cellCount == 0 ) return;
+
+	// Your grid builder halves res and dtPhys together, so velocity and
+	// pressure conversion factors are identical across grid levels.
+	// Each section pixel has the area of imageLevel.
+	const InfoStruct &reportInfo = grids[imageLevel].Info;
+
+	const float pixelSizeM = reportInfo.res / 1000.f;
+	const float pixelAreaM2 = pixelSizeM * pixelSizeM;
+	const float velocityScale = pixelSizeM / reportInfo.dtPhys;
+	const float inverseCount = 1.f / static_cast<float>(totals.cellCount);
+
+	float pressureScale = 1.f;
+	convertToPhysicalPressure( pressureScale, reportInfo );
+
+	const float massFluxScale = RHO_PHYS * pixelAreaM2 * velocityScale;
+
+	// Area averages: equal-area pixels allow division by integer count.
+	FlowReport.normalVelocity =	(totals.velocity * inverseCount) * velocityScale;
+
+	FlowReport.pressure = (totals.dRho * inverseCount) * pressureScale;
+
+	// Integrated fluxes. The density correction was accumulated separately.
+	FlowReport.massFlow = (totals.velocity + totals.densityVelocity) * massFluxScale;
+
+	FlowReport.momentumThrust =	totals.momentum * (massFluxScale * velocityScale);
+
+	// The same sum(dRho * u) supplies pressure power.
+	FlowReport.pressurePower = totals.densityVelocity * (pixelAreaM2 * pressureScale * velocityScale);
+
+	FlowReport.normalKineticPower =	totals.kinetic * (massFluxScale * velocityScale * velocityScale);
 }
 
 // Yes bounds, no rotor frame
-void getFlowReportXY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &zCut, const int &plotNumber )
+void getFlowReportXY( FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &zCut, const int &plotNumber )
 {
 	float xTemp = 0.f; float yTemp = 0.f; int iCell, jCell, kCell;
 	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info );
-	getFlowReportGeneral( grids, Bounds, kCell, plotNumber, XY );
+	getFlowReportGeneral( FlowReport, grids, Bounds, kCell, plotNumber, XY );
 }
-void getFlowReportZY( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &xCut, const int &plotNumber )
+void getFlowReportZY( FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &xCut, const int &plotNumber )
 {
 	float zTemp = 0.f; float yTemp = 0.f; int iCell, jCell, kCell;
 	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info );
-	getFlowReportGeneral( grids, Bounds, iCell, plotNumber, ZY );
+	getFlowReportGeneral( FlowReport, grids, Bounds, iCell, plotNumber, ZY );
 }
-void getFlowReportZX( std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &yCut, const int &plotNumber )
+void getFlowReportZX( FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &yCut, const int &plotNumber )
 {
 	float xTemp = 0.f; float zTemp = 0.f; int iCell, jCell, kCell;
 	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xTemp, yCut, zTemp, grids[GRID_LEVEL_COUNT-1].Info );
-	getFlowReportGeneral( grids, Bounds, jCell, plotNumber, ZX );
+	getFlowReportGeneral( FlowReport, grids, Bounds, jCell, plotNumber, ZX );
 }
