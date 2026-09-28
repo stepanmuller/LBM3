@@ -3,6 +3,8 @@
 Binary format (native byte order): int32 count, int32 object ID,
 then six float32 histories, each containing count samples.
 Rows are column-major plot order: left top/middle/bottom, right top/middle/bottom.
+Custom payloads carry a variable slot count, metadata, and float32 histories;
+custom figures contain up to six variables each.
 """
 import argparse
 from pathlib import Path
@@ -183,7 +185,7 @@ def plotTrackerCustom(data_file="/dev/shm/trackerData.bin",
 		if header.size != 2:
 			raise ValueError("Incomplete custom tracker header")
 		count, slots = map(int, header)
-		if count < 1 or slots != 6:
+		if count < 1 or slots < 1:
 			raise ValueError("Invalid custom sample or slot count")
 		values, labels = [], []
 		for slot in range(slots):
@@ -200,8 +202,9 @@ def plotTrackerCustom(data_file="/dev/shm/trackerData.bin",
 	window = max(1, int(count * average_percent / 100))
 	output_directory = Path(output_directory)
 	output_directory.mkdir(parents=True, exist_ok=True)
-	slug = "custom"
-	output_path = output_directory / f"{slug}.png"
+	page_size = 6
+	page_count = (slots + page_size - 1) // page_size
+	output_paths = []
 
 	style = {
 		"text.usetex": False,
@@ -219,60 +222,70 @@ def plotTrackerCustom(data_file="/dev/shm/trackerData.bin",
 		"axes.unicode_minus": False,
 		"savefig.bbox": None,
 	}
-	with plt.rc_context(style):
-		fig, axes = plt.subplots(3, 2, figsize=(19.2, 10.8), dpi=200,
-								 sharex=True, layout="constrained")
-		try:
-			fig.suptitle("Custom variables", fontsize=24)
-			for component, (title, ylabel, unit) in enumerate(labels):
-				row, column = component % 3, component // 3
-				ax = axes[row, column]
-				data = values[component].astype(np.float64)
-				data[~np.isfinite(data)] = np.nan
-				ax.plot(iterations, data, color="0.30", linewidth=1.1)
-				ax.set_title(title, loc="left")
-				ax.set_ylabel(ylabel)
-				ax.set_xlim(0, count)
-				ax.margins(y=0.12)
-				# Scale y-axis using the last two averaging intervals.
-				recent = data[-min(count, 2 * window):]
-				recent = recent[np.isfinite(recent)]
-				if recent.size:
-					ymin, ymax = recent.min(), recent.max()
-					padding = 0.05 * (ymax - ymin)
-					# Ensure valid limits for constant or zero data.
-					if padding == 0:
-						padding = max(abs(ymin) * 0.05, 1e-7)
-					ax.set_ylim(ymin - padding, ymax + padding)
-				ax.grid(True, color="0.88", linewidth=0.6)
-				ax.set_axisbelow(True)
-				ax.xaxis.set_major_locator(MaxNLocator(nbins=7, integer=True))
-				ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
-				ax.ticklabel_format(axis="y", style="sci", scilimits=(-3, 4))
-				ax.tick_params(axis="x", labelbottom=(row == 2))
-				if row == 2:
-					ax.set_xlabel("Iterations finished [1]")
-				tail = data[-window:]
-				finite = tail[np.isfinite(tail)]
-				if finite.size:
-					average = finite.mean()
-					ax.hlines(average, iterations[-window], iterations[-1],
-							  colors="black", linestyles="--", linewidth=1.5)
-					if window == 1:
-						ax.plot(iterations[-1], average, "o", color="black", markersize=3)
-					value_label = f"{average:.5g} {unit}"
-				else:
-					value_label = "unavailable"
-				qualifier = " (finite samples)" if finite.size != window else ""
-				ax.text(0.98, 0.96,
-						f"Last {average_percent:g}% mean{qualifier}: {value_label}",
-						transform=ax.transAxes, ha="right", va="top", fontsize=16,
-						bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.92, pad=4))
-			fig.savefig(output_path, dpi=200, bbox_inches=None, facecolor="white")
-		finally:
-			plt.close(fig)
-	print(f"Exported to {output_path}", flush=True)
-	return output_path
+	for page in range(page_count):
+		first = page * page_size
+		last = min(first + page_size, slots)
+		filename = "custom.png" if page == 0 else f"custom_{page + 1}.png"
+		output_path = output_directory / filename
+		with plt.rc_context(style):
+			fig, axes = plt.subplots(3, 2, figsize=(19.2, 10.8), dpi=200,
+									 sharex=True, layout="constrained")
+			try:
+				title = "Custom variables" if page_count == 1 else f"Custom variables ({page + 1}/{page_count})"
+				fig.suptitle(title, fontsize=24)
+				for component, (title, ylabel, unit) in enumerate(labels[first:last]):
+					row, column = component % 3, component // 3
+					ax = axes[row, column]
+					data = values[first + component].astype(np.float64)
+					data[~np.isfinite(data)] = np.nan
+					ax.plot(iterations, data, color="0.30", linewidth=1.1)
+					ax.set_title(title, loc="left")
+					ax.set_ylabel(ylabel)
+					ax.set_xlim(0, count)
+					ax.margins(y=0.12)
+					# Scale y-axis using the last two averaging intervals.
+					recent = data[-min(count, 2 * window):]
+					recent = recent[np.isfinite(recent)]
+					if recent.size:
+						ymin, ymax = recent.min(), recent.max()
+						padding = 0.05 * (ymax - ymin)
+						# Ensure valid limits for constant or zero data.
+						if padding == 0:
+							padding = max(abs(ymin) * 0.05, 1e-7)
+						ax.set_ylim(ymin - padding, ymax + padding)
+					ax.grid(True, color="0.88", linewidth=0.6)
+					ax.set_axisbelow(True)
+					ax.xaxis.set_major_locator(MaxNLocator(nbins=7, integer=True))
+					ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
+					ax.ticklabel_format(axis="y", style="sci", scilimits=(-3, 4))
+					is_bottom = row == 2 or component == last - first - 1
+					ax.tick_params(axis="x", labelbottom=is_bottom)
+					if is_bottom:
+						ax.set_xlabel("Iterations finished [1]")
+					tail = data[-window:]
+					finite = tail[np.isfinite(tail)]
+					if finite.size:
+						average = finite.mean()
+						ax.hlines(average, iterations[-window], iterations[-1],
+								  colors="black", linestyles="--", linewidth=1.5)
+						if window == 1:
+							ax.plot(iterations[-1], average, "o", color="black", markersize=3)
+						value_label = f"{average:.5g} {unit}"
+					else:
+						value_label = "unavailable"
+					qualifier = " (finite samples)" if finite.size != window else ""
+					ax.text(0.98, 0.96,
+							f"Last {average_percent:g}% mean{qualifier}: {value_label}",
+							transform=ax.transAxes, ha="right", va="top", fontsize=16,
+							bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.92, pad=4))
+				for component in range(last - first, page_size):
+					axes[component % 3, component // 3].set_visible(False)
+				fig.savefig(output_path, dpi=200, bbox_inches=None, facecolor="white")
+			finally:
+				plt.close(fig)
+		print(f"Exported to {output_path}", flush=True)
+		output_paths.append(output_path)
+	return output_paths[0] if page_count == 1 else output_paths
 
 
 if __name__ == "__main__":

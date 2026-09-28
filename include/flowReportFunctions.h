@@ -2,16 +2,14 @@
 
 constexpr long long FLOW_REPORT_PIXEL_LIMIT = 16000000;
 
-#include "../NBRFunctions.h"
-#include "../esotwistStreamingFunctions.h"
-#include "../rotorFunctions.h"
-#include "../cellFunctions.h"
-
-enum PlaneEnum { XY, ZY, ZX };
+#include "./NBRFunctions.h"
+#include "./esotwistStreamingFunctions.h"
+#include "./rotorFunctions.h"
+#include "./cellFunctions.h"
 
 // Version with linear interpolation in normal direction for cells that are coarser than image resolution
-void getFlowReportGeneral( 	FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds,
-							const int &cutIndex, const int &plotNumber, PlaneEnum plane )
+void getFlowReportGeneral( 	FlowReportStruct &FlowReport, std::vector<GridStruct> &grids, BoundsStruct &Bounds,
+							const int &cutIndex, PlaneEnum plane )
 {
 	if (grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT))
     {
@@ -209,16 +207,6 @@ void getFlowReportGeneral( 	FlowReportStruct &FlowReport; std::vector<GridStruct
 					}
 				}
 				marker = std::clamp( marker, 0.f, 1.f );
-				
-				// if a rotor frame with non zero rotation is supplied, shift ux, uy, uz to the frame of this rotor
-				if ( rotorFrameInfo.rotateAlongX || rotorFrameInfo.rotateAlongY || rotorFrameInfo.rotateAlongZ )
-				{
-					float uxRotor, uyRotor, uzRotor;
-					getRotorVelocity( uxRotor, uyRotor, uzRotor, x, y, z, rotorFrameInfo, Info );
-					ux = ux - uxRotor;
-					uy = uy - uyRotor;
-					uz = uz - uzRotor;
-				}
   
                 if (blend)
                 {
@@ -253,16 +241,6 @@ void getFlowReportGeneral( 	FlowReportStruct &FlowReport; std::vector<GridStruct
 					}
 					markerUpper = std::clamp( markerUpper, 0.f, 1.f );
 					marker += alpha * (markerUpper - marker);
-					
-					// if a rotor frame with non zero rotation is supplied, shift ux, uy, uz to the frame of this rotor
-					if ( rotorFrameInfo.rotateAlongX || rotorFrameInfo.rotateAlongY || rotorFrameInfo.rotateAlongZ )
-					{
-						float uxRotor, uyRotor, uzRotor;
-						getRotorVelocity( uxRotor, uyRotor, uzRotor, x, y, z, rotorFrameInfo, Info );
-						ux += alpha * ( (ux - uxRotor) - ux);
-						uy += alpha * ( (uy - uyRotor) - uy);
-						uz += alpha * ( (uz - uzRotor) - uz);
-					} 
                 }
             }
 
@@ -372,21 +350,21 @@ void getFlowReportGeneral( 	FlowReportStruct &FlowReport; std::vector<GridStruct
 }
 
 // Yes bounds, no rotor frame
-void getFlowReportXY( FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &zCut, const int &plotNumber )
+void getFlowReportXY( FlowReportStruct &FlowReport, std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &zCut )
 {
 	float xTemp = 0.f; float yTemp = 0.f; int iCell, jCell, kCell;
 	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xTemp, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info );
-	getFlowReportGeneral( FlowReport, grids, Bounds, kCell, plotNumber, XY );
+	getFlowReportGeneral( FlowReport, grids, Bounds, kCell, XY );
 }
-void getFlowReportZY( FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &xCut, const int &plotNumber )
+void getFlowReportZY( FlowReportStruct &FlowReport, std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &xCut )
 {
 	float zTemp = 0.f; float yTemp = 0.f; int iCell, jCell, kCell;
 	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xCut, yTemp, zTemp, grids[GRID_LEVEL_COUNT-1].Info );
-	getFlowReportGeneral( FlowReport, grids, Bounds, iCell, plotNumber, ZY );
+	getFlowReportGeneral( FlowReport, grids, Bounds, iCell, ZY );
 }
-void getFlowReportZX( FlowReportStruct &FlowReport; std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &yCut, const int &plotNumber )
+void getFlowReportZX( FlowReportStruct &FlowReport, std::vector<GridStruct> &grids, BoundsStruct &Bounds, const float &yCut )
 {
 	float xTemp = 0.f; float zTemp = 0.f; int iCell, jCell, kCell;
 	getIJKCellIndexFromXYZ( iCell, jCell, kCell, xTemp, yCut, zTemp, grids[GRID_LEVEL_COUNT-1].Info );
-	getFlowReportGeneral( FlowReport, grids, Bounds, jCell, plotNumber, ZX );
+	getFlowReportGeneral( FlowReport, grids, Bounds, jCell, ZX );
 }

@@ -1,9 +1,9 @@
-constexpr float RES_GLOBAL = 1.f; 
+constexpr float RES_GLOBAL = 0.64f; 
 constexpr float uzInlet = 0.01f; 
 constexpr int GRID_LEVEL_COUNT = 4;
-constexpr int ITERATION_COUNT = 60000; 												
+constexpr int ITERATION_COUNT = 80000; 												
 
-constexpr int PLOTTER_PERIOD = 1000;
+constexpr int PLOTTER_PERIOD = 2000;
 
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr int TRACKER_PERIOD = 1;
@@ -16,6 +16,8 @@ constexpr float NU_PHYS = 1e-6;								// m2/s water
 
 constexpr float uzInletPhys = 16.25f;						// m/s
 constexpr float radiansPerSecond = 2700.f;					// rad/s
+
+constexpr float iRegulatorOutletStrength = 50000.f;
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
@@ -81,7 +83,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.ux = 0.f;
 		BC.uy = 0.f;
 		BC.uz = uzInlet;
-		//BC.nonReflective = false;
+		BC.nonReflective = false;
 	}
 	else if ( kCell == Info.cellCountZ-1 && rz > 25.f ) 
 	{	// lake outlet
@@ -93,7 +95,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	{	// pump outlet
 		BC.openBCID = 2;
 		BC.dirichletRho = true;
-		BC.dRho = 0.f;
+		BC.dRho = Info.iRegulatorOutlet;
 		BC.nonReflective = false;
 	}
 }
@@ -129,18 +131,24 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.collisionLimiter = 0.f;
 		BC.overwriteIBBLinks = 0.5f;
 	}
-	if ( z >= Info.Bounds.zMax-10.f ) 
+	if ( z >= Info.Bounds.zMax-10.f && rz > 25.f ) 
 	{
 		BC.collisionLimiter = 0.f;
 		BC.overwriteIBBLinks = 0.5f;
+	} 
+	if ( z >= Info.Bounds.zMax-19.f && rz <= 25.f ) 
+	{
+		BC.collisionLimiter = 0.f;
+		BC.nuMultiplier = 200.f;
 	} 
 }
 
 #include "../../include/gridBuilderFunctions.h"
 #include "../../include/updateGrid.h"
 #include "../../include/trackerFunctions.h"
+#include "../../include/flowReportFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
-#include "../../include/plotter/exportToiletPaperProjection.h"
+#include "../../include/plotter/exportToiletPaperPlot.h"
 #include "../../include/plotter/plotTracker.h"
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
@@ -159,27 +167,23 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 1 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	
-	/*
 	// XY section cut
 	float zCut = 0.f;
 	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 2 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	
 	// XY detail
-	Bounds.xMin = -50.f;
-	Bounds.xMax = 50.f;
-	Bounds.yMin = -50.f;
+	Bounds = grids[1].Info.Bounds;
 	Bounds.yMax = 20.f;
 	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 3 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	*/
 	
 	// Toilet paper projection
 	float rz = 13.f;
 	Bounds.zMin = -10.f;
-	toiletPaperProjectionZ(grids, Bounds, rz, iterationsFinished + 5 );
+	toiletPaperPlotZ(grids, Bounds, rz, iterationsFinished + 5 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	toiletPaperProjectionZ(grids, Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, rz, iterationsFinished + 6);
+	toiletPaperPlotZ(grids, Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, rz, iterationsFinished + 6);
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 
 	std::cout << std::endl;
@@ -201,7 +205,7 @@ int main(int argc, char **argv)
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
 	DomainBounds.zMin = -200.f;
-	DomainBounds.zMax = 77.5f;
+	DomainBounds.zMax = gridStaticSTLs[1].Bounds.zMax;
 	DomainBounds.xMin = -90.f;
 	DomainBounds.xMax = 90.f;
 	DomainBounds.yMin = -120.f;
@@ -217,9 +221,12 @@ int main(int argc, char **argv)
 	grids[GRID_LEVEL_COUNT-1].rotors[0].Info.rotateAlongZ = true;
 	
 	TrackerStruct Tracker;
-	//Tracker.TRACK_CUSTOM_VARIABLES = true;
-	//Tracker.customNames = { "Mass flow", "Head", "Hydraulic efficiency", "Hydraulic input power" };
-	//Tracker.customUnits = { "kg/s", "m", "%", "kW" };
+	Tracker.TRACK_CUSTOM_VARIABLES = true;
+	
+	Tracker.customNames = { "Outlet pressure power residual", "Mass flow", "Thrust", "Intake power", "Impeller power", "Normal kinetic power",
+							"Shaft torque", "Shaft power", "Useful power", "Intake efficiency", "Impeller efficiency", "Total efficiency", 
+							"Intake induced drag" };
+	Tracker.customUnits = { "W", "kg/s", "N", "W", "W", "W", "Nm", "W", "W", "[1]", "[1]", "[1]", "N" };
 	initializeTracker( Tracker, grids );
 	
 	plotGrids( 0, grids );
@@ -234,17 +241,82 @@ int main(int argc, char **argv)
 		
 		if ( iterationsFinished % TRACKER_PERIOD == 0 )
 		{
+			// update tracker
 			updateTracker( Tracker, grids );
-			/*
-			const float torqueTotal = Tracker.rotorTz[0] + Tracker.wallTz[1] + Tracker.wallTz[2]; // rotor + shaft + shroud
-			const float inputPower = torqueTotal * radiansPerSecond;
-			const float outputPower = Tracker.pressurePower[0] + Tracker.normalKineticPower[0] + Tracker.pressurePower[1] + Tracker.normalKineticPower[1];
-			const float etaPercent = 100.f * outputPower / inputPower;
-			const float massFlow = 0.5f * ( - Tracker.massFlow[0] + Tracker.massFlow[1] );
-			const float head = outputPower / ( massFlow * 9.81f );
-			const float inputPowerKw = inputPower * 0.001f;
-			trackCustomVariables( Tracker, { massFlow, head, etaPercent, inputPowerKw });
-			*/
+			
+			// get outlet flow report
+			FlowReportStruct FlowReportOut;
+			BoundsStruct Bounds; Bounds.xMin = -16.f; Bounds.xMax = 16.f; Bounds.yMin = -16.f; Bounds.yMax = 16.f;
+			float zCut = grids[0].Info.Bounds.zMax - 10.f;
+			getFlowReportXY( FlowReportOut, grids, Bounds, zCut );
+			
+			// get intake flow report
+			FlowReportStruct FlowReportIntake;
+			Bounds.xMin = -17.f; Bounds.xMax = 17.f; Bounds.yMin = -25.f; Bounds.yMax = 17.f;
+			zCut = -10.f;
+			getFlowReportXY( FlowReportIntake, grids, Bounds, zCut );
+			
+			// get drag flow report
+			FlowReportStruct FlowReportDrag;
+			Bounds = grids[1].Info.Bounds;
+			Bounds.yMax = -25.f;
+			zCut = 0.f;
+			getFlowReportXY( FlowReportDrag, grids, Bounds, zCut );
+			
+			// now prepare all reported variables
+			
+			// 1) outlet pressure power residual
+			const float outletPressurePower = FlowReportOut.pressurePower;
+			
+			// 2) mass flow
+			const float massFlow = FlowReportOut.massFlow;
+			
+			// 3) thrust
+			const float thrust = FlowReportOut.momentumThrust - uzInletPhys * massFlow;
+						
+			// 4) intake power
+			const float intakePower = FlowReportIntake.pressurePower + 0.5f * massFlow * FlowReportIntake.normalVelocity * FlowReportIntake.normalVelocity;
+			
+			// 5) impeller power
+			const float impellerPower = FlowReportOut.normalKineticPower + FlowReportOut.pressurePower - intakePower;
+			
+			// 6) kinetic power
+			const float kineticPower = FlowReportOut.normalKineticPower;
+			
+			// 7) shaft torque
+			const float shaftTorque = Tracker.rotorTz[0] + Tracker.wallTz[2]; // impeller + shaft
+			
+			// 8) shaft power
+			const float shaftPower = shaftTorque * radiansPerSecond;
+			
+			// 9) useful power
+			const float usefulPower = thrust * uzInletPhys;
+			
+			// 10) intake efficiency
+			const float lakePower = 0.5f * uzInletPhys * uzInletPhys * massFlow;
+			const float etaIntake = intakePower / lakePower;
+			
+			// 11) impeller efficiency
+			const float etaImpeller = ( kineticPower - intakePower ) / shaftPower;
+			
+			// 12) total efficiency
+			const float etaTotal = usefulPower / shaftPower;
+			
+			// 13) intake drag
+			const float intakeDrag = FlowReportDrag.massFlow * uzInletPhys - FlowReportDrag.momentumThrust;
+			
+			// pass results to tracker
+			trackCustomVariables( Tracker, { outletPressurePower, massFlow, thrust, intakePower, impellerPower, kineticPower, 
+												shaftTorque, shaftPower, usefulPower, etaIntake, etaImpeller, etaTotal, 
+												intakeDrag });
+			
+			// regulate outlet to achieve zero pressure power at the actual outlet coordinate
+			const InfoStruct& coarseInfo = grids[0].Info;
+			const float regulatorDt = static_cast<float>(TRACKER_PERIOD) * coarseInfo.dtPhys;
+			float pressurePerDRho = 1.f; 
+			convertToPhysicalPressure(pressurePerDRho, coarseInfo);
+			grids[0].Info.iRegulatorOutlet -=  outletPressurePower * iRegulatorOutletStrength * regulatorDt / pressurePerDRho;
+			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorOutlet = grids[0].Info.iRegulatorOutlet;
 		}
 		
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )

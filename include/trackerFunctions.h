@@ -1,6 +1,9 @@
 #pragma once
 
 #include "./types.h"
+#include <algorithm>
+#include <initializer_list>
+#include <utility>
 #include "./boundaryConditions/interpolatedBouncebackFunctions.h"
 
 void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
@@ -107,7 +110,7 @@ void initializeTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 	}
 	if (Tracker.TRACK_CUSTOM_VARIABLES)
 	{
-		Tracker.customArray.setSizes( 6, ITERATION_COUNT ); 
+		Tracker.customArray.setSizes( std::max(Tracker.customNames.size(), Tracker.customUnits.size()), ITERATION_COUNT ); 
 		Tracker.customArray.setValue( 0.f ); 
 	}
 	std::cout << "Done" << std::endl;
@@ -495,8 +498,22 @@ void updateTracker( TrackerStruct &Tracker, std::vector<GridStruct>& grids )
 
 void trackCustomVariables( TrackerStruct& Tracker, std::initializer_list<float> values )
 {
-    const int count = static_cast<int>(values.size());
-    
+    if (!Tracker.TRACK_CUSTOM_VARIABLES) return;
+
+    const std::size_t count = std::max({values.size(), Tracker.customNames.size(), Tracker.customUnits.size()});
+    const std::size_t oldCount = Tracker.customArray.getSize<0>();
+    if (count > oldCount)
+    {
+        // setSizes alone does not preserve the existing histories.
+        FloatArray2DTypeCPU expanded;
+        expanded.setSizes(count, ITERATION_COUNT);
+        expanded.setValue(0.f);
+        for (std::size_t variableID = 0; variableID < oldCount; ++variableID)
+            for (int sample = 0; sample < ITERATION_COUNT; ++sample)
+                expanded(variableID, sample) = Tracker.customArray(variableID, sample);
+        Tracker.customArray = std::move(expanded);
+    }
+
     const int trackerIndex = Tracker.iterationsFinished - 1;
 
     int variableID = 0;

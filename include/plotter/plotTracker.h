@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -110,8 +111,10 @@ inline void plotTracker(const TrackerStruct& Tracker)
         // uint32 name byte count + UTF-8 bytes, uint32 unit byte count +
         // UTF-8 bytes, then count float32 history values.
         // Missing metadata is resolved by Python, independently per slot.
+        const std::size_t slots = Tracker.customArray.getSize<0>();
+        if (slots == 0) return; // No metadata or custom values supplied yet.
         if (count < 0 || count > ITERATION_COUNT ||
-            Tracker.customArray.getSize<0>() != 6 ||
+            slots > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) ||
             Tracker.customArray.getSize<1>() < static_cast<std::size_t>(count)) {
             std::cerr << "Warning: invalid custom tracker shape/count. Continuing simulation.\n";
             return;
@@ -131,7 +134,9 @@ inline void plotTracker(const TrackerStruct& Tracker)
             return;
         }
         try {
-            const std::int32_t header[2] = {static_cast<std::int32_t>(count), 6};
+            const std::int32_t header[2] = {
+                static_cast<std::int32_t>(count), static_cast<std::int32_t>(slots)
+            };
             bool ok = std::fwrite(header, sizeof(header[0]), 2, fp) == 2;
             auto writeString = [&](const std::string& text) {
                 // Keep metadata bounded; this also prevents uint32 truncation.
@@ -142,7 +147,7 @@ inline void plotTracker(const TrackerStruct& Tracker)
                 if (length && std::fwrite(text.data(), 1, length, fp) != length) ok = false;
             };
             std::vector<float> row(count);
-            for (int slot = 0; slot < 6; ++slot) {
+            for (std::size_t slot = 0; slot < slots; ++slot) {
                 writeString(static_cast<std::size_t>(slot) < Tracker.customNames.size()
                             ? Tracker.customNames[slot] : std::string{});
                 writeString(static_cast<std::size_t>(slot) < Tracker.customUnits.size()

@@ -17,7 +17,7 @@
 #include <stdexcept>
 #include <unistd.h>
 #include <initializer_list>
-
+#include <utility>
 
 #include <TNL/Algorithms/parallelFor.h>
 #include <TNL/Algorithms/AtomicOperations.h>
@@ -274,7 +274,7 @@ struct TrackerStruct { 	int iterationsFinished = 0; int openBCCount = 0; int wal
 						FloatArray2DTypeCPU wallTxArray; FloatArray2DTypeCPU wallTyArray; FloatArray2DTypeCPU wallTzArray;
 						FloatArray2DTypeCPU rotorFxArray; FloatArray2DTypeCPU rotorFyArray; FloatArray2DTypeCPU rotorFzArray;
 						FloatArray2DTypeCPU rotorTxArray; FloatArray2DTypeCPU rotorTyArray; FloatArray2DTypeCPU rotorTzArray; 
-						// single custom variable array to hold up to 6 custom definitions
+						// custom variable array to hold any number of custom definitions
 						bool TRACK_CUSTOM_VARIABLES = false; FloatArray2DTypeCPU customArray; std::vector<std::string> customNames; std::vector<std::string> customUnits;
 						// now tiny arrays that only hold the value from the last iteration, 1D dimension openBCCount, wallCount, rotorCount
 						FloatArrayTypeCPU normalVelocity; FloatArrayTypeCPU massFlow; FloatArrayTypeCPU momentumThrust; 
@@ -288,4 +288,6 @@ struct FlowReportStruct { 	float normalVelocity = 0.f; float massFlow = 0.f; flo
 							float pressure = 0.f; float pressurePower = 0.f; float normalKineticPower = 0.f; };	
 							
 struct FlowReductionResult { 	float velocity = 0.f; float densityVelocity = 0.f;	float momentum = 0.f;
-								float dRho = 0.f; float kinetic = 0.f; int cellCount = 0; };				
+								float dRho = 0.f; float kinetic = 0.f; int cellCount = 0; };	
+								
+enum PlaneEnum { XY, ZY, ZX };			

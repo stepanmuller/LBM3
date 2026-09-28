@@ -7,8 +7,6 @@ constexpr long long EXPORT_RESOLUTION_PIXEL_LIMIT = 16000000;
 #include "../rotorFunctions.h"
 #include "../cellFunctions.h"
 
-enum PlaneEnum { XY, ZY, ZX };
-
 // Version with linear interpolation in normal direction for cells that are coarser than image resolution
 void exportSectionCutPlotGeneral( std::vector<GridStruct> &grids, BoundsStruct &Bounds, RotorInfoStruct &rotorFrameInfo, 
 									const int &cutIndex, const int &plotNumber, PlaneEnum plane )

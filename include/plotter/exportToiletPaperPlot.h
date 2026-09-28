@@ -4,13 +4,13 @@
 // and the same Python plotter. Include after the case's physical constants.
 #include "exportSectionCutPlot.h"
 
-namespace ToiletPaperProjectionDetail
+namespace ToiletPaperPlotDetail
 {
 
 enum class Axis { X, Y, Z };
 constexpr float twoPi = 6.2831853071795864769f;
 
-inline void exportProjection(
+inline void exportPlot(
     std::vector<GridStruct> &grids,
     const BoundsStruct &Bounds,
     const RotorInfoStruct &rotorFrameInfo,
@@ -19,7 +19,7 @@ inline void exportProjection(
     if ( grids.size() < static_cast<size_t>(GRID_LEVEL_COUNT) ||
          GRID_LEVEL_COUNT < 1 || !std::isfinite(radius) || radius <= 0.f )
     {
-        std::cerr << "Toilet paper projection: invalid radius or missing grid levels.\n";
+        std::cerr << "Toilet paper plot: invalid radius or missing grid levels.\n";
         return;
     }
 
@@ -27,7 +27,7 @@ inline void exportProjection(
     if ( !std::isfinite(finest.res) || finest.res <= 0.f ||
          finest.cellCountX <= 0 || finest.cellCountY <= 0 || finest.cellCountZ <= 0 )
     {
-        std::cerr << "Toilet paper projection: invalid grid dimensions.\n";
+        std::cerr << "Toilet paper plot: invalid grid dimensions.\n";
         return;
     }
 
@@ -50,7 +50,7 @@ inline void exportProjection(
     {
         if ( !std::isfinite(requestedMin) || !std::isfinite(requestedMax) )
         {
-            std::cerr << "Toilet paper projection: non-finite axial bounds.\n";
+            std::cerr << "Toilet paper plot: non-finite axial bounds.\n";
             return;
         }
         if ( axis == Axis::X )
@@ -71,7 +71,7 @@ inline void exportProjection(
     }
     if ( !(crop.xMin < crop.xMax && crop.yMin < crop.yMax && crop.zMin < crop.zMax) )
     {
-        std::cerr << "Toilet paper projection: empty crop.\n";
+        std::cerr << "Toilet paper plot: empty crop.\n";
         return;
     }
 
@@ -103,14 +103,14 @@ inline void exportProjection(
     }
     if ( pixelsHorizontal == 0 )
     {
-        std::cerr << "Toilet paper projection: image exceeds the resolution limit.\n";
+        std::cerr << "Toilet paper plot: image exceeds the resolution limit.\n";
         return;
     }
 
     const float axialStep = axisLength / static_cast<float>(pixelsHorizontal);
     const float angleStep = twoPi / static_cast<float>(pixelsVertical);
     const char axisName = axis == Axis::X ? 'X' : axis == Axis::Y ? 'Y' : 'Z';
-    std::cout << "Exporting " << axisName << " toilet paper projection " << plotNumber
+    std::cout << "Exporting " << axisName << " toilet paper plot " << plotNumber
              << " ... " << std::flush;
 
     SectionCutStruct SectionCut;
@@ -295,7 +295,7 @@ inline void exportProjection(
     FILE *fp = fopen("/dev/shm/sim_data.bin", "wb");
     if ( !fp )
     {
-        perror("Toilet paper projection: cannot open /dev/shm/sim_data.bin");
+        perror("Toilet paper plot: cannot open /dev/shm/sim_data.bin");
         return;
     }
     const int header[4] = {plotNumber, pixelsVertical, pixelsHorizontal, 6};
@@ -328,87 +328,87 @@ inline void exportProjection(
     }
     const bool closeOK = fclose(fp) == 0;
     if ( !writeOK || !closeOK )
-        std::cerr << "Toilet paper projection: could not write the complete binary file.\n";
+        std::cerr << "Toilet paper plot: could not write the complete binary file.\n";
 }
 
-} // namespace ToiletPaperProjectionDetail
+} // namespace ToiletPaperPlotDetail
 
 // Public overloads: same optional Bounds / RotorInfo pattern as section cuts.
 
-inline void toiletPaperProjectionX( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotX( std::vector<GridStruct> &grids,
     const BoundsStruct &Bounds, const RotorInfoStruct &RotorInfo,
     const float &radius, const int &plotNumber )
 {
-    ToiletPaperProjectionDetail::exportProjection(
-        grids, Bounds, RotorInfo, radius, plotNumber, ToiletPaperProjectionDetail::Axis::X );
+    ToiletPaperPlotDetail::exportPlot(
+        grids, Bounds, RotorInfo, radius, plotNumber, ToiletPaperPlotDetail::Axis::X );
 }
 
-inline void toiletPaperProjectionX( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotX( std::vector<GridStruct> &grids,
     const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionX(grids, BoundsStruct{}, RotorInfoStruct{}, radius, plotNumber);
+    toiletPaperPlotX(grids, BoundsStruct{}, RotorInfoStruct{}, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionX( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotX( std::vector<GridStruct> &grids,
     const BoundsStruct &Bounds, const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionX(grids, Bounds, RotorInfoStruct{}, radius, plotNumber);
+    toiletPaperPlotX(grids, Bounds, RotorInfoStruct{}, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionX( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotX( std::vector<GridStruct> &grids,
     const RotorInfoStruct &RotorInfo, const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionX(grids, BoundsStruct{}, RotorInfo, radius, plotNumber);
+    toiletPaperPlotX(grids, BoundsStruct{}, RotorInfo, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionY( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotY( std::vector<GridStruct> &grids,
     const BoundsStruct &Bounds, const RotorInfoStruct &RotorInfo,
     const float &radius, const int &plotNumber )
 {
-    ToiletPaperProjectionDetail::exportProjection(
-        grids, Bounds, RotorInfo, radius, plotNumber, ToiletPaperProjectionDetail::Axis::Y );
+    ToiletPaperPlotDetail::exportPlot(
+        grids, Bounds, RotorInfo, radius, plotNumber, ToiletPaperPlotDetail::Axis::Y );
 }
 
-inline void toiletPaperProjectionY( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotY( std::vector<GridStruct> &grids,
     const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionY(grids, BoundsStruct{}, RotorInfoStruct{}, radius, plotNumber);
+    toiletPaperPlotY(grids, BoundsStruct{}, RotorInfoStruct{}, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionY( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotY( std::vector<GridStruct> &grids,
     const BoundsStruct &Bounds, const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionY(grids, Bounds, RotorInfoStruct{}, radius, plotNumber);
+    toiletPaperPlotY(grids, Bounds, RotorInfoStruct{}, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionY( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotY( std::vector<GridStruct> &grids,
     const RotorInfoStruct &RotorInfo, const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionY(grids, BoundsStruct{}, RotorInfo, radius, plotNumber);
+    toiletPaperPlotY(grids, BoundsStruct{}, RotorInfo, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionZ( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotZ( std::vector<GridStruct> &grids,
     const BoundsStruct &Bounds, const RotorInfoStruct &RotorInfo,
     const float &radius, const int &plotNumber )
 {
-    ToiletPaperProjectionDetail::exportProjection(
-        grids, Bounds, RotorInfo, radius, plotNumber, ToiletPaperProjectionDetail::Axis::Z );
+    ToiletPaperPlotDetail::exportPlot(
+        grids, Bounds, RotorInfo, radius, plotNumber, ToiletPaperPlotDetail::Axis::Z );
 }
 
-inline void toiletPaperProjectionZ( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotZ( std::vector<GridStruct> &grids,
     const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionZ(grids, BoundsStruct{}, RotorInfoStruct{}, radius, plotNumber);
+    toiletPaperPlotZ(grids, BoundsStruct{}, RotorInfoStruct{}, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionZ( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotZ( std::vector<GridStruct> &grids,
     const BoundsStruct &Bounds, const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionZ(grids, Bounds, RotorInfoStruct{}, radius, plotNumber);
+    toiletPaperPlotZ(grids, Bounds, RotorInfoStruct{}, radius, plotNumber);
 }
 
-inline void toiletPaperProjectionZ( std::vector<GridStruct> &grids,
+inline void toiletPaperPlotZ( std::vector<GridStruct> &grids,
     const RotorInfoStruct &RotorInfo, const float &radius, const int &plotNumber )
 {
-    toiletPaperProjectionZ(grids, BoundsStruct{}, RotorInfo, radius, plotNumber);
+    toiletPaperPlotZ(grids, BoundsStruct{}, RotorInfo, radius, plotNumber);
 }
