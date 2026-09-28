@@ -81,7 +81,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.ux = 0.f;
 		BC.uy = 0.f;
 		BC.uz = uzInlet;
-		BC.nonReflective = false;
+		//BC.nonReflective = false;
 	}
 	else if ( kCell == Info.cellCountZ-1 && rz > 25.f ) 
 	{	// lake outlet
@@ -94,6 +94,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.openBCID = 2;
 		BC.dirichletRho = true;
 		BC.dRho = 0.f;
+		BC.nonReflective = false;
 	}
 }
 
@@ -139,6 +140,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 #include "../../include/updateGrid.h"
 #include "../../include/trackerFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
+#include "../../include/plotter/exportToiletPaperProjection.h"
 #include "../../include/plotter/plotTracker.h"
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
@@ -151,12 +153,13 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	// ZY detail
 	BoundsStruct Bounds;
 	Bounds = grids[0].Info.Bounds;
-	Bounds.zMin = -120.f;
+	Bounds.zMin = -100.f;
 	Bounds.yMin = -60.f;
 	Bounds.yMax = 20.f;
 	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 1 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	
+	/*
 	// XY section cut
 	float zCut = 0.f;
 	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 2 );
@@ -169,7 +172,16 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	Bounds.yMax = 20.f;
 	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 3 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	*/
 	
+	// Toilet paper projection
+	float rz = 13.f;
+	Bounds.zMin = -10.f;
+	toiletPaperProjectionZ(grids, Bounds, rz, iterationsFinished + 5 );
+	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	toiletPaperProjectionZ(grids, Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, rz, iterationsFinished + 6);
+	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+
 	std::cout << std::endl;
 }
 
