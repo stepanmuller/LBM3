@@ -442,7 +442,7 @@ void readSTL( STLStruct &STL, const std::string &filename )
     std::cout << "	xMin xMax: " << STLCPU.Bounds.xMin << " " << STLCPU.Bounds.xMax << "\n";
     std::cout << "	yMin yMax: " << STLCPU.Bounds.yMin << " " << STLCPU.Bounds.yMax << "\n";
     std::cout << "	zMin zMax: " << STLCPU.Bounds.zMin << " " << STLCPU.Bounds.zMax << "\n";
-    // std::cout << "	rxMax ryMax rzMax: " << STLCPU.Bounds.rxMax << " " << STLCPU.Bounds.ryMax << " " << STLCPU.Bounds.rzMax << "\n";
+    std::cout << "	rxMax ryMax rzMax: " << STLCPU.Bounds.rxMax << " " << STLCPU.Bounds.ryMax << " " << STLCPU.Bounds.rzMax << "\n";
 
     STL = STLStruct( STLCPU );
     STL.raysPerTriangleCounterArray.setSize( STL.triangleCount );
