@@ -14,7 +14,7 @@ constexpr bool TRACK_OPEN_BOUNDARIES = true;
 constexpr float RHO_PHYS = 997.0f;							// kg/m3 water
 constexpr float NU_PHYS = 1e-6;								// m2/s water
 
-constexpr float uzInletPhys = 16.25f;						// m/s
+constexpr float uzInletPhys = 20.f;							// m/s
 constexpr float uyInlet = 0.0436 * uzInlet; 				// this is due to the 2.5 deg intake angle
 
 constexpr float radiansPerSecond = 2700.f;					// rad/s
@@ -25,7 +25,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceIntakeSTL.stl";
+std::string STLPathIntake = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceIntakeSTL2.stl";
 std::string STLPathOutlet = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceOutletSTL.stl";
 std::string STLPathShaft = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceShaftSTL.stl";
 std::string STLPathFirstImpeller = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceFirstImpellerSTL.stl";
@@ -163,7 +163,7 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	exportSectionCutPlotZY( grids, xCut, iterationsFinished + 0 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	
-	// ZY detail
+	// ZY details
 	BoundsStruct Bounds;
 	Bounds = grids[0].Info.Bounds;
 	Bounds.zMin = -100.f;
@@ -171,24 +171,30 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	Bounds.yMax = 20.f;
 	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 1 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	xCut = 5.f;
+	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 2 );
+	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	xCut = 10.f;
+	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 3 );
+	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	
 	// XY section cut
 	float zCut = 0.f;
-	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 2 );
+	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 4 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	
 	// XY detail
 	Bounds = grids[1].Info.Bounds;
 	Bounds.yMax = 20.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 3 );
+	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 5 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	
 	// Toilet paper projection
 	float rz = 13.f;
 	Bounds.zMin = -10.f;
-	toiletPaperPlotZ(grids, Bounds, rz, iterationsFinished + 5 );
+	toiletPaperPlotZ(grids, Bounds, rz, iterationsFinished + 6 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	toiletPaperPlotZ(grids, Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, rz, iterationsFinished + 6);
+	toiletPaperPlotZ(grids, Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, rz, iterationsFinished + 7);
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 
 	std::cout << std::endl;
@@ -233,9 +239,8 @@ int main(int argc, char **argv)
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
 	
 	Tracker.customNames = { "Outlet pressure power residual", "Mass flow", "Thrust", "Intake power", "Impeller power", "Normal kinetic power",
-							"Shaft torque", "Shaft power", "Useful power", "Intake efficiency", "Impeller efficiency", "Total efficiency", 
-							"Intake induced drag" };
-	Tracker.customUnits = { "W", "kg/s", "N", "W", "W", "W", "Nm", "W", "W", "[1]", "[1]", "[1]", "N" };
+							"Shaft torque", "Shaft power", "Useful power", "Intake efficiency", "Impeller efficiency", "Total efficiency" };
+	Tracker.customUnits = { "W", "kg/s", "N", "W", "W", "W", "Nm", "W", "W", "[1]", "[1]", "[1]" };
 	initializeTracker( Tracker, grids );
 	
 	plotGrids( 0, grids );
@@ -265,13 +270,6 @@ int main(int argc, char **argv)
 			zCut = 0.f;
 			getFlowReportXY( FlowReportIntake, grids, Bounds, zCut );
 			
-			// get drag flow report
-			FlowReportStruct FlowReportDrag;
-			Bounds = grids[1].Info.Bounds;
-			Bounds.yMax = -25.f;
-			zCut = 0.f;
-			getFlowReportXY( FlowReportDrag, grids, Bounds, zCut );
-			
 			// now prepare all reported variables
 			
 			// 1) outlet pressure power residual
@@ -293,7 +291,7 @@ int main(int argc, char **argv)
 			const float kineticPower = FlowReportOut.normalKineticPower;
 			
 			// 7) shaft torque
-			const float shaftTorque = Tracker.rotorTz[0] + Tracker.wallTz[2]; // impeller + shaft
+			const float shaftTorque = Tracker.rotorTz[0] + Tracker.rotorTz[1] + Tracker.wallTz[3]; // first impeller + second impeller + shaft
 			
 			// 8) shaft power
 			const float shaftPower = shaftTorque * radiansPerSecond;
@@ -311,13 +309,9 @@ int main(int argc, char **argv)
 			// 12) total efficiency
 			const float etaTotal = usefulPower / shaftPower;
 			
-			// 13) intake drag
-			const float intakeDrag = FlowReportDrag.massFlow * uzInletPhys - FlowReportDrag.momentumThrust;
-			
 			// pass results to tracker
 			trackCustomVariables( Tracker, { outletPressurePower, massFlow, thrust, intakePower, impellerPower, kineticPower, 
-												shaftTorque, shaftPower, usefulPower, etaIntake, etaImpeller, etaTotal, 
-												intakeDrag });
+												shaftTorque, shaftPower, usefulPower, etaIntake, etaImpeller, etaTotal });
 			
 			// regulate outlet to achieve zero pressure power at the actual outlet coordinate
 			const InfoStruct& coarseInfo = grids[0].Info;
