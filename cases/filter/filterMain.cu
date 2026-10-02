@@ -2,11 +2,19 @@ constexpr float litersPerMinute = 5.f;
 
 // coarse settings
 //constexpr float RES_GLOBAL = 0.2f;
+// constexpr int GRID_LEVEL_COUNT = 3;
 //constexpr float uzInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
 //constexpr int ITERATION_COUNT = 15000;
 
+// medium settings
+//constexpr float RES_GLOBAL = 0.1f;
+//constexpr int GRID_LEVEL_COUNT = 2;
+//constexpr float uzInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+//constexpr int ITERATION_COUNT = 30000;
+
 // fine settings
-constexpr float RES_GLOBAL = 0.1f;
+constexpr float RES_GLOBAL = 0.12f;
+constexpr int GRID_LEVEL_COUNT = 3;
 constexpr float uzInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
 constexpr int ITERATION_COUNT = 30000;
 
@@ -19,8 +27,7 @@ constexpr bool TRACK_OPEN_BOUNDARIES = true;
 constexpr float inletAreaM2 = 3.14159265358979324f * 0.0102f * 0.0102f;
 constexpr float uzInletPhys = 0.001f * ( litersPerMinute / 60.f ) / inletAreaM2; 					// m/s, physical velocity
 
-constexpr int GRID_LEVEL_COUNT = 2;
-constexpr int WALL_REFINEMENT_COUNT = 6;
+constexpr int WALL_REFINEMENT_COUNT = 2;
 
 constexpr float NU_PHYS = 1.5e-5f;														// m2/s
 constexpr float RHO_PHYS = 1.225f;														// kg/m3
