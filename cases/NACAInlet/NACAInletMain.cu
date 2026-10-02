@@ -3,7 +3,7 @@ constexpr float uzInlet = 0.04f;
 constexpr int GRID_LEVEL_COUNT = 4;
 constexpr int ITERATION_COUNT = 20000; 												
 
-constexpr int PLOTTER_PERIOD = 2000;
+constexpr int PLOTTER_PERIOD = 4000;
 
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr int TRACKER_PERIOD = 1;
@@ -17,13 +17,13 @@ constexpr float NU_PHYS = 1e-6;								// m2/s water
 constexpr float uzInletPhys = 20.f;							// m/s
 
 constexpr float iRegulatorOutletStrength = 10000000.f;
-constexpr float targetMassFlow = 10.2f;
+constexpr float targetMassFlow = 5.1f;
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "../../../BruteforceOptimizer/NACA/NACA_7deg.STL";
+std::string STLPathIntake = "../../../BruteforceOptimizer/NACA/full.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -154,7 +154,7 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	// XY details
 	BoundsStruct Bounds;
 	Bounds = grids[1].Info.Bounds;
-	Bounds.yMax = 20.f;
+	Bounds.yMax = grids[GRID_LEVEL_COUNT-1].Info.Bounds.yMax;
 	for ( float zCut = -160.f; zCut < 10.f; zCut += 20.f )
 	{
 		exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + counter );
@@ -182,7 +182,7 @@ int main(int argc, char **argv)
 	DomainBounds.xMin = -90.f;
 	DomainBounds.xMax = 90.f;
 	DomainBounds.yMin = -100.f;
-	DomainBounds.yMax = 25.f;
+	DomainBounds.yMax = 45.f;
 	
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	
