@@ -1,5 +1,5 @@
-constexpr float RES_GLOBAL = 1.f; 
-constexpr float uzInlet = 0.02f; 
+constexpr float RES_GLOBAL = 2.f; 
+constexpr float uzInlet = 0.04f; 
 constexpr int GRID_LEVEL_COUNT = 4;
 constexpr int ITERATION_COUNT = 20000; 												
 
@@ -16,8 +16,8 @@ constexpr float NU_PHYS = 1e-6;								// m2/s water
 
 constexpr float uzInletPhys = 20.f;							// m/s
 
-constexpr float iRegulatorOutletStrength = 5000000.f;
-constexpr float targetMassFlow = 5.1f;
+constexpr float iRegulatorOutletStrength = 10000000.f;
+constexpr float targetMassFlow = 10.2f;
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
@@ -48,7 +48,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	if ( Info.gridID == 2 )
 	{
 		refinementMarker = false;
-		if ( x > -30.f && x < 30.f && y > -10.f && z > -150.f ) refinementMarker = true;
+		if ( x > -30.f && x < 30.f && y > -5.f ) refinementMarker = true;
 	}
 }
 
@@ -82,13 +82,13 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uz = uzInlet;
 		BC.nonReflective = false;
 	}
-	else if ( kCell == Info.cellCountZ-1 && rz > 20.f ) 
+	else if ( kCell == Info.cellCountZ-1 && y < 1.f ) 
 	{	// lake outlet
 		BC.openBCID = 1;
 		BC.dirichletRho = true;
 		BC.dRho = 0.f;
 	}
-	else if ( kCell == Info.cellCountZ-1 && rz <= 20.f ) 
+	else if ( kCell == Info.cellCountZ-1 && y >= 1.f ) 
 	{	// pump outlet
 		BC.openBCID = 2;
 		BC.dirichletRho = true;
@@ -114,7 +114,8 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.overwriteIBBLinks = 0.5f;
 	}
 	if ( Info.gridID == 2 ) BC.collisionLimiter = 0.01f;
-	if ( z <= -150.f ) 
+	if ( Info.gridID == 3 ) BC.collisionLimiter = 0.01f;
+	if ( z <= -170.f ) 
 	{
 		BC.collisionLimiter = 0.f;
 		BC.overwriteIBBLinks = 0.5f;
@@ -124,7 +125,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.collisionLimiter = 0.f;
 		BC.overwriteIBBLinks = 0.5f;
 	} 
-	if ( z >= Info.Bounds.zMax-19.f && y > 1.f ) 
+	if ( z >= Info.Bounds.zMax-19.f ) 
 	{
 		BC.collisionLimiter = 0.f;
 		BC.nuMultiplier = 200.f;
@@ -141,57 +142,25 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
+	int counter = 0;
 	// ZY section cut
-	float xCut = 0.f;
-	exportSectionCutPlotZY( grids, xCut, iterationsFinished + 0 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	
-	// ZY details
-	BoundsStruct Bounds;
-	Bounds = grids[0].Info.Bounds;
-	Bounds.zMin = -100.f;
-	Bounds.yMin = -60.f;
-	Bounds.yMax = 20.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 1 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	xCut = 5.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 2 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	xCut = 10.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 3 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	xCut = 15.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 4 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	xCut = 20.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 5 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	
-	// XY section cut
-	float zCut = 0.f;
-	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 6 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	for ( float xCut = 0.f; xCut <= 21.f; xCut += 5.f )
+	{
+		exportSectionCutPlotZY( grids, xCut, iterationsFinished + counter );
+		counter++;
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	}
 	
 	// XY details
+	BoundsStruct Bounds;
 	Bounds = grids[1].Info.Bounds;
 	Bounds.yMax = 20.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 7 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	zCut = -20.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 8 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	zCut = -40.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 9 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	zCut = -60.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 10 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	zCut = -80.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 11 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	zCut = -100.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 12 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	for ( float zCut = -160.f; zCut < 10.f; zCut += 20.f )
+	{
+		exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + counter );
+		counter++;
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	}
 
 	std::cout << std::endl;
 }
@@ -209,19 +178,19 @@ int main(int argc, char **argv)
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
 	DomainBounds.zMin = -200.f;
-	DomainBounds.zMax = 50.f;
+	DomainBounds.zMax = 20.f;
 	DomainBounds.xMin = -90.f;
 	DomainBounds.xMax = 90.f;
 	DomainBounds.yMin = -100.f;
-	DomainBounds.yMax = 20.f;
+	DomainBounds.yMax = 25.f;
 	
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
 	
-	Tracker.customNames = { "Mass flow", "Intake power", "Intake efficiency" };
-	Tracker.customUnits = { "kg/s", "W", "[1]" };
+	Tracker.customNames = { "Mass flow", "Intake power", "Intake efficiency", "Intake induced drag" };
+	Tracker.customUnits = { "kg/s", "W", "[1]", "N" };
 	initializeTracker( Tracker, grids );
 	
 	plotGrids( 0, grids );
@@ -243,8 +212,27 @@ int main(int argc, char **argv)
 			FlowReportStruct FlowReportOut;
 			BoundsStruct Bounds; 
 			Bounds = grids[GRID_LEVEL_COUNT-1].Info.Bounds;
-			float zCut = grids[0].Info.Bounds.zMax - 20.f;
+			Bounds.yMin = 1.f;
+			float zCut = 0.f;
 			getFlowReportXY( FlowReportOut, grids, Bounds, zCut );
+			
+			// get reference flow report
+			FlowReportStruct FlowReportRef; 
+			Bounds = grids[0].Info.Bounds;
+			Bounds.yMax = -30.f;
+			Bounds.xMin += 10.f;
+			Bounds.xMax -= 10.f;
+			Bounds.yMin += 10.f;
+			getFlowReportXY( FlowReportRef, grids, Bounds, zCut );
+			
+			// get drag flow report
+			FlowReportStruct FlowReportDrag;
+			Bounds = grids[1].Info.Bounds;
+			Bounds.yMax =  1.f;
+			Bounds.xMin += 2.f;
+			Bounds.xMax -= 2.f;
+			Bounds.yMin += 2.f;
+			getFlowReportXY( FlowReportDrag, grids, Bounds, zCut );
 			
 			// 2) mass flow
 			const float massFlow = FlowReportOut.massFlow;
@@ -256,8 +244,13 @@ int main(int argc, char **argv)
 			const float lakePower = 0.5f * uzInletPhys * uzInletPhys * massFlow;
 			const float etaIntake = intakePower / lakePower;
 			
+			// intake induced drag
+			const float uzRef = FlowReportRef.normalVelocity;
+			const float momentumRef = uzRef * uzRef * FlowReportDrag.areamm2 * (1.f / 1000000.f) * RHO_PHYS;
+			const float drag = momentumRef - FlowReportDrag.momentumThrust;
+			
 			// pass results to tracker
-			trackCustomVariables( Tracker, { massFlow, intakePower, etaIntake });
+			trackCustomVariables( Tracker, { massFlow, intakePower, etaIntake, drag });
 			
 			// regulate outlet to achieve target mass flow
 			const InfoStruct& coarseInfo = grids[0].Info;

@@ -347,6 +347,8 @@ void getFlowReportGeneral( 	FlowReportStruct &FlowReport, std::vector<GridStruct
 	FlowReport.pressurePower = totals.densityVelocity * (pixelAreaM2 * pressureScale * velocityScale);
 
 	FlowReport.normalKineticPower =	totals.kinetic * (massFluxScale * velocityScale * velocityScale);
+	
+	FlowReport.areamm2 = totals.cellCount * reportInfo.res * reportInfo.res;
 }
 
 // Yes bounds, no rotor frame
