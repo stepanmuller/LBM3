@@ -23,7 +23,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "../../../BruteforceOptimizer/NACA/full.STL";
+std::string STLPathIntake = "../../../BruteforceOptimizer/NACA/smooth.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -155,7 +155,13 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	BoundsStruct Bounds;
 	Bounds = grids[1].Info.Bounds;
 	Bounds.yMax = grids[GRID_LEVEL_COUNT-1].Info.Bounds.yMax;
-	for ( float zCut = -160.f; zCut < 10.f; zCut += 20.f )
+	for ( float zCut = -160.f; zCut < -50.f; zCut += 20.f )
+	{
+		exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + counter );
+		counter++;
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	}
+	for ( float zCut = -50.f; zCut < 6.f; zCut += 5.f )
 	{
 		exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + counter );
 		counter++;

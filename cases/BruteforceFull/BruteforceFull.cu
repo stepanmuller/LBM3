@@ -1,9 +1,9 @@
 constexpr float RES_GLOBAL = 1.f; 
 constexpr float uzInlet = 0.01f; 
 constexpr int GRID_LEVEL_COUNT = 4;
-constexpr int ITERATION_COUNT = 50000; 												
+constexpr int ITERATION_COUNT = 200000; 												
 
-constexpr int PLOTTER_PERIOD = 2000;
+constexpr int PLOTTER_PERIOD = 5000;
 
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr int TRACKER_PERIOD = 1;
@@ -20,12 +20,13 @@ constexpr float uyInlet = 0.0436 * uzInlet; 				// this is due to the 2.5 deg in
 constexpr float radiansPerSecond = 2700.f;					// rad/s
 
 constexpr float iRegulatorOutletStrength = 50000.f;
+constexpr float iRegulatorInletStrength = 100.f;
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceIntakeSTL5.stl";
+std::string STLPathIntake = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceIntakeSTL7.stl";
 std::string STLPathOutlet = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceOutletSTL.stl";
 std::string STLPathShaft = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceShaftSTL.stl";
 std::string STLPathFirstImpeller = "../../../BruteforceOptimizer/BruteforceGeometry/BruteforceFirstImpellerSTL.stl";
@@ -94,7 +95,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	{	// lake outlet
 		BC.openBCID = 1;
 		BC.dirichletRho = true;
-		BC.dRho = 0.f;
+		BC.dRho = Info.iRegulatorInlet;
 	}
 	else if ( kCell == Info.cellCountZ-1 && rz <= 20.f ) 
 	{	// pump outlet
@@ -158,48 +159,44 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
+	int counter = 0;
 	// ZY section cut
-	float xCut = 0.f;
-	exportSectionCutPlotZY( grids, xCut, iterationsFinished + 0 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	
-	// ZY details
-	BoundsStruct Bounds;
-	Bounds = grids[0].Info.Bounds;
-	Bounds.zMin = -100.f;
-	Bounds.yMin = -60.f;
-	Bounds.yMax = 20.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 1 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	xCut = 5.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 2 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	xCut = 10.f;
-	exportSectionCutPlotZY( grids, Bounds, xCut, iterationsFinished + 3 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	
-	// XY section cut
-	float zCut = 0.f;
-	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 4 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	for ( float xCut = 0.f; xCut <= 26.f; xCut += 5.f )
+	{
+		exportSectionCutPlotZY( grids, xCut, iterationsFinished + counter );
+		counter++;
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	}
 	
 	// XY details
+	BoundsStruct Bounds;
 	Bounds = grids[1].Info.Bounds;
-	Bounds.yMax = 20.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 5 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	zCut = -20.f;
-	exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + 6 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	Bounds.yMax = grids[GRID_LEVEL_COUNT-1].Info.Bounds.yMax;
+	for ( float zCut = -130.f; zCut < -50.f; zCut += 20.f )
+	{
+		exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + counter );
+		counter++;
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	}
+	for ( float zCut = -50.f; zCut < 6.f; zCut += 5.f )
+	{
+		exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + counter );
+		counter++;
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	}
 	
 	// Toilet paper projection
-	float rz = 13.f;
 	Bounds.zMin = -10.f;
-	toiletPaperPlotZ(grids, Bounds, rz, iterationsFinished + 7 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	toiletPaperPlotZ(grids, Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, rz, iterationsFinished + 8);
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-
+	for ( float rz = 10.f; rz < 15.5f; rz += 1.f ) 
+	{
+		toiletPaperPlotZ(grids, Bounds, rz, iterationsFinished + counter );
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+		counter++;
+		toiletPaperPlotZ(grids, Bounds, grids[GRID_LEVEL_COUNT-1].rotors[0].Info, rz, iterationsFinished + counter );
+		if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+		counter++;
+	}
+	
 	std::cout << std::endl;
 }
 
@@ -316,13 +313,17 @@ int main(int argc, char **argv)
 			trackCustomVariables( Tracker, { outletPressurePower, massFlow, thrust, intakePower, impellerPower, kineticPower, 
 												shaftTorque, shaftPower, usefulPower, etaIntake, etaImpeller, etaTotal });
 			
-			// regulate outlet to achieve zero pressure power at the actual outlet coordinate
+			// regulate pump outlet to achieve zero pressure power at the actual outlet coordinate
 			const InfoStruct& coarseInfo = grids[0].Info;
 			const float regulatorDt = static_cast<float>(TRACKER_PERIOD) * coarseInfo.dtPhys;
 			float pressurePerDRho = 1.f; 
 			convertToPhysicalPressure(pressurePerDRho, coarseInfo);
 			grids[0].Info.iRegulatorOutlet -=  outletPressurePower * iRegulatorOutletStrength * regulatorDt / pressurePerDRho;
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorOutlet = grids[0].Info.iRegulatorOutlet;
+			
+			// regulate lake outlet to achieve zero pressure power at lake inlet
+			grids[0].Info.iRegulatorInlet += Tracker.pressurePower[0] * iRegulatorInletStrength * regulatorDt / pressurePerDRho;
+			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorInlet = grids[0].Info.iRegulatorInlet;
 		}
 		
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )
