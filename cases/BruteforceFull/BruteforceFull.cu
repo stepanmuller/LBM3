@@ -20,7 +20,7 @@ constexpr float uyInlet = 0.0436 * uzInlet; 				// this is due to the 2.5 deg in
 constexpr float radiansPerSecond = 2700.f;					// rad/s
 
 constexpr float iRegulatorOutletStrength = 50000.f;
-constexpr float iRegulatorInletStrength = 100.f;
+constexpr float iRegulatorInletStrength = 500.f;
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
@@ -56,7 +56,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	if ( Info.gridID == 2 )
 	{
 		refinementMarker = false;
-		if ( y > -22.f + 0.0436f * z && x > -22.f && x < 22.f && z > -95.f ) refinementMarker = true;
+		if ( y > -24.f + 0.0436f * z && x > -22.f && x < 22.f && z > -135.f ) refinementMarker = true;
 	}
 }
 
@@ -132,20 +132,19 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.overwriteIBBLinks = 0.5f;
 	}
 	if ( Info.gridID == 2 ) BC.collisionLimiter = 0.01f;
-	if ( z <= -100.f ) 
+	if ( z <= -140.f ) 
 	{
 		BC.collisionLimiter = 0.f;
 		BC.overwriteIBBLinks = 0.5f;
 	}
-	if ( z >= Info.Bounds.zMax-10.f && rz > 20.f ) 
-	{
-		BC.collisionLimiter = 0.f;
-		BC.overwriteIBBLinks = 0.5f;
-	} 
-	if ( z >= Info.Bounds.zMax-19.f && rz <= 20.f ) 
+	if ( z >= Info.Bounds.zMax-19.f ) 
 	{
 		BC.collisionLimiter = 0.f;
 		BC.nuMultiplier = 200.f;
+	} 
+	if ( z >= Info.Bounds.zMax-10.f && rz > 20.f ) 
+	{
+		BC.overwriteIBBLinks = 0.5f;
 	} 
 }
 
@@ -217,7 +216,7 @@ int main(int argc, char **argv)
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
-	DomainBounds.zMin = -200.f;
+	DomainBounds.zMin = -250.f;
 	DomainBounds.zMax = gridStaticSTLs[1].Bounds.zMax;
 	DomainBounds.xMin = -90.f;
 	DomainBounds.xMax = 90.f;
@@ -261,13 +260,13 @@ int main(int argc, char **argv)
 			// get outlet flow report
 			FlowReportStruct FlowReportOut;
 			BoundsStruct Bounds; Bounds.xMin = -16.f; Bounds.xMax = 16.f; Bounds.yMin = -16.f; Bounds.yMax = 16.f;
-			float zCut = grids[0].Info.Bounds.zMax - 10.f;
+			float zCut = grids[0].Info.Bounds.zMax - 20.f;
 			getFlowReportXY( FlowReportOut, grids, Bounds, zCut );
 			
 			// get intake flow report
 			FlowReportStruct FlowReportIntake;
 			Bounds.xMin = -17.f; Bounds.xMax = 17.f; Bounds.yMin = -25.f; Bounds.yMax = 17.f;
-			zCut = 0.f;
+			zCut = -10.f; // move the measurement plane more in front to avoid impeller effects
 			getFlowReportXY( FlowReportIntake, grids, Bounds, zCut );
 			
 			// now prepare all reported variables
