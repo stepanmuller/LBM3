@@ -1,12 +1,38 @@
-constexpr float RES_GLOBAL = 0.2f; 
+// very coarse
+//constexpr float RES_GLOBAL = 0.2f; 
+//constexpr float uzInlet = 0.01f; 
+//constexpr int ITERATION_COUNT = 40000; 
+
+// coarse
+// constexpr float RES_GLOBAL = 0.16f; 
+// constexpr float uzInlet = 0.01f; 
+// constexpr int ITERATION_COUNT = 50000; 
+
+// medium, same as 35 bruteforce full reference case!
+//constexpr float RES_GLOBAL = 0.125f; 
+//constexpr float uzInlet = 0.01f; 
+//constexpr int ITERATION_COUNT = 70000; 												
+
+// fine
+//constexpr float RES_GLOBAL = 0.1f; 
+//constexpr float uzInlet = 0.01f; 
+//constexpr int ITERATION_COUNT = 80000; 												
+
+// very fine
+//constexpr float RES_GLOBAL = 0.08f; 
+//constexpr float uzInlet = 0.01f; 
+//constexpr int ITERATION_COUNT = 100000; 
+
+// finest
+constexpr float RES_GLOBAL = 0.064f; 
 constexpr float uzInlet = 0.01f; 
-constexpr int ITERATION_COUNT = 50000; 												
+constexpr int ITERATION_COUNT = 130000; 
 
 constexpr int PLOTTER_PERIOD = 10000;
 
 constexpr int GRID_LEVEL_COUNT = 1;
 constexpr int WALL_REFINEMENT_COUNT = 6;
-constexpr int TRACKER_PERIOD = 1;
+constexpr int TRACKER_PERIOD = 10;
 constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = true;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
@@ -19,18 +45,18 @@ constexpr float RInlet = 16.5f;																// mm
 constexpr float RInletShaft = 3.75f;														// mm
 constexpr float inletAreamm2 = 3.14159f * ( RInlet * RInlet - RInletShaft * RInletShaft);	// mm2
 constexpr float uzInletPhys = massFlowReference / ( RHO_PHYS * ( inletAreamm2 / 1000000.f) );	// m/s
-constexpr float uzInletVariation = 0.5f; // from the nominal value, vary the uzInlet half up and half down to match the actual intake flow
+constexpr float uzInletVariation = 0.6f; // from the nominal value, vary the uzInlet half up and half down to match the actual intake flow
 constexpr float uzInletVariationDistance = 5.f;
 constexpr float targetInletPowerNormalized = 786.f / 5.4f; // Watts per kg/s of mass flow
-constexpr float hullVelocityPhys = 20.f; // m/s reference hull velocity from which the inlet power was sampled
+//constexpr float hullVelocityPhys = 20.f; // m/s reference hull velocity from which the inlet power was sampled
 
 constexpr float rotationStartDistance = 10.f;				// mm, distance from inlet where the shaft starts rotating (avoid full rotation at the very start)
-const float boundaryLayerThickness = 0.25f;					// mm
+const float boundaryLayerThickness = 0.25f + RES_GLOBAL;	// mm
 
 constexpr float radiansPerSecond = 2700.f;					// rad/s
 
-constexpr float iRegulatorInletStrength = 100.f;				// this will regulate inlet velocity to converge towards target inlet power
-constexpr float iRegulatorOutletStrength = 100000.f;			// this will regulate outlet pressure to achieve zero pressure at the actual outlet z coordinate
+constexpr float iRegulatorInletStrength = 200.f;				// this will regulate inlet velocity to converge towards target inlet power
+constexpr float iRegulatorOutletStrength = 200000.f;			// this will regulate outlet pressure to achieve zero pressure at the actual outlet z coordinate
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
@@ -69,13 +95,13 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	const float uzBase = uzInlet + Info.iRegulatorInlet;
 	const float uzMin = uzBase * ( 1.f - uzInletVariation );
 	const float uzMax = uzBase * ( 1.f + uzInletVariation );
-	float uzResult = uzMin;
-	if ( y > uzInletVariationDistance ) uzResult = uzMax;
+	float uzResult = uzMax;
+	if ( y > uzInletVariationDistance ) uzResult = uzMin;
 	else if ( y > -uzInletVariationDistance )
 	{
 		const float t = ( y + uzInletVariationDistance ) / ( 2.f * uzInletVariationDistance );
 		const float q = t * t * ( 3.f - 2.f * t );
-		uzResult = uzMin + q * ( uzMax - uzMin );
+		uzResult = uzMax + q * ( uzMin - uzMax );
 	}
 	// velocity multiplier near walls
 	const float wallDistancePhys = std::min(std::max(0.f, RInlet-rz), std::max(0.f, rz-RInletShaft));
@@ -89,7 +115,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.dirichletU = true;
 		BC.ux = 0.f;
 		BC.uy = 0.f;
-		BC.uz = uzResult; 
+		BC.uz = uzResult;
 	}
 	else if ( kCell == Info.cellCountZ-1 ) 
 	{	// outlet
@@ -192,7 +218,7 @@ int main(int argc, char **argv)
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
-	DomainBounds.zMin = rotorSTLs[0].Bounds.zMin - 30.f;
+	DomainBounds.zMin = rotorSTLs[0].Bounds.zMin - 20.f;
 	DomainBounds.zMax = gridStaticSTLs[1].Bounds.zMax;
 	
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
