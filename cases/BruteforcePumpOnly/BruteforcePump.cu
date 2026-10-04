@@ -14,9 +14,9 @@
 //constexpr int ITERATION_COUNT = 70000; 												
 
 // fine
-//constexpr float RES_GLOBAL = 0.1f; 
-//constexpr float uzInlet = 0.01f; 
-//constexpr int ITERATION_COUNT = 80000; 												
+constexpr float RES_GLOBAL = 0.1f; 
+constexpr float uzInlet = 0.01f; 
+constexpr int ITERATION_COUNT = 80000; 												
 
 // very fine
 //constexpr float RES_GLOBAL = 0.08f; 
@@ -24,9 +24,9 @@
 //constexpr int ITERATION_COUNT = 100000; 
 
 // finest
-constexpr float RES_GLOBAL = 0.064f; 
-constexpr float uzInlet = 0.01f; 
-constexpr int ITERATION_COUNT = 130000; 
+//constexpr float RES_GLOBAL = 0.064f; 
+//constexpr float uzInlet = 0.01f; 
+//constexpr int ITERATION_COUNT = 130000; 
 
 constexpr int PLOTTER_PERIOD = 10000;
 
