@@ -1,8 +1,8 @@
-constexpr float RES_GLOBAL = 1.f; 
+constexpr float RES_GLOBAL = 0.2f; 
 constexpr float uzInlet = 0.01f; 
-constexpr int ITERATION_COUNT = 200000; 												
+constexpr int ITERATION_COUNT = 50000; 												
 
-constexpr int PLOTTER_PERIOD = 5000;
+constexpr int PLOTTER_PERIOD = 10000;
 
 constexpr int GRID_LEVEL_COUNT = 1;
 constexpr int WALL_REFINEMENT_COUNT = 6;
@@ -14,22 +14,23 @@ constexpr bool TRACK_OPEN_BOUNDARIES = true;
 constexpr float RHO_PHYS = 997.0f;							// kg/m3 water
 constexpr float NU_PHYS = 1e-6;								// m2/s water
 
-constexpr float massFlowPhys = 5.4f;														// kg/s
+constexpr float massFlowReference = 5.4f;														// kg/s
 constexpr float RInlet = 16.5f;																// mm
 constexpr float RInletShaft = 3.75f;														// mm
 constexpr float inletAreamm2 = 3.14159f * ( RInlet * RInlet - RInletShaft * RInletShaft);	// mm2
-constexpr float uzInletPhys = massFlowPhys / ( RHO_PHYS * ( inletAreamm2 / 1000000.f) );	// m/s
+constexpr float uzInletPhys = massFlowReference / ( RHO_PHYS * ( inletAreamm2 / 1000000.f) );	// m/s
 constexpr float uzInletVariation = 0.5f; // from the nominal value, vary the uzInlet half up and half down to match the actual intake flow
 constexpr float uzInletVariationDistance = 5.f;
 constexpr float targetInletPowerNormalized = 786.f / 5.4f; // Watts per kg/s of mass flow
+constexpr float hullVelocityPhys = 20.f; // m/s reference hull velocity from which the inlet power was sampled
 
 constexpr float rotationStartDistance = 10.f;				// mm, distance from inlet where the shaft starts rotating (avoid full rotation at the very start)
 const float boundaryLayerThickness = 0.25f;					// mm
 
 constexpr float radiansPerSecond = 2700.f;					// rad/s
 
-constexpr float iRegulatorInletStrength = 50000.f;			// this will regulate inlet velocity to converge towards target inlet power
-constexpr float iRegulatorOutletStrength = 5000.f;			// this will regulate outlet pressure to achieve zero pressure at the actual outlet z coordinate
+constexpr float iRegulatorInletStrength = 100.f;				// this will regulate inlet velocity to converge towards target inlet power
+constexpr float iRegulatorOutletStrength = 100000.f;			// this will regulate outlet pressure to achieve zero pressure at the actual outlet z coordinate
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
@@ -72,15 +73,15 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	if ( y > uzInletVariationDistance ) uzResult = uzMax;
 	else if ( y > -uzInletVariationDistance )
 	{
-		const float t = ( y + uzInletVariationDistance ) / ( 2.f * uzInletVariationDistance )
+		const float t = ( y + uzInletVariationDistance ) / ( 2.f * uzInletVariationDistance );
 		const float q = t * t * ( 3.f - 2.f * t );
 		uzResult = uzMin + q * ( uzMax - uzMin );
 	}
 	// velocity multiplier near walls
-	const float wallDistancePhys = std::min(std::max(0.f, RInlet-rz), std::max(0.f, rz-RInletShaft))
+	const float wallDistancePhys = std::min(std::max(0.f, RInlet-rz), std::max(0.f, rz-RInletShaft));
 	const float delta = std::max( 0.f, std::min( 1.f, wallDistancePhys / boundaryLayerThickness ));
 	const float velocityMultiplier = delta * delta * (3.0f - 2.0f * delta);
-	uzResult *= velocityModifier;
+	uzResult *= velocityMultiplier;
 	
 	if ( kCell == 0 )
 	{ 	// inlet
@@ -107,8 +108,8 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	BC.collisionLimiter = 0.02f; // default global value
 	const float rz = std::sqrt( x * x + y * y );
 	const float vtPhys = radiansPerSecond * (rz / 1000.f);
-	const float vt = vtPhys * ( uzInlet / uzInletPhys );
-	if ( z < Info.Bounds.zMin + rotationStartDistance ) vt *= ( z / rotationStartDistance )
+	float vt = vtPhys * ( uzInlet / uzInletPhys );
+	if ( z < Info.Bounds.zMin + rotationStartDistance ) vt *= ( ( z - Info.Bounds.zMin) / rotationStartDistance );
 	if ( BC.wallID == 0 || BC.wallID == 1 || BC.wallID == 2 ) // shroud, outlet, stator
 	{
 		BC.ux = 0.f;
@@ -204,7 +205,7 @@ int main(int argc, char **argv)
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
 	
-	Tracker.customNames = { "Inlet pressure power residual", "Outlet pressure power residual", "Mass flow", "Shaft power", "Useful power", "Impeller efficiency" };
+	Tracker.customNames = { "Inlet power residual", "Outlet pressure power residual", "Mass flow", "Shaft power", "Impeller power", "Impeller efficiency" };
 	Tracker.customUnits = { "W", "W", "kg/s", "W", "W", "[1]" };
 	initializeTracker( Tracker, grids );
 	
@@ -225,69 +226,49 @@ int main(int argc, char **argv)
 			
 			// get outlet flow report
 			FlowReportStruct FlowReportOut;
-			BoundsStruct Bounds; Bounds.xMin = -16.f; Bounds.xMax = 16.f; Bounds.yMin = -16.f; Bounds.yMax = 16.f;
+			BoundsStruct Bounds; Bounds.xMin = -13.5f; Bounds.xMax = 13.5f; Bounds.yMin = -13.5f; Bounds.yMax = 13.5f;
 			float zCut = grids[0].Info.Bounds.zMax - 20.f;
 			getFlowReportXY( FlowReportOut, grids, Bounds, zCut );
 			
-			// get intake flow report
-			FlowReportStruct FlowReportIntake;
-			Bounds.xMin = -17.f; Bounds.xMax = 17.f; Bounds.yMin = -25.f; Bounds.yMax = 17.f;
-			zCut = -10.f; // move the measurement plane more in front to avoid impeller effects
-			getFlowReportXY( FlowReportIntake, grids, Bounds, zCut );
-			
 			// now prepare all reported variables
 			
-			// 1) outlet pressure power residual
-			const float outletPressurePower = FlowReportOut.pressurePower;
+			// 1) inlet power residual
+			const float targetInletPower = targetInletPowerNormalized * (-Tracker.massFlow[0]);
+			const float actualInletPower = - Tracker.pressurePower[0] - ( 0.5f * Tracker.normalVelocity[0] * Tracker.normalVelocity[0] * Tracker.massFlow[0] );
+			const float inletPowerResidual = actualInletPower - targetInletPower;
 			
-			// 2) mass flow
+			// 2) outlet pressure power residual
+			const float outletPressurePowerResidual = FlowReportOut.pressurePower;
+			
+			// 3) mass flow
 			const float massFlow = FlowReportOut.massFlow;
 			
-			// 3) thrust
-			const float thrust = FlowReportOut.momentumThrust - uzInletPhys * massFlow;
-						
-			// 4) intake power
-			const float intakePower = FlowReportIntake.pressurePower + 0.5f * massFlow * FlowReportIntake.normalVelocity * FlowReportIntake.normalVelocity;
-			
-			// 5) impeller power
-			const float impellerPower = FlowReportOut.normalKineticPower + FlowReportOut.pressurePower - intakePower;
-			
-			// 6) kinetic power
-			const float kineticPower = FlowReportOut.normalKineticPower;
-			
-			// 7) shaft torque
+			// 4) shaft power
 			const float shaftTorque = Tracker.rotorTz[0] + Tracker.rotorTz[1] + Tracker.wallTz[3]; // first impeller + second impeller + shaft
-			
-			// 8) shaft power
 			const float shaftPower = shaftTorque * radiansPerSecond;
 			
-			// 9) useful power
-			const float usefulPower = thrust * uzInletPhys;
-			
-			// 10) intake efficiency
-			const float lakePower = 0.5f * uzInletPhys * uzInletPhys * massFlow;
-			const float etaIntake = intakePower / lakePower;
-			
-			// 11) impeller efficiency
-			const float etaImpeller = ( kineticPower - intakePower ) / shaftPower;
-			
-			// 12) total efficiency
-			const float etaTotal = usefulPower / shaftPower;
+			// 5) impeller power (excludes variation in outlet velocity profile)
+			const float usefulOutletPower = FlowReportOut.pressurePower + 0.5f * massFlow * FlowReportOut.normalVelocity * FlowReportOut.normalVelocity;
+			const float impellerPower = usefulOutletPower - actualInletPower;
+						
+			// 6) impeller efficiency
+			const float etaImpeller = impellerPower / shaftPower;
 			
 			// pass results to tracker
-			trackCustomVariables( Tracker, { outletPressurePower, massFlow, thrust, intakePower, impellerPower, kineticPower, 
-												shaftTorque, shaftPower, usefulPower, etaIntake, etaImpeller, etaTotal });
+			trackCustomVariables( Tracker, { inletPowerResidual, outletPressurePowerResidual, massFlow, shaftPower, impellerPower, etaImpeller });
 			
 			// regulate pump outlet to achieve zero pressure power at the actual outlet coordinate
 			const InfoStruct& coarseInfo = grids[0].Info;
 			const float regulatorDt = static_cast<float>(TRACKER_PERIOD) * coarseInfo.dtPhys;
 			float pressurePerDRho = 1.f; 
 			convertToPhysicalPressure(pressurePerDRho, coarseInfo);
-			grids[0].Info.iRegulatorOutlet -=  outletPressurePower * iRegulatorOutletStrength * regulatorDt / pressurePerDRho;
+			
+			grids[0].Info.iRegulatorOutlet -=  outletPressurePowerResidual * iRegulatorOutletStrength * regulatorDt / pressurePerDRho;
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorOutlet = grids[0].Info.iRegulatorOutlet;
 			
-			// regulate lake outlet to achieve zero pressure power at lake inlet
-			grids[0].Info.iRegulatorInlet += Tracker.pressurePower[0] * iRegulatorInletStrength * regulatorDt / pressurePerDRho;
+			// regulate pump inlet to achieve target inlet power
+			const float inletPowerReference = targetInletPowerNormalized * massFlowReference;
+			grids[0].Info.iRegulatorInlet -= inletPowerResidual * iRegulatorInletStrength * regulatorDt * uzInlet / inletPowerReference;
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorInlet = grids[0].Info.iRegulatorInlet;
 		}
 		
