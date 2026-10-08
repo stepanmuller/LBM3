@@ -1,5 +1,5 @@
 // coarse
-constexpr float RES_GLOBAL = 0.4f; 
+constexpr float RES_GLOBAL = 0.5f; 
 constexpr int GRID_LEVEL_COUNT = 2;
 constexpr int ITERATION_COUNT = 20000; 
 
@@ -21,7 +21,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathCone = "coneD50ToD25.stl";
+std::string STLPathCone = "bentPipeTest.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -35,8 +35,8 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	const float rz = std::sqrt( x*x + y*y );
 	if ( Info.gridID == 0 )
 	{
-		if ( z > 30.f ) refinementMarker = true;
-		if ( y < 0.f ) refinementMarker = false;
+		refinementMarker = false;
+		if ( y > 0.f && z > 50.f ) refinementMarker = true;
 	}
 }
 
@@ -80,11 +80,12 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	}
 	BC.collisionLimiter = 0.01f;
 	const float distanceFromBoundary = TNL::min( z - Info.Bounds.zMin, Info.Bounds.zMax - z );
-	if ( distanceFromBoundary < 5.f ) 
-	{
-		BC.collisionLimiter = 0.f;
-		BC.overwriteIBBLinks = 0.5f;
-	}
+	BC.collisionLimiter = 0.f;
+	BC.overwriteIBBLinks = 0.5f;
+	//if ( distanceFromBoundary < 5.f ) 
+	//{
+		
+	//}
 }
 
 #include "../../include/gridBuilderFunctions.h"
