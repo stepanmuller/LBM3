@@ -1,11 +1,11 @@
 // coarse
-constexpr float RES_GLOBAL = 0.5f; 
+constexpr float RES_GLOBAL = 0.4f; 
 constexpr int GRID_LEVEL_COUNT = 2;
-constexpr int ITERATION_COUNT = 100; 
+constexpr int ITERATION_COUNT = 20000; 
 
-constexpr int PLOTTER_PERIOD = 20;
+constexpr int PLOTTER_PERIOD = 1000;
 
-constexpr int WALL_REFINEMENT_COUNT = 3;
+constexpr int WALL_REFINEMENT_COUNT = 5;
 constexpr int TRACKER_PERIOD = 1;
 constexpr bool TRACK_WALL_FORCE = false;
 constexpr bool TRACK_ROTOR_FORCE = false;
@@ -35,8 +35,8 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	const float rz = std::sqrt( x*x + y*y );
 	if ( Info.gridID == 0 )
 	{
-		refinementMarker = false;
-		if ( z > 20.f ) refinementMarker = true;
+		if ( z > 30.f ) refinementMarker = true;
+		if ( y < 0.f ) refinementMarker = false;
 	}
 }
 
@@ -80,7 +80,11 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	}
 	BC.collisionLimiter = 0.01f;
 	const float distanceFromBoundary = TNL::min( z - Info.Bounds.zMin, Info.Bounds.zMax - z );
-	if ( distanceFromBoundary < 5.f ) BC.collisionLimiter = 0.f;
+	if ( distanceFromBoundary < 5.f ) 
+	{
+		BC.collisionLimiter = 0.f;
+		BC.overwriteIBBLinks = 0.5f;
+	}
 }
 
 #include "../../include/gridBuilderFunctions.h"
