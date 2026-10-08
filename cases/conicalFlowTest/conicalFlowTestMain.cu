@@ -1,32 +1,27 @@
 // coarse
-constexpr float RES_GLOBAL = 1.0f; 
+constexpr float RES_GLOBAL = 0.5f; 
 constexpr int GRID_LEVEL_COUNT = 2;
-constexpr int ITERATION_COUNT = 1000; 
+constexpr int ITERATION_COUNT = 10000; 
 
-constexpr int PLOTTER_PERIOD = 1000;
+constexpr int PLOTTER_PERIOD = 2000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
 constexpr int TRACKER_PERIOD = 1;
-constexpr bool TRACK_WALL_FORCE = true;
+constexpr bool TRACK_WALL_FORCE = false;
 constexpr bool TRACK_ROTOR_FORCE = false;
-constexpr bool TRACK_OPEN_BOUNDARIES = false;
+constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
 
 constexpr float uzInlet = 0.01f; 															// also works as nominal LBM Mach number	
-constexpr float massFlowPhys = 335.f;														// kg/s
-constexpr float RInlet = 150.f;																// mm
-constexpr float inletAreamm2 = 3.14159f * RInlet * RInlet;									// mm2
-constexpr float uzInletPhys = massFlowPhys / ( RHO_PHYS * ( inletAreamm2 / 1000000.f) );	// m/s
-constexpr float radiansPerSecond = -198.967f;												// rad/s
+constexpr float uzInletPhys = 10.f;															// m/s
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
 #include "../../include/types.h"
 
-std::string STLPathStator = "TORQUE_TEST_STATOR.STL";
-std::string STLPathRotor = "TORQUE_TEST_ROTOR.STL";
+std::string STLPathCone = "coneD50ToD25.stl";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -40,12 +35,8 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	const float rz = std::sqrt( x*x + y*y );
 	if ( Info.gridID == 0 )
 	{
-		float zMin = -17.f;
-		float zMax = 3.f;
-		float rzMax = 164.f;
-		float rzMin = 0.f;
 		refinementMarker = false;
-		if ( rz > rzMin && rz < rzMax && z < zMax && z > zMin ) refinementMarker = true;
+		if ( z > 20.f ) refinementMarker = true;
 	}
 }
 
@@ -58,7 +49,22 @@ __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, cons
 __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 									const InfoStruct& Info )
 {
-	return; // there are no open boundaries
+	if ( kCell == 0 ) // inlet
+	{
+		BC.openBCID = 0;
+		BC.dirichletU = true;
+		BC.nonReflective = true;
+		BC.ux = 0.f;
+		BC.uy = 0.f;
+		BC.uz = uzInlet;
+	}
+	else if ( kCell == Info.cellCountZ-1 ) // outlet
+	{
+		BC.openBCID = 1;
+		BC.dirichletRho = true;
+		BC.nonReflective = false;
+		BC.dRho = 0.f;
+	}
 }
 
 __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
@@ -66,21 +72,15 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 {
 	float x, y, z;
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
-	const float r = std::sqrt( x * x + y * y );
-	const float vtPhys = radiansPerSecond * (r / 1000.f);
-	const float vt = vtPhys * ( uzInlet / uzInletPhys );
-	if ( BC.wallID == 0 ) // stator
+	if ( BC.wallID == 0 ) // cone wall
 	{
 		BC.ux = 0.f;
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
-	if ( BC.wallID == 1 ) // rotor
-	{
-		BC.ux = - vt * (y / r);
-		BC.uy = vt * (x / r);
-		BC.uz = 0.f;
-	}
+	BC.collisionLimiter = 0.01f;
+	const float distanceFromBoundary = TNL::min( z - Info.Bounds.zMin, Info.Bounds.zMax - z );
+	if ( distanceFromBoundary < 5.f ) BC.collisionLimiter = 0.f;
 }
 
 #include "../../include/gridBuilderFunctions.h"
@@ -91,24 +91,16 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
-	int iCut, jCut, kCut;
-	const float yTemp = 0.f;
-	// ZY section cut shows the inlet pipe
-	float xCut = 0.f; float zCut = -3.f;
-	getIJKCellIndexFromXYZ( iCut, jCut, kCut, xCut, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
-	exportSectionCutPlotZY( grids, iCut, iterationsFinished );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	exportSectionCutPlotXY( grids, kCut, iterationsFinished+1 );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	const float xCut = 0.f;
+	exportSectionCutPlotZY( grids, xCut, iterationsFinished );
 	std::cout << std::endl;
 }
 
 int main(int argc, char **argv)
 {
 	// STLs
-	std::vector<STLStruct> gridStaticSTLs( 2 );
-	readSTL( gridStaticSTLs[0], STLPathStator );
-	readSTL( gridStaticSTLs[1], STLPathRotor );
+	std::vector<STLStruct> gridStaticSTLs( 1 );
+	readSTL( gridStaticSTLs[0], STLPathCone );
 	
 	std::vector<STLStruct> rotorSTLs( 0 );
 	
