@@ -1,9 +1,9 @@
 // coarse
 constexpr float RES_GLOBAL = 0.5f; 
 constexpr int GRID_LEVEL_COUNT = 2;
-constexpr int ITERATION_COUNT = 10000; 
+constexpr int ITERATION_COUNT = 100; 
 
-constexpr int PLOTTER_PERIOD = 2000;
+constexpr int PLOTTER_PERIOD = 20;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
 constexpr int TRACKER_PERIOD = 1;
@@ -93,6 +93,7 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
 	const float xCut = 0.f;
 	exportSectionCutPlotZY( grids, xCut, iterationsFinished );
+	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	std::cout << std::endl;
 }
 

@@ -91,14 +91,11 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
-	int iCut, jCut, kCut;
-	const float yTemp = 0.f;
-	// ZY section cut shows the inlet pipe
-	float xCut = 0.f; float zCut = -3.f;
-	getIJKCellIndexFromXYZ( iCut, jCut, kCut, xCut, yTemp, zCut, grids[GRID_LEVEL_COUNT-1].Info);
-	exportSectionCutPlotZY( grids, iCut, iterationsFinished );
+	const float xCut = 0.f;
+	exportSectionCutPlotZY( grids, xCut, iterationsFinished );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	exportSectionCutPlotXY( grids, kCut, iterationsFinished+1 );
+	const float zCut = -3.f;
+	exportSectionCutPlotXY( grids, zCut, iterationsFinished+1 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
 	std::cout << std::endl;
 }
