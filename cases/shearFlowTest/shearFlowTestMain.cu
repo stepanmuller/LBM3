@@ -1,5 +1,5 @@
 // coarse
-constexpr float RES_GLOBAL = 0.5f; 
+constexpr float RES_GLOBAL = 0.4f; 
 constexpr int GRID_LEVEL_COUNT = 2;
 constexpr int ITERATION_COUNT = 20000; 
 
@@ -12,16 +12,20 @@ constexpr bool TRACK_ROTOR_FORCE = false;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
-constexpr float NU_PHYS = 1e-6;		// m2/s water
+constexpr float NU_PHYS = 1e-5;		// m2/s water
+
+constexpr float YMIN = -20.f;
+constexpr float YMAX = 20.f;
 
 constexpr float uzInlet = 0.01f; 															// also works as nominal LBM Mach number	
-constexpr float uzInletPhys = 10.f;															// m/s
+constexpr float uzInletMax = 0.05f;
+constexpr float uzInletPhys = 2.f;															// m/s
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
 #include "../../include/types.h"
 
-std::string STLPathCone = "bentPipeTest.STL";
+std::string STLPath = "shearFlowTestSTL.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -36,33 +40,37 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	if ( Info.gridID == 0 )
 	{
 		refinementMarker = false;
-		if ( y > 0.f && z > 50.f ) refinementMarker = true;
+		if ( rz < 10.f && z > 25.f && z < 75.f ) refinementMarker = true;
 	}
 }
 
 __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 											const InfoStruct& Info )
 {
-	return; // this leaves default zero velocity, zero pressure
+	float x, y, z;
+	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+	BC.uz = uzInlet + ( y - YMIN ) / ( YMAX - YMIN ) * ( uzInletMax - uzInlet );
 }
 
 __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 									const InfoStruct& Info )
 {
+	float x, y, z;
+	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
 	if ( kCell == 0 ) // inlet
 	{
 		BC.openBCID = 0;
 		BC.dirichletU = true;
-		BC.nonReflective = true;
+		BC.nonReflective = false;
 		BC.ux = 0.f;
 		BC.uy = 0.f;
-		BC.uz = uzInlet;
+		BC.uz = uzInlet + ( y - YMIN ) / ( YMAX - YMIN ) * ( uzInletMax - uzInlet );
 	}
 	else if ( kCell == Info.cellCountZ-1 ) // outlet
 	{
 		BC.openBCID = 1;
 		BC.dirichletRho = true;
-		BC.nonReflective = false;
+		BC.nonReflective = true;
 		BC.dRho = 0.f;
 	}
 }
@@ -72,20 +80,14 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 {
 	float x, y, z;
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
-	if ( BC.wallID == 0 ) // cone wall
+	if ( BC.wallID == 0 ) // pipe wall
 	{
 		BC.ux = 0.f;
 		BC.uy = 0.f;
-		BC.uz = 0.f;
+		BC.uz = BC.uz = uzInlet + ( y - YMIN ) / ( YMAX - YMIN ) * ( uzInletMax - uzInlet );
 	}
-	BC.collisionLimiter = 0.01f;
-	const float distanceFromBoundary = TNL::min( z - Info.Bounds.zMin, Info.Bounds.zMax - z );
 	BC.collisionLimiter = 0.f;
 	BC.overwriteIBBLinks = 0.5f;
-	//if ( distanceFromBoundary < 5.f ) 
-	//{
-		
-	//}
 }
 
 #include "../../include/gridBuilderFunctions.h"
@@ -106,7 +108,7 @@ int main(int argc, char **argv)
 {
 	// STLs
 	std::vector<STLStruct> gridStaticSTLs( 1 );
-	readSTL( gridStaticSTLs[0], STLPathCone );
+	readSTL( gridStaticSTLs[0], STLPath );
 	
 	std::vector<STLStruct> rotorSTLs( 0 );
 	
