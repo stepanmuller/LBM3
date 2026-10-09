@@ -16,7 +16,7 @@
 // fine
 constexpr float RES_GLOBAL = 0.1f; 
 constexpr float uzInlet = 0.01f; 
-constexpr int ITERATION_COUNT = 80000; 												
+constexpr int ITERATION_COUNT = 60000; 												
 
 // very fine
 //constexpr float RES_GLOBAL = 0.08f; 
@@ -28,7 +28,7 @@ constexpr int ITERATION_COUNT = 80000;
 //constexpr float uzInlet = 0.01f; 
 //constexpr int ITERATION_COUNT = 130000; 
 
-constexpr int PLOTTER_PERIOD = 10000;
+constexpr int PLOTTER_PERIOD = 20000;
 
 constexpr int GRID_LEVEL_COUNT = 1;
 constexpr int WALL_REFINEMENT_COUNT = 6;
@@ -230,6 +230,7 @@ int main(int argc, char **argv)
 	
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
+	Tracker.averagePercent = 25.9f; // at the selected res and iteration count this gives 1 revolution exactly
 	
 	Tracker.customNames = { "Inlet power residual", "Outlet pressure power residual", "Mass flow", "Shaft power", "Impeller power", "Impeller efficiency" };
 	Tracker.customUnits = { "W", "W", "kg/s", "W", "W", "[1]" };
@@ -270,7 +271,7 @@ int main(int argc, char **argv)
 			const float massFlow = FlowReportOut.massFlow;
 			
 			// 4) shaft power
-			const float shaftTorque = Tracker.rotorTz[0] + Tracker.rotorTz[1] + Tracker.wallTz[3]; // first impeller + second impeller + shaft
+			const float shaftTorque = Tracker.rotorTz[0] + Tracker.rotorTz[1]; // + Tracker.wallTz[3]; // first impeller + second impeller + shaft ... shat can be neglected to stop tracking walls and make it faster
 			const float shaftPower = shaftTorque * radiansPerSecond;
 			
 			// 5) impeller power (excludes variation in outlet velocity profile)
@@ -315,6 +316,40 @@ int main(int argc, char **argv)
 			lapTimer.start();
 		}
 	}
+	
+	// WRITE RESULT FOR OPTIMIZER
+	
+	// Match the percentage rounding used when calling plotTracker.py.
+	const int count = Tracker.iterationsFinished;
+	const double averagePercent = std::stod( std::to_string( static_cast<double>( Tracker.averagePercent ) ) );
+	const int window = std::max( 1, static_cast<int>( count * averagePercent / 100.0 ) );
+	auto historyMean = [&]( const FloatArray2DTypeCPU& history, int id )
+	{
+		double sum = 0.0;
+		int finiteCount = 0;
+		for ( int i = count - window; i < count; i++ )
+		{
+			const float value = history( id, i );
+			if ( !std::isfinite( value ) ) continue;
+			sum += static_cast<double>( value );
+			finiteCount++;
+		}
+		// Keep the zero fallback when no usable samples remain.
+		return finiteCount > 0 ? sum / finiteCount : 0.0;
+	};
+	std::ofstream result( "simulationResult.txt" );
+	result.precision( 9 );
+	// One value per line, in this order:
+	result << historyMean( Tracker.customArray, 5 ) << '\n';  // Impeller eta [1]
+	result << historyMean( Tracker.customArray, 2 ) << '\n';  // Mass flow [kg/s]
+	result << historyMean( Tracker.customArray, 3 ) << '\n';  // Shaft power [W]
+	result << historyMean( Tracker.rotorTzArray, 0 ) << '\n'; // Rotor 0 Tz [N m] = first impeller torque
+	result << historyMean( Tracker.rotorTzArray, 1 ) << '\n'; // Rotor 1 Tz [N m] = second impeller torque
+	result << historyMean( Tracker.wallTzArray, 2 ) << '\n'; // Wall 1 Tz [N m] = stator torque
+	result << historyMean( Tracker.wallTzArray, 1 ) << '\n'; // Rotor 1 Tz [N m] = outlet torque
+	result.close();
+	
+	// WRITE RESULT FOR OPTIMIZER END
 	
 	return EXIT_SUCCESS;
 }
