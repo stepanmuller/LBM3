@@ -1,10 +1,12 @@
-constexpr float litersPerMinute = 5.f;
+constexpr float uxInletPhys = 0.05305f;													// m/s
+constexpr float NU_PHYS = 1.5e-5f;														// m2/s
+constexpr float RHO_PHYS = 1.225f;														// kg/m3
 
 // coarse settings
-//constexpr float RES_GLOBAL = 0.2f;
-// constexpr int GRID_LEVEL_COUNT = 3;
-//constexpr float uzInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-//constexpr int ITERATION_COUNT = 15000;
+constexpr float RES_GLOBAL = 2.f*0.175f;
+constexpr int GRID_LEVEL_COUNT = 3;
+constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+constexpr int ITERATION_COUNT = 15000;
 
 // medium settings
 //constexpr float RES_GLOBAL = 0.1f;
@@ -13,10 +15,10 @@ constexpr float litersPerMinute = 5.f;
 //constexpr int ITERATION_COUNT = 30000;
 
 // fine settings
-constexpr float RES_GLOBAL = 0.12f;
-constexpr int GRID_LEVEL_COUNT = 3;
-constexpr float uzInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-constexpr int ITERATION_COUNT = 30000;
+//constexpr float RES_GLOBAL = 0.12f;
+//constexpr int GRID_LEVEL_COUNT = 3;
+//constexpr float uzInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+//constexpr int ITERATION_COUNT = 30000;
 
 constexpr int PLOTTER_PERIOD = 1000;
 constexpr int TRACKER_PERIOD = 1;
@@ -24,19 +26,13 @@ constexpr bool TRACK_WALL_FORCE = false;
 constexpr bool TRACK_ROTOR_FORCE = false;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
-constexpr float inletAreaM2 = 3.14159265358979324f * 0.0102f * 0.0102f;
-constexpr float uzInletPhys = 0.001f * ( litersPerMinute / 60.f ) / inletAreaM2; 					// m/s, physical velocity
-
 constexpr int WALL_REFINEMENT_COUNT = 2;
 
-constexpr float NU_PHYS = 1.5e-5f;														// m2/s
-constexpr float RHO_PHYS = 1.225f;														// kg/m3
-constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000); 			// s
+constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 			// s
 
 #include "../../include/types.h"
 
-std::string STLPathCylinder = "cylinder_102_mm.stl";
-std::string STLPathFilter = "filter_mm.stl";
+std::string STLPathFilter = "N2.stl";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -50,7 +46,7 @@ __cuda_callable__ void getRefinementModifier( 	const int& iCell, const int& jCel
 	if ( Info.gridID == 0 )
 	{
 		refinementMarker = false;
-		if ( z > -16.f && z < 16.f ) refinementMarker = true;
+		if ( x > -16.f && x < 16.f ) refinementMarker = true;
 	}
 }
 
