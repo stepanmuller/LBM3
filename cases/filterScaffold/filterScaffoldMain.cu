@@ -32,8 +32,8 @@ constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 		
 
 #include "../../include/types.h"
 
-std::string STLPathFilter = "N32.stl";
-constexpr int NCOUNT = 32;
+std::string STLPathFilter = "N4.stl";
+constexpr int NCOUNT = 4;
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -134,9 +134,9 @@ int main(int argc, char **argv)
 	
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
-	Tracker.customNames = { "Physical time", "Area averaged outlet pressure residual", "Area averaged pressure at measurement plane z=-25mm", 
-							"Area averaged pressure loss = measurement - outlet", "Uniform inlet velocity", "Weakly compressible density error at measurement plane" };
-	Tracker.customUnits = { "s", "Pa", "Pa", "Pa", "m/s", "[1]" };
+	Tracker.customNames = { "Physical time", "Area averaged outlet pressure residual", "Area averaged pressure at measurement plane x=4.2mm", 
+							"Area averaged pressure loss = measurement - outlet", "Uniform inlet velocity", "Weakly compressible density error at measurement plane", "Area averaged pressure at x=140mm" };
+	Tracker.customUnits = { "s", "Pa", "Pa", "Pa", "m/s", "[1]", "Pa" };
 	initializeTracker( Tracker, grids );
 	
 	plotGrids( 0, grids );
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
 			FlowReportStruct FlowReport; 
 			BoundsStruct Bounds;
 			Bounds = grids[0].Info.Bounds;
-			const float xCut = 4.2f;
+			float xCut = 4.2f;
 			getFlowReportZY( FlowReport, grids, Bounds, xCut );
 			
 			// pressure loss
@@ -170,8 +170,13 @@ int main(int argc, char **argv)
 			const float dRho = FlowReport.pressure / ( RHO_PHYS * soundspeedPhys * soundspeedPhys );
 			const float densityError = dRho;
 			
+			// get pressure measurement flow report
+			FlowReportStruct FlowReport2; 
+			xCut = 140.f;
+			getFlowReportZY( FlowReport2, grids, Bounds, xCut );
+			
 			// pass results to tracker
-			trackCustomVariables( Tracker, { physicalTime, Tracker.pressure[1], FlowReport.pressure, pressureLoss, Tracker.normalVelocity[0], densityError });
+			trackCustomVariables( Tracker, { physicalTime, Tracker.pressure[1], FlowReport.pressure, pressureLoss, Tracker.normalVelocity[0], densityError, FlowReport2.pressure });
 		}
 		
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )
