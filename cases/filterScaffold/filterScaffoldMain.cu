@@ -32,8 +32,8 @@ constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 		
 
 #include "../../include/types.h"
 
-std::string STLPathFilter = "N4.stl";
-constexpr int NCOUNT = 4;
+std::string STLPathFilter = "N2.stl";
+constexpr int NCOUNT = 2;
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"

@@ -1244,6 +1244,7 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		{
 			BCStruct BC;
 			getOpenBC( BC, iCell, jCell, kCell, Info );
+			if ( BC.periodic ) BC.openBCID = -1; // we do not track periodic BC and so for the BCID pretend they do not exist
 			BCIDView( cell ) = BC.openBCID;
 		}
 	};
@@ -1315,7 +1316,90 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		Grid.openBCs[ BCID ].trackFlowCount = TNL::sum( trackFlowMarkerArray );
 	}
 		
-	// 7) Recursion
+	// 7) Build periodic BC
+	// mark periodic BC cells
+	BoolArrayType &periodicMarkerArray = BCIDMarkerArray; 	// reuse the previous array here
+	auto periodicMarkerView = periodicMarkerArray.getView();
+	periodicMarkerArray.setValue( false );
+	auto periodicMarkerLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( wallMarkerView( cell ) ) return;
+		const int iCell = iBuilderView( cell );
+		const int jCell = jBuilderView( cell );
+		const int kCell = kBuilderView( cell );
+		if ( iCell == 0 || iCell == Info.cellCountX - 1 || jCell == 0 || jCell == Info.cellCountY - 1 || kCell == 0 || kCell == Info.cellCountZ - 1 )
+		{
+			BCStruct BC;
+			getOpenBC( BC, iCell, jCell, kCell, Info );
+			if ( BC.periodic ) periodicMarkerView( cell ) = true;
+		}
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.Info.cellCount, periodicMarkerLambda );
+	Grid.PeriodicBC.periodicBCCount = TNL::sum( periodicMarkerArray );
+	Grid.PeriodicBC.indexArray.setSize( Grid.PeriodicBC.periodicBCCount );
+	Grid.PeriodicBC.sourceArray.setSize( Grid.PeriodicBC.periodicBCCount );
+	
+	// build index list for periodic BC. At the same time, find the source cell and write it.
+	intArrayFromBoolArray( scanArray, periodicMarkerArray );
+	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, Info.cellCount, TNL::Plus{} );
+	auto scanView3 = scanArray.getConstView();
+	auto indexView2 = Grid.PeriodicBC.indexArray.getView();
+	auto sourceView = Grid.PeriodicBC.sourceArray.getView();
+	auto periodicBCLambda2 = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( !periodicMarkerView( cell ) ) return;
+		const int index = scanView3( cell );
+		indexView2( index ) = cell;
+		int iSource = iBuilderView( cell );
+		int jSource = jBuilderView( cell );
+		int kSource = kBuilderView( cell );
+		if ( iSource == 0 ) iSource = Info.cellCountX-2;
+		else if ( iSource == Info.cellCountX-1 ) iSource = 1;
+		if ( jSource == 0 ) jSource = Info.cellCountY-2;
+		else if ( jSource == Info.cellCountY-1 ) jSource = 1;
+		if ( kSource == 0 ) kSource = Info.cellCountZ-2;
+		else if ( kSource == Info.cellCountZ-1 ) kSource = 1;
+		// Now find the source cell using binary search in iBuilderView, jBuilderView, kBuilderView.
+		// If the source cell does not exist, or if source is marked as wall, write -1 and the error will be handled after this lambda
+		int start = 0;
+		int end = Info.cellCount;
+		int sourceCell = -1;
+		while ( start < end )
+		{
+			const int mid = start + ( end - start ) / 2;
+			const int kMid = kBuilderView( mid );
+			const int jMid = jBuilderView( mid );
+			const int iMid = iBuilderView( mid );
+			if ( kMid == kSource && jMid == jSource && iMid == iSource )
+			{
+				sourceCell = mid;
+				break;
+			}
+			const bool beforeSource = kMid < kSource ||
+				( kMid == kSource && jMid < jSource ) ||
+				( kMid == kSource && jMid == jSource && iMid < iSource );
+			if ( beforeSource )	start = mid + 1;
+			else end = mid;
+		}
+		if ( sourceCell >= 0 && wallMarkerView( sourceCell ) ) sourceCell = -1;
+		sourceView( index ) = sourceCell;
+		
+		// Disable force tracking for periodic cells (those are ghost cells that repeat information from the interior)
+		const int wallMap = wallMapView( cell );
+		if ( wallMap >= 0 )	wallDataView( wallMap ) |= 1u; 	// Wall-adjacent fluid: preserve its wall mapping and set bit 0.
+		else if ( wallMap == -1 ) wallMapView( cell ) = -2; // Free fluid: use the existing "do not track force" marker.
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, periodicBCLambda2 );
+	// check if all sources are valid. If not, throw error immediately.
+	const int sourceMin = TNL::min( Grid.PeriodicBC.sourceArray );
+	if ( sourceMin < 0 )
+	{
+		std::cout<< "	Building periodic BC failed, some source cells do not exist or are marked as wall. Terminating" << std::endl; 
+		throw std::runtime_error("Building periodic BC failed, some source cells do not exist or are marked as wall. Terminating");
+	}
+	// END OF PERIODIC BC
+		
+	// 8) Recursion
 	if ( !iAmFinest ) gridBuilderToGrid( gridBuilders, grids, level + 1 );
 	else std::cout << std::endl;
 }
@@ -1398,6 +1482,8 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 			Info.gridMemoryBytes += 3LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // indexList, rhoPrev, uNormalPrev
 			if constexpr (TRACK_OPEN_BOUNDARIES) Info.gridMemoryBytes += 2LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // rhoCumulative, uNormalCumulative
 		}
+		Info.gridMemoryBytes += 2LL * (long long)Grid.PeriodicBC.periodicBCCount * 4LL; // indexArray, sourceArray
+		
 		std::cout << "	Level " << level << " with " << Info.cellCount << "	cells requires	" << Info.gridMemoryBytes / 1048576.0 << "	MiB ... " << std::flush;;
 		
 		allocateFArray( Grid );

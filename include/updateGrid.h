@@ -354,6 +354,33 @@ void updateSingleGrid( GridStruct &Grid )
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, OpenBC.openBCCount, cellLambda );
 	}
 	
+	// Now apply periodic boundary conditions
+	auto indexView = Grid.PeriodicBC.indexArray.getConstView();
+	auto sourceView = Grid.PeriodicBC.sourceArray.getConstView();
+	// loop over periodic BC cells
+	auto periodicLambda = [=] __cuda_callable__ ( const int index ) mutable
+	{
+		const int cell = indexView( index );
+		const int source = sourceView( index );
+		float f[27];
+		
+		// read all f from source
+		NBRStruct NBR;
+		getCompressedNBR( source, NBR, shifterView, jPlusView, kPlusView, jkPlusView, Info );
+		int cellReadIndex[27];
+		int fReadIndex[27];
+		getPreCollisionIndex( cellReadIndex, fReadIndex, NBR, esotwistFlipper );
+		for ( int direction = 0; direction < 27; direction++ )  f[direction] = fView(fReadIndex[direction], cellReadIndex[direction]);
+		
+		// write all f to cell
+		getCompressedNBR( cell, NBR, shifterView, jPlusView, kPlusView, jkPlusView, Info );
+		int cellWriteIndex[27];
+		int fWriteIndex[27];
+		getPreCollisionIndex( cellWriteIndex, fWriteIndex, NBR, esotwistFlipper );
+		for ( int direction = 0; direction < 27; direction++ )  fView(fWriteIndex[direction], cellWriteIndex[direction]) = f[direction];
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Grid.PeriodicBC.periodicBCCount, periodicLambda );
+
 	Info.iterationsSinceTrackerReset++; 
 	Info.iterationsFinished++;
 }
