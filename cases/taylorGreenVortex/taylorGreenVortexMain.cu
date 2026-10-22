@@ -2,7 +2,7 @@
 
 constexpr float PI = 3.14159265358979323846f;
 constexpr float domainSizePhys = 2.f * PI * 1000.f; // mm, active domain excluding ghosts
-constexpr int cellsPerDomain = 256;               	// active cells per axis, must be even
+constexpr int cellsPerDomain = 128;               	// active cells per axis, must be even
 
 constexpr float reynoldsNumber = 1600.f;
 constexpr float uInitial = 0.05f;                 	// lattice velocity amplitude
