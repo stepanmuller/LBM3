@@ -1,4 +1,4 @@
-constexpr float reynoldsNumber = 500.f; // based on mean velocity and pipe diameter
+constexpr float reynoldsNumber = 100.f; // based on mean velocity and pipe diameter
 
 constexpr int GRID_LEVEL_COUNT = 2;
 constexpr float RES_GLOBAL = 0.4f; // mm
@@ -113,8 +113,8 @@ int main(int argc, char **argv)
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
-	DomainBounds.zMin = -20.f;
-	DomainBounds.zMax = 20.f;
+	DomainBounds.zMin = -10.f;
+	DomainBounds.zMax = 10.f;
 
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 

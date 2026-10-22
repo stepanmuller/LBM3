@@ -298,7 +298,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		//const float LaplaceRho = - 3.f * (ax * ax + by * by + cz * cz) - 6.f * (bx * ay + cx * az + cy * bz);
 		
 		// get interpolated variables for the coarse cell
-		/*
+		
 		// Geier's version: Does not conserve momentum, found to be a problem very near moving walls
 		const float dRho = d000;// - 0.125f * LaplaceRho; // d000 - 0.25f * LaplaceRho; // correction contrary to Virtual Fluids suggested by GPT 6 Astra, will have to look at it properly 
 		const float ux = a000; 
@@ -306,8 +306,8 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		const float uz = c000;
 		const float rho  = dRho + 1.f;
 		// end of Geier's version
-		*/
 		
+		/*
 		// Momentum conserving version
 		const float dRho = d000;
 		const float rho = 1.f + dRho;
@@ -324,7 +324,7 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			uz += massWeight * uzStencil[i];
 		}
 		// End of momentum conserving version
-		
+		*/
 		
 		// calculate second order central moments
 		// eq Schönherr 2015 (7.38 - 7.43)
@@ -625,20 +625,18 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			const float dy = dyArray[i];
 			const float dz = dzArray[i];
 			// get interpolated variables for the fine cell
-			const float dRho = d000 + d100 * dx + d010 * dy + d001 * dz;// + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz;
-								// - ( 3.f / 32.f ) * LaplaceRho; // + 3.f * dx * dx * LaplaceRho; // correction contrary to Virtual Fluids suggested by GPT 6 Astra, will have to look at it properly 
-			float ux = a000 + a100 * dx + a010 * dy + a001 * dz;// + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
-								//+ a200 * dx * dx + a020 * dy * dy + a002 * dz * dz; 
-			float uy = b000 + b100 * dx + b010 * dy + b001 * dz;// + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
-								//+ b200 * dx * dx + b020 * dy * dy + b002 * dz * dz; 
-			float uz = c000 + c100 * dx + c010 * dy + c001 * dz;// + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
-								//+ c200 * dx * dx + c020 * dy * dy + c002 * dz * dz; 
-			
+			const float dRho = d000 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz;
+								 //- ( 3.f / 32.f ) * LaplaceRho; // + 3.f * dx * dx * LaplaceRho; // correction contrary to Virtual Fluids suggested by GPT 6 Astra, will have to look at it properly 
+			float ux = a000 + a100 * dx + a010 * dy + a001 * dz + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
+								+ a200 * dx * dx + a020 * dy * dy + a002 * dz * dz; 
+			float uy = b000 + b100 * dx + b010 * dy + b001 * dz + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
+								+ b200 * dx * dx + b020 * dy * dy + b002 * dz * dz; 
+			float uz = c000 + c100 * dx + c010 * dy + c001 * dz + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
+								+ c200 * dx * dx + c020 * dy * dy + c002 * dz * dz; 
 			
 			// Momentum conserving modification
 			//ux += deltaUx; uy += deltaUy; uz += deltaUz;
 			// End of momentum conserving modification
-			
 			
 			// calculate second order central moments
 			
