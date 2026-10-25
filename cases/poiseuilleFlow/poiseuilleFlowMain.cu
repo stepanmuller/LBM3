@@ -4,8 +4,8 @@ constexpr int GRID_LEVEL_COUNT = 2;
 constexpr float RES_GLOBAL = 0.4f; // mm
 
 constexpr float uzInlet = 0.01f; // mean lattice velocity; centreline velocity is twice this
-constexpr int ITERATION_COUNT = 5000;
-constexpr int PLOTTER_PERIOD = 1000;
+constexpr int ITERATION_COUNT = 20000;
+constexpr int PLOTTER_PERIOD = 5000;
 
 constexpr int WALL_REFINEMENT_COUNT = 0;
 constexpr int TRACKER_PERIOD = 1;
@@ -84,7 +84,7 @@ __cuda_callable__ void getLocalBC( BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
-	if ( kCell > Info.cellCountZ - 10 )	BC.overwriteIBBLinks = 0.5f;
+	BC.overwriteIBBLinks = 0.5f;
 }
 
 #include "../../include/gridBuilderFunctions.h"
@@ -153,6 +153,11 @@ int main(int argc, char **argv)
 			lapTimer.start();
 		}
 	}
-
+	
+	// Final ZY section cut for centerline pressure.
+	const float xCut = 0.f;
+	exportSectionCutPlotZY( grids, xCut, ITERATION_COUNT );
+	if (system("python3 plotCenterlinePressure.py") != 0) {}
+	
 	return EXIT_SUCCESS;
 }

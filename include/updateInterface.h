@@ -150,6 +150,32 @@ __host__ __device__ void reconstructInterpolatedF( 	float (&f)[27], const float 
     f[PPP] = ((k_cc0 + K_cc0) * (uz2 + uz) + k_cc1 * (2.f * uz + 1.f) + k_cc2) * 0.5f;
 }
 
+// Affine fit on the eight source nodes at (+/-0.5, +/-0.5, +/-0.5).
+// Stencil order: self, i, j, ij, k, ik, jk, ijk.
+struct InterfaceLinearPolynomial
+{
+    float c0, cx, cy, cz;
+
+    __host__ __device__ float evaluate(float x, float y, float z) const
+    {
+        return c0 + cx*x + cy*y + cz*z;
+    }
+};
+
+__host__ __device__ inline InterfaceLinearPolynomial
+fitInterfaceLinear(const float (&values)[8])
+{
+    InterfaceLinearPolynomial p = {0.f, 0.f, 0.f, 0.f};
+    for (int i = 0; i < 8; ++i)
+    {
+        p.c0 += 0.125f * values[i];
+        p.cx += ((i & 1) ? 0.25f : -0.25f) * values[i];
+        p.cy += ((i & 2) ? 0.25f : -0.25f) * values[i];
+        p.cz += ((i & 4) ? 0.25f : -0.25f) * values[i];
+    }
+    return p;
+}
+
 void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 {
 	// The interpolation and rescaling is based on Martin Schönherr's disertation 2015
@@ -234,108 +260,41 @@ void updateFineToCoarseInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 													) / rho - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
 		}
 		
-		// get all required coefficients
-		// eq Schönherr 2015 (7.10)
-		float d000 = 0.f; for ( int i = 0; i < 8; i++ ) d000 += dRhoStencil[i]; d000 *= 0.125f;
-		
-		// The following is directly taken from VirtualFluids (just renamed variables). https://github.com/irmb/virtualfluids 
-		const float a000 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
-                                ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])) +
-                                ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[3] - kxzStencil[4])) +
-                                ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[2] - kxzStencil[5])) +
-                                ((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) - ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[5] + uzStencil[2]) - (uzStencil[6] + uzStencil[1]))) +
-                        8.f * (((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) + ((uxStencil[6] + uxStencil[1]) + (uxStencil[5] + uxStencil[2]))) +
-                        ((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
-                        ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
-                        ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
-                        ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
-        const float b000 = 0.015625f * (2.f * (((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
-                                ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
-                                ((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
-                                ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])) +
-                                ((kyzStencil[0] - kyzStencil[7]) + (kyzStencil[3] - kyzStencil[4])) +
-                                ((kyzStencil[1] - kyzStencil[6]) + (kyzStencil[2] - kyzStencil[5])) +
-                                ((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) - ((uxStencil[2] + uxStencil[6]) + (uxStencil[1] + uxStencil[5])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[2] + uzStencil[5]))) +
-                        8.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
-                        ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
-                        ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
-        const float c000 = 0.015625f * (2.f * (((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
-                                ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[5] - kxxMzzStencil[2])) +
-                                ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[4] - kxzStencil[3])) +
-                                ((kxzStencil[6] - kxzStencil[1]) + (kxzStencil[2] - kxzStencil[5])) +
-                                ((kyzStencil[0] - kyzStencil[7]) + (kyzStencil[4] - kyzStencil[3])) +
-                                ((kyzStencil[1] - kyzStencil[6]) + (kyzStencil[5] - kyzStencil[2])) +
-                                ((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[6] + uxStencil[1])) +
-                                ((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[6] + uyStencil[1]) - (uyStencil[2] + uyStencil[5]))) +
-                        8.f * (((uzStencil[7] + uzStencil[0]) + (uzStencil[3] + uzStencil[4])) + ((uzStencil[1] + uzStencil[6]) + (uzStencil[5] + uzStencil[2]))) +
-                        ((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
-                        ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[2] - kxxMyyStencil[5])));
+        // Restrict density and momentum by volume averaging.
+        float dRho = 0.f;
+        float jx = 0.f, jy = 0.f, jz = 0.f;
+        float qxy = 0.f, qyz = 0.f, qxz = 0.f;
+        float qxxMyy = 0.f, qxxMzz = 0.f;
 
-        const float ax = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[3] - uxStencil[4])) + ((uxStencil[1] - uxStencil[6]) + (uxStencil[5] - uxStencil[2])));
-        const float bx = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[3] - uyStencil[4])) + ((uyStencil[1] - uyStencil[6]) + (uyStencil[5] - uyStencil[2])));
-        const float cx = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[3] - uzStencil[4])) + ((uzStencil[1] - uzStencil[6]) + (uzStencil[5] - uzStencil[2])));
+        for (int i = 0; i < 8; ++i)
+        {
+            const float rhoSource = 1.f + dRhoStencil[i];
+            const float massWeight = 0.125f * rhoSource;
+            dRho += 0.125f * dRhoStencil[i];
+            jx += massWeight * uxStencil[i];
+            jy += massWeight * uyStencil[i];
+            jz += massWeight * uzStencil[i];
 
-        const float ay = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[3] - uxStencil[4])) + ((uxStencil[6] - uxStencil[1]) + (uxStencil[2] - uxStencil[5])));
-        const float by = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[3] - uyStencil[4])) + ((uyStencil[6] - uyStencil[1]) + (uyStencil[2] - uyStencil[5])));
-        const float cy = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[3] - uzStencil[4])) + ((uzStencil[6] - uzStencil[1]) + (uzStencil[2] - uzStencil[5])));
+            // Average density-weighted strain estimates, not strain alone.
+            qxy    += massWeight * kxyStencil[i];
+            qyz    += massWeight * kyzStencil[i];
+            qxz    += massWeight * kxzStencil[i];
+            qxxMyy += massWeight * kxxMyyStencil[i];
+            qxxMzz += massWeight * kxxMzzStencil[i];
+        }
 
-        const float az = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[4] - uxStencil[3])) + ((uxStencil[6] - uxStencil[1]) + (uxStencil[5] - uxStencil[2])));
-        const float bz = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[6] - uyStencil[1]) + (uyStencil[5] - uyStencil[2])));
-        const float cz = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[6] - uzStencil[1]) + (uzStencil[5] - uzStencil[2])));
-		
-		// The rest of the coefficients is not needed for fineToCoarse interpolation, because the coarse cell has coords [0, 0, 0]
-		
-		// get average second order moments
-		// eq Schönherr 2015 (7.29 - 7.33)
-		constexpr float kxyAvg = 0.f;
-		constexpr float kyzAvg = 0.f;
-		constexpr float kxzAvg = 0.f;
-		constexpr float kxxMyyAvg = 0.f;
-		constexpr float kxxMzzAvg = 0.f;
-		
-		//const float LaplaceRho = - 3.f * (ax * ax + by * by + cz * cz) - 6.f * (bx * ay + cx * az + cy * bz);
-		
-		// get interpolated variables for the coarse cell
-		
-		// Geier's version: Does not conserve momentum, found to be a problem very near moving walls
-		const float dRho = d000;// - 0.125f * LaplaceRho; // d000 - 0.25f * LaplaceRho; // correction contrary to Virtual Fluids suggested by GPT 6 Astra, will have to look at it properly 
-		const float ux = a000; 
-		const float uy = b000; 
-		const float uz = c000;
-		const float rho  = dRho + 1.f;
-		// end of Geier's version
-		
-		/*
-		// Momentum conserving version
-		const float dRho = d000;
-		const float rho = 1.f + dRho;
-		float ux = 0.f;
-		float uy = 0.f;
-		float uz = 0.f;
-		for ( int i = 0; i < 8; i++ )
-		{
-			const float rhoFine = 1.f + dRhoStencil[i];
-			const float massWeight = rhoFine / (8.f * rho);
+        const float rho = 1.f + dRho;
+        const float ux = jx / rho;
+        const float uy = jy / rho;
+        const float uz = jz / rho;
 
-			ux += massWeight * uxStencil[i];
-			uy += massWeight * uyStencil[i];
-			uz += massWeight * uzStencil[i];
-		}
-		// End of momentum conserving version
-		*/
-		
-		// calculate second order central moments
-		// eq Schönherr 2015 (7.38 - 7.43)
-		// note that A, B, C is all zeros because coarse cell is placed [0, 0, 0]
-		const float sigma = 2.f; // fine to coarse
-		const float k_011 = - ( sigma * rho ) / ( 3.f * omega1Coarse ) * ( (bz + cy) + kyzAvg );
-		const float k_101 = - ( sigma * rho ) / ( 3.f * omega1Coarse ) * ( (az + cx) + kxzAvg );
-		const float k_110 = - ( sigma * rho ) / ( 3.f * omega1Coarse ) * ( (ay + bx) + kxyAvg );
-		
-		const float mxxMyy = - (2.f / 3.f) * ((ax - by) + kxxMyyAvg) * sigma / omega1Coarse * rho;
-		const float mxxMzz = - (2.f / 3.f) * ((ax - cz) + kxxMzzAvg) * sigma / omega1Coarse * rho;
+        const float sigma = 2.f;
+        const float stressScale = sigma / omega1Coarse;
+        const float k_011  = -(1.f/3.f) * stressScale * qyz;
+        const float k_101  = -(1.f/3.f) * stressScale * qxz;
+        const float k_110  = -(1.f/3.f) * stressScale * qxy;
+        const float mxxMyy = -(2.f/3.f) * stressScale * qxxMyy;
+        const float mxxMzz = -(2.f/3.f) * stressScale * qxxMzz;
 		
 		const float k_200 = (1.f / 3.f) * (       mxxMyy +       mxxMzz + dRho);
 		const float k_020 = (1.f / 3.f) * (-2.f * mxxMyy +       mxxMzz + dRho);
@@ -441,128 +400,45 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 													) / rho - ( uxStencil[i] * uxStencil[i] - uzStencil[i] * uzStencil[i] ) );
 		}
 		
-		// get all required coefficients
-		// eq Schönherr 2015 (7.10)
-		
-		// The following is directly taken from VirtualFluids (just renamed variables). https://github.com/irmb/virtualfluids 
-		
-		const float d000 = 0.125f * (((dRhoStencil[7] + dRhoStencil[0]) + (dRhoStencil[3] + dRhoStencil[4])) + ((dRhoStencil[1] + dRhoStencil[6]) + (dRhoStencil[5] + dRhoStencil[2])));
-        const float d100 = 0.25f * (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[3] - dRhoStencil[4])) + ((dRhoStencil[1] - dRhoStencil[6]) + (dRhoStencil[5] - dRhoStencil[2])));
-        const float d010 = 0.25f * (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[3] - dRhoStencil[4])) + ((dRhoStencil[6] - dRhoStencil[1]) + (dRhoStencil[2] - dRhoStencil[5])));
-        const float d001 = 0.25f * (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[4] - dRhoStencil[3])) + ((dRhoStencil[6] - dRhoStencil[1]) + (dRhoStencil[5] - dRhoStencil[2])));
-        const float d110 = 0.5f * (((dRhoStencil[7] + dRhoStencil[0]) + (dRhoStencil[3] + dRhoStencil[4])) - ((dRhoStencil[1] + dRhoStencil[6]) + (dRhoStencil[5] + dRhoStencil[2])));
-        const float d101 = 0.5f * (((dRhoStencil[7] + dRhoStencil[0]) - (dRhoStencil[3] + dRhoStencil[4])) + ((dRhoStencil[5] + dRhoStencil[2]) - (dRhoStencil[1] + dRhoStencil[6])));
-        const float d011 = 0.5f * (((dRhoStencil[7] + dRhoStencil[0]) - (dRhoStencil[3] + dRhoStencil[4])) + ((dRhoStencil[1] + dRhoStencil[6]) - (dRhoStencil[5] + dRhoStencil[2])));
-        const float d111 = (((dRhoStencil[7] - dRhoStencil[0]) + (dRhoStencil[4] - dRhoStencil[3])) + ((dRhoStencil[1] - dRhoStencil[6]) + (dRhoStencil[2] - dRhoStencil[5])));
-		
-		const float a000 = 0.015625f * (2.f * (((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
-                                ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])) +
-                                ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[3] - kxzStencil[4])) +
-                                ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[2] - kxzStencil[5])) +
-                                ((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) - ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[5] + uzStencil[2]) - (uzStencil[6] + uzStencil[1]))) +
-                        8.f * (((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) + ((uxStencil[6] + uxStencil[1]) + (uxStencil[5] + uxStencil[2]))) +
-                        ((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
-                        ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
-                        ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
-                        ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
-        const float b000 = 0.015625f * (2.f * (((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
-                                ((kxxMyyStencil[6] - kxxMyyStencil[1]) + (kxxMyyStencil[2] - kxxMyyStencil[5])) +
-                                ((kxyStencil[0] - kxyStencil[7]) + (kxyStencil[4] - kxyStencil[3])) +
-                                ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])) +
-                                ((kyzStencil[0] - kyzStencil[7]) + (kyzStencil[3] - kyzStencil[4])) +
-                                ((kyzStencil[1] - kyzStencil[6]) + (kyzStencil[2] - kyzStencil[5])) +
-                                ((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) - ((uxStencil[2] + uxStencil[6]) + (uxStencil[1] + uxStencil[5])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[2] + uzStencil[5]))) +
-                        8.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] + uyStencil[4])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
-                        ((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
-                        ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
-        const float c000 = 0.015625f * (2.f * (((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[4] - kxxMzzStencil[3])) +
-                                ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[5] - kxxMzzStencil[2])) +
-                                ((kxzStencil[0] - kxzStencil[7]) + (kxzStencil[4] - kxzStencil[3])) +
-                                ((kxzStencil[6] - kxzStencil[1]) + (kxzStencil[2] - kxzStencil[5])) +
-                                ((kyzStencil[0] - kyzStencil[7]) + (kyzStencil[4] - kyzStencil[3])) +
-                                ((kyzStencil[1] - kyzStencil[6]) + (kyzStencil[5] - kyzStencil[2])) +
-                                ((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[6] + uxStencil[1])) +
-                                ((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[6] + uyStencil[1]) - (uyStencil[2] + uyStencil[5]))) +
-                        8.f * (((uzStencil[7] + uzStencil[0]) + (uzStencil[3] + uzStencil[4])) + ((uzStencil[1] + uzStencil[6]) + (uzStencil[5] + uzStencil[2]))) +
-                        ((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
-                        ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[2] - kxxMyyStencil[5])));
+        // Independent affine density and velocity fits.
+        const auto d = fitInterfaceLinear(dRhoStencil);
+        auto a = fitInterfaceLinear(uxStencil);
+        auto b = fitInterfaceLinear(uyStencil);
+        auto c = fitInterfaceLinear(uzStencil);
 
-        const float a100 = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[3] - uxStencil[4])) + ((uxStencil[1] - uxStencil[6]) + (uxStencil[5] - uxStencil[2])));
-        const float b100 = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[3] - uyStencil[4])) + ((uyStencil[1] - uyStencil[6]) + (uyStencil[5] - uyStencil[2])));
-        const float c100 = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[3] - uzStencil[4])) + ((uzStencil[1] - uzStencil[6]) + (uzStencil[5] - uzStencil[2])));
+        float jxMean = 0.f, jyMean = 0.f, jzMean = 0.f;
+        float qxyStencil[8], qyzStencil[8], qxzStencil[8];
+        float qxxMyyStencil[8], qxxMzzStencil[8];
 
-        const float a010 = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[3] - uxStencil[4])) + ((uxStencil[6] - uxStencil[1]) + (uxStencil[2] - uxStencil[5])));
-        const float b010 = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[3] - uyStencil[4])) + ((uyStencil[6] - uyStencil[1]) + (uyStencil[2] - uyStencil[5])));
-        const float c010 = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[3] - uzStencil[4])) + ((uzStencil[6] - uzStencil[1]) + (uzStencil[2] - uzStencil[5])));
+        for (int i = 0; i < 8; ++i)
+        {
+            const float rhoSource = 1.f + dRhoStencil[i];
+            const float massWeight = 0.125f * rhoSource;
+            jxMean += massWeight * uxStencil[i];
+            jyMean += massWeight * uyStencil[i];
+            jzMean += massWeight * uzStencil[i];
 
-        const float a001 = 0.25f * (((uxStencil[7] - uxStencil[0]) + (uxStencil[4] - uxStencil[3])) + ((uxStencil[6] - uxStencil[1]) + (uxStencil[5] - uxStencil[2])));
-        const float b001 = 0.25f * (((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[6] - uyStencil[1]) + (uyStencil[5] - uyStencil[2])));
-        const float c001 = 0.25f * (((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[6] - uzStencil[1]) + (uzStencil[5] - uzStencil[2])));
-		
-		const float a200 = 0.0625f * (2.f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[3] - uyStencil[6])) + ((uyStencil[4] - uyStencil[1]) - (uyStencil[2] + uyStencil[5])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[6])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[4] + uzStencil[1]))) +
-                        ((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[3] - kxxMyyStencil[4])) +
-                        ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[5] - kxxMyyStencil[2])) +
-                        ((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
-                        ((kxxMzzStencil[1] - kxxMzzStencil[6]) + (kxxMzzStencil[5] - kxxMzzStencil[2])));
-        const float b200 = 0.125f * (2.f * (-((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) + ((uxStencil[6] + uxStencil[1]) + (uxStencil[2] + uxStencil[5]))) +
-                       ((kxyStencil[7] - kxyStencil[0]) + (kxyStencil[3] - kxyStencil[4])) +
-                       ((kxyStencil[1] - kxyStencil[6]) + (kxyStencil[5] - kxyStencil[2])));
-        const float c200 = 0.125f * (2.f * (((uxStencil[3] + uxStencil[4]) - (uxStencil[7] + uxStencil[0])) + ((uxStencil[6] + uxStencil[1]) - (uxStencil[2] + uxStencil[5]))) +
-                       ((kxzStencil[7] - kxzStencil[0]) + (kxzStencil[3] - kxzStencil[4])) +
-                       ((kxzStencil[1] - kxzStencil[6]) + (kxzStencil[5] - kxzStencil[2])));
-        
-        const float a020 = 0.125f * (2.f * (-((uyStencil[7] + uyStencil[0]) + (uyStencil[4] + uyStencil[3])) + ((uyStencil[6] + uyStencil[1]) + (uyStencil[2] + uyStencil[5]))) +
-                       ((kxyStencil[7] - kxyStencil[0]) + (kxyStencil[3] - kxyStencil[4])) +
-                       ((kxyStencil[6] - kxyStencil[1]) + (kxyStencil[2] - kxyStencil[5])));
-        const float b020 = 0.0625f * (2.f * (((kxxMyyStencil[0] - kxxMyyStencil[7]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
-                                ((kxxMyyStencil[1] - kxxMyyStencil[6]) + (kxxMyyStencil[5] - kxxMyyStencil[2])) +
-                                ((uxStencil[7] + uxStencil[0]) + (uxStencil[3] + uxStencil[4])) - ((uxStencil[6] + uxStencil[1]) + (uxStencil[5] + uxStencil[2])) +
-                                ((uzStencil[7] + uzStencil[0]) - (uzStencil[3] + uzStencil[4])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[2] + uzStencil[5]))) +
-                        ((kxxMzzStencil[7] - kxxMzzStencil[0]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
-                        ((kxxMzzStencil[6] - kxxMzzStencil[1]) + (kxxMzzStencil[2] - kxxMzzStencil[5])));
-        const float c020 = 0.125f * (2.f * (((uyStencil[4] + uyStencil[3]) - (uyStencil[7] + uyStencil[0])) + ((uyStencil[5] + uyStencil[2]) - (uyStencil[6] + uyStencil[1]))) +
-                       ((kyzStencil[7] - kyzStencil[0]) + (kyzStencil[3] - kyzStencil[4])) +
-                       ((kyzStencil[6] - kyzStencil[1]) + (kyzStencil[2] - kyzStencil[5])));
-                 
-        const float a002 = 0.125f * (2.f * (((uzStencil[3] + uzStencil[4]) - (uzStencil[7] + uzStencil[0])) + ((uzStencil[6] + uzStencil[1]) - (uzStencil[5] + uzStencil[2]))) +
-                       ((kxzStencil[7] - kxzStencil[0]) + (kxzStencil[4] - kxzStencil[3])) +
-                       ((kxzStencil[5] - kxzStencil[2]) + (kxzStencil[6] - kxzStencil[1])));
-        const float b002 = 0.125f * (2.f * (((uzStencil[3] + uzStencil[4]) - (uzStencil[7] + uzStencil[0])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[1] + uzStencil[6]))) +
-                       ((kyzStencil[7] - kyzStencil[0]) + (kyzStencil[4] - kyzStencil[3])) +
-                       ((kyzStencil[5] - kyzStencil[2]) + (kyzStencil[6] - kyzStencil[1])));
-        const float c002 = 0.0625f * (2.f * (((kxxMzzStencil[0] - kxxMzzStencil[7]) + (kxxMzzStencil[3] - kxxMzzStencil[4])) +
-                                ((kxxMzzStencil[2] - kxxMzzStencil[5]) + (kxxMzzStencil[1] - kxxMzzStencil[6])) +
-                                ((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[1] + uxStencil[6])) +
-                                ((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[1] + uyStencil[6]) - (uyStencil[2] + uyStencil[5]))) +
-                        ((kxxMyyStencil[7] - kxxMyyStencil[0]) + (kxxMyyStencil[4] - kxxMyyStencil[3])) +
-                        ((kxxMyyStencil[5] - kxxMyyStencil[2]) + (kxxMyyStencil[6] - kxxMyyStencil[1])));
-		
-        const float a110 = 0.5f * (((uxStencil[7] + uxStencil[0]) + (uxStencil[4] + uxStencil[3])) - ((uxStencil[2] + uxStencil[5]) + (uxStencil[1] + uxStencil[6])));
-        const float b110 = 0.5f * (((uyStencil[7] + uyStencil[0]) + (uyStencil[4] + uyStencil[3])) - ((uyStencil[2] + uyStencil[5]) + (uyStencil[1] + uyStencil[6])));
-        const float c110 = 0.5f * (((uzStencil[7] + uzStencil[0]) + (uzStencil[4] + uzStencil[3])) - ((uzStencil[2] + uzStencil[5]) + (uzStencil[1] + uzStencil[6])));
+            // Include density BEFORE fitting, so stress itself is affine.
+            qxyStencil[i]    = rhoSource * kxyStencil[i];
+            qyzStencil[i]    = rhoSource * kyzStencil[i];
+            qxzStencil[i]    = rhoSource * kxzStencil[i];
+            qxxMyyStencil[i] = rhoSource * kxxMyyStencil[i];
+            qxxMzzStencil[i] = rhoSource * kxxMzzStencil[i];
+        }
 
-        const float a101 = 0.5f * (((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[2] + uxStencil[5]) - (uxStencil[1] + uxStencil[6])));
-        const float b101 = 0.5f * (((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[2] + uyStencil[5]) - (uyStencil[1] + uyStencil[6])));
-        const float c101 = 0.5f * (((uzStencil[7] + uzStencil[0]) - (uzStencil[4] + uzStencil[3])) + ((uzStencil[2] + uzStencil[5]) - (uzStencil[1] + uzStencil[6])));
+        const auto qxy    = fitInterfaceLinear(qxyStencil);
+        const auto qyz    = fitInterfaceLinear(qyzStencil);
+        const auto qxz    = fitInterfaceLinear(qxzStencil);
+        const auto qxxMyy = fitInterfaceLinear(qxxMyyStencil);
+        const auto qxxMzz = fitInterfaceLinear(qxxMzzStencil);
 
-        const float a011 = 0.5f * (((uxStencil[7] + uxStencil[0]) - (uxStencil[4] + uxStencil[3])) + ((uxStencil[1] + uxStencil[6]) - (uxStencil[2] + uxStencil[5])));
-        const float b011 = 0.5f * (((uyStencil[7] + uyStencil[0]) - (uyStencil[4] + uyStencil[3])) + ((uyStencil[1] + uyStencil[6]) - (uyStencil[2] + uyStencil[5])));
-        const float c011 = 0.5f * (((uzStencil[7] + uzStencil[0]) - (uzStencil[4] + uzStencil[3])) + ((uzStencil[1] + uzStencil[6]) - (uzStencil[2] + uzStencil[5])));
-
-        const float a111 = ((uxStencil[7] - uxStencil[0]) + (uxStencil[4] - uxStencil[3])) + ((uxStencil[2] - uxStencil[5]) + (uxStencil[1] - uxStencil[6]));
-        const float b111 = ((uyStencil[7] - uyStencil[0]) + (uyStencil[4] - uyStencil[3])) + ((uyStencil[2] - uyStencil[5]) + (uyStencil[1] - uyStencil[6]));
-        const float c111 = ((uzStencil[7] - uzStencil[0]) + (uzStencil[4] - uzStencil[3])) + ((uzStencil[2] - uzStencil[5]) + (uzStencil[1] - uzStencil[6]));
-        
-        // const float LaplaceRho = -3.f * (a100 * a100 + b010 * b010 + c001 * c001) - 6.f * (b100 * a010 + c100 * a001 + c010 * b001);
-		
-		constexpr float kxyAvg = 0.f;
-		constexpr float kyzAvg = 0.f;
-		constexpr float kxzAvg = 0.f;
-		constexpr float kxxMyyAvg = 0.f;
-		constexpr float kxxMzzAvg = 0.f;
+        // For the eight targets at +/-0.25:
+        // <rho*u> = rhoMean*u0 + (grad(rho).grad(u))/16.
+        // Replace only the velocity intercepts to preserve block momentum.
+        const float rhoMean = 1.f + d.c0;
+        a.c0 = (jxMean - (d.cx*a.cx + d.cy*a.cy + d.cz*a.cz)/16.f) / rhoMean;
+        b.c0 = (jyMean - (d.cx*b.cx + d.cy*b.cy + d.cz*b.cz)/16.f) / rhoMean;
+        c.c0 = (jzMean - (d.cx*c.cx + d.cy*c.cy + d.cz*c.cz)/16.f) / rhoMean;
 		
 		// build list of fine cells and their positions
 		NBRStruct NBRTarget;
@@ -581,42 +457,6 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 		const float dyArray[8] = {-0.25f, -0.25f, +0.25f, +0.25f, -0.25f, -0.25f, +0.25f, +0.25f};
 		const float dzArray[8] = {-0.25f, -0.25f, -0.25f, -0.25f, +0.25f, +0.25f, +0.25f, +0.25f};
 		
-		/*
-		// Momentum conserving modification
-		float coarseJx = 0.f, coarseJy = 0.f, coarseJz = 0.f;
- 		for ( int i = 0; i < 8; i++ )
- 		{
-			const int cellFine = cellTarget[i];
-			const float rhoCoarse = 1.f + dRhoStencil[i];
-			coarseJx += rhoCoarse * uxStencil[i];
-			coarseJy += rhoCoarse * uyStencil[i];
-			coarseJz += rhoCoarse * uzStencil[i];
-		}
-		float fineRhoSum = 0.f;
-		float fineJx = 0.f, fineJy = 0.f, fineJz = 0.f;
-		for ( int i = 0; i < 8; i++ )
-		{
- 			const float dx = dxArray[i];
- 			const float dy = dyArray[i];
- 			const float dz = dzArray[i];
- 			const float dRho = d000 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz;
-			float ux = a000 + a100 * dx + a010 * dy + a001 * dz + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
-								+ a200 * dx * dx + a020 * dy * dy + a002 * dz * dz; 
- 			const float uy = b000 + b100 * dx + b010 * dy + b001 * dz + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
- 								+ b200 * dx * dx + b020 * dy * dy + b002 * dz * dz; 
- 			const float uz = c000 + c100 * dx + c010 * dy + c001 * dz + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
-								+ c200 * dx * dx + c020 * dy * dy + c002 * dz * dz; 
-			const float rhoFine = 1.f + dRho;
-			fineRhoSum += rhoFine;
-			fineJx += rhoFine * ux;
-			fineJy += rhoFine * uy;
-			fineJz += rhoFine * uz;
-		}
-		const float deltaUx = (coarseJx - fineJx) / fineRhoSum;
-		const float deltaUy = (coarseJy - fineJy) / fineRhoSum;
-		const float deltaUz = (coarseJz - fineJz) / fineRhoSum;		
-		// End of momentum conserving modification
-		*/
 		
 		for ( int i = 0; i < 8; i++ )
 		{
@@ -624,35 +464,20 @@ void updateCoarseToFineInterface( GridStruct &GridCoarse, GridStruct &GridFine )
 			const float dx = dxArray[i];
 			const float dy = dyArray[i];
 			const float dz = dzArray[i];
-			// get interpolated variables for the fine cell
-			const float dRho = d000 + d100 * dx + d010 * dy + d001 * dz + d110 * dx * dy + d101 * dx * dz + d011 * dy * dz + d111 * dx * dy * dz;
-								 //- ( 3.f / 32.f ) * LaplaceRho; // + 3.f * dx * dx * LaplaceRho; // correction contrary to Virtual Fluids suggested by GPT 6 Astra, will have to look at it properly 
-			float ux = a000 + a100 * dx + a010 * dy + a001 * dz + a110 * dx * dy + a101 * dx * dz + a011 * dy * dz + a111 * dx * dy * dz
-								+ a200 * dx * dx + a020 * dy * dy + a002 * dz * dz; 
-			float uy = b000 + b100 * dx + b010 * dy + b001 * dz + b110 * dx * dy + b101 * dx * dz + b011 * dy * dz + b111 * dx * dy * dz
-								+ b200 * dx * dx + b020 * dy * dy + b002 * dz * dz; 
-			float uz = c000 + c100 * dx + c010 * dy + c001 * dz + c110 * dx * dy + c101 * dx * dz + c011 * dy * dz + c111 * dx * dy * dz
-								+ c200 * dx * dx + c020 * dy * dy + c002 * dz * dz; 
-			
-			// Momentum conserving modification
-			//ux += deltaUx; uy += deltaUy; uz += deltaUz;
-			// End of momentum conserving modification
-			
-			// calculate second order central moments
-			
-			const float sigma = 0.5f; // coarse to fine
-			
-			const float k_011 = -(1.f / 3.f) * (b001 + c010 + kyzAvg + b101 * dx + c110 * dx + b011 * dy + 2.f * c020 * dy
-					+ b111 * dx * dy + 2.f * b002 * dz + c011 * dz + c111 * dx * dz) * sigma / omega1Fine * (1.f + dRho);
-			const float k_101 = -(1.f / 3.f) * (a001 + c100 + kxzAvg + a101 * dx + 2.f * c200 * dx + a011 * dy + c110 * dy
-					+ a111 * dx * dy + 2.f * a002 * dz + c101 * dz + c111 * dy * dz) * sigma / omega1Fine * (1.f + dRho);
-			const float k_110 = -(1.f / 3.f) * (a010 + b100 + kxyAvg + a110 * dx + 2.f * b200 * dx + 2.f * a020 * dy
-					+ b110 * dy + a011 * dz + b101 * dz + a111 * dx * dz + b111 * dy * dz) * sigma / omega1Fine * (1.f + dRho);
-			
-			const float mxxMyy = -(2.f/3.f) * (a100 - b010 + kxxMyyAvg + 2.f * a200 * dx - b110 * dx + a110 * dy
-						  -2.f * b020 * dy + a101 * dz - b011 * dz - b111 * dx * dz + a111 * dy * dz) * sigma / omega1Fine * (1.f + dRho);
-			const float mxxMzz = -(2.f/3.f) * (a100 - c001 + kxxMzzAvg + 2.f * a200 * dx - c101 * dx + a110 * dy
-						  -c011 * dy - c111 * dx * dy + a101 * dz - 2.f * c002 * dz + a111 * dy * dz) * sigma / omega1Fine * (1.f + dRho);
+            const float dRho = d.evaluate(dx, dy, dz);
+            const float ux = a.evaluate(dx, dy, dz);
+            const float uy = b.evaluate(dx, dy, dz);
+            const float uz = c.evaluate(dx, dy, dz);
+
+            const float sigma = 0.5f;
+            const float stressScale = sigma / omega1Fine;
+
+            // Density is already included in q: do not multiply by rho again.
+            const float k_011  = -(1.f/3.f) * stressScale * qyz.evaluate(dx, dy, dz);
+            const float k_101  = -(1.f/3.f) * stressScale * qxz.evaluate(dx, dy, dz);
+            const float k_110  = -(1.f/3.f) * stressScale * qxy.evaluate(dx, dy, dz);
+            const float mxxMyy = -(2.f/3.f) * stressScale * qxxMyy.evaluate(dx, dy, dz);
+            const float mxxMzz = -(2.f/3.f) * stressScale * qxxMzz.evaluate(dx, dy, dz);
 			
 			const float k_200 = (1.f / 3.f) * (       mxxMyy +       mxxMzz + dRho);
 			const float k_020 = (1.f / 3.f) * (-2.f * mxxMyy +       mxxMzz + dRho);
