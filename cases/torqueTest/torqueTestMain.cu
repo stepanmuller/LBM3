@@ -1,8 +1,7 @@
-constexpr float REFINEMENT_RADIUS = 150.f;
+constexpr float REFINEMENT_RADIUS = 50.f;
 
 // coarse
-constexpr float RES_GLOBAL = 0.3f; 
-constexpr float uNominal = 0.02f; 
+constexpr float RES_GLOBAL = 0.2f; 
 constexpr int GRID_LEVEL_COUNT = 1;
 constexpr int ITERATION_COUNT = 100000; 														
 
@@ -17,8 +16,9 @@ constexpr bool TRACK_OPEN_BOUNDARIES = false;
 constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
 constexpr float NU_PHYS = 1e-6;		// m2/s water
 
-constexpr float radiansPerSecond = -200.f;						// rad/s
-constexpr float uNominalPhys = 0.15f * radiansPerSecond;		// m/s
+constexpr float uNominal = 0.02f; 
+constexpr float radiansPerSecond = 600.f;						// rad/s
+constexpr float uNominalPhys = 0.05f * radiansPerSecond;		// m/s
 
 constexpr float DT_PHYS_GLOBAL = (uNominal / uNominalPhys) * (RES_GLOBAL/1000.f); // s
 
@@ -77,6 +77,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.uz = 0.f;
 	}
 	BC.collisionLimiter = 0.f; // use K15
+	//BC.overwriteIBBLinks = 0.5f;
 }
 
 #include "../../include/gridBuilderFunctions.h"
