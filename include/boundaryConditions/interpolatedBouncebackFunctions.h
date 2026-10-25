@@ -3,6 +3,7 @@
 #include "../types.h"
 #include "../D3Q27Directions.h"
 #include "../cellFunctions.h"
+#include "../esotwistStreamingFunctions.h"
 
 // TO DO:
 // The current issue is that during voxelization, x and y coordinates of the STL get snapped to an integer grid
@@ -39,7 +40,8 @@ __cuda_callable__ inline float getGeierForcePopulationSingle(
 // Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017. 
 // Single node scheme eq (10)
 // Set l = gamma which also agrees with Martin Geier, 2015
-__cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float &nu, 
+__cuda_callable__ void applyIBB( 	const FloatArray2DType::ViewType &fView, const NBRStruct &NBR, const bool &esotwistFlipper,
+									float (&fPost)[27], BCStruct &BC, const float &nu, 
 									float &gxWall, float &gyWall, float &gzWall, 
 									const uint32_t &wallData, const int &wallMap, Uint32_tConstView2DType &linkLengthView )
 {
@@ -48,20 +50,7 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 	// we use this to hold resulting fResult[inverseDirection] until we can overwrite fPost[inverseDirection]
 	// this is to avoid allocating all 26 floats for fResult
 	float dRho, ux, uy, uz;
-	getDRhoUxUyUz( dRho, ux, uy, uz, fPost ); // we will need this to reconstruct fPre
-	
-	const bool hasForcing = BC.gx != 0.f || BC.gy != 0.f || BC.gz != 0.f;
-	if ( hasForcing )
-	{
-		// fPost carries jPre + g. Recover the collision midpoint (jPre + g/2) / rho.
-		// BC.g is the full lattice momentum increment, not an acceleration.
-		const float halfRhoInv = 0.5f / (1.f + dRho);
-		ux -= BC.gx * halfRhoInv;
-		uy -= BC.gy * halfRhoInv;
-		uz -= BC.gz * halfRhoInv;
-	}
-	
-	const float omega1 = 1.f / (3.f * (nu * BC.nuMultiplier) + 0.5f);
+	getDRhoUxUyUz( dRho, ux, uy, uz, fPost );
 	// we will only read link lengths for links that exist
 	// those are all in the front ( non existing link lengths are not written and dont take any space in between)
 	int linkIndex = 0;
@@ -87,7 +76,7 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 				
         const int bitShift = 8 * (linkIndex % 4);
 		const uint32_t linkCode = (code >> bitShift) & 255u;
-		float gamma = std::clamp( static_cast<float>(linkCode) / 254.f, 0.00001f, 1.f );
+		float gamma = std::clamp( static_cast<float>(linkCode) / 254.f, 0.01f, 1.f );
         linkIndex++;
 
 		// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
@@ -96,20 +85,11 @@ __cuda_callable__ void applyIBB( 	float (&fPost)[27], BCStruct &BC, const float 
 		// need to restore fPreOriginal[ direction ] from fPost
 		// Geier 2015 (E.4) 
 		// Need to extend this formula to account for forcing! This caused trouble where rotor cell was also wall adjacent
-		float feqDirection = getFeqSingle( dRho, ux, uy, uz, direction );
-		float feqInverseDirection = getFeqSingle( dRho, ux, uy, uz, inverseDirection );
-		float fPreDirection = 0.5f * ( fPost[ direction ] - fPost[ inverseDirection ] ) 
-						+ ( fPost[ direction ] + fPost[ inverseDirection ] - omega1 * ( feqDirection + feqInverseDirection ) ) / ( 2.f - 2.f * omega1 );
-		// Forcing correction here:
-		if ( hasForcing )
-		{
-			const float forceDirection = getGeierForcePopulationSingle( ux, uy, uz, BC.gx, BC.gy, BC.gz, direction );
-			const float forceInverseDirection = getGeierForcePopulationSingle( ux, uy, uz, BC.gx, BC.gy, BC.gz, inverseDirection );
-			// Undo the output half-force before E.4, then the input half-force after it.
-			// Both force populations and feq above use the same midpoint velocity.
-			fPreDirection -= ((4.f - 3.f * omega1) * forceDirection + omega1 * forceInverseDirection)
-							 / (4.f - 4.f * omega1);
-		}
+		int preCellIndex;
+		int preFIndex;
+		getPreCollisionIndexSingle( preCellIndex, preFIndex, NBR, esotwistFlipper, direction );
+		const float fPreDirection = fView(preFIndex, preCellIndex);
+		
 		// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017, single node scheme eq (10)
 		const float eiDotFi = (float)CX_DIRECTIONS[ inverseDirection ] * BC.ux 
 							+ (float)CY_DIRECTIONS[ inverseDirection ] * BC.uy 

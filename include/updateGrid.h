@@ -145,7 +145,7 @@ void updateSingleGrid( GridStruct &Grid )
 		// In their place, we will find f[inverseDirection] that we need to receive from the wall next round.
 		// use bit packed wallLinkMarker to remember which directions the walls are, also track the forces
 		float gxWall = 0.f; float gyWall = 0.f; float gzWall = 0.f;
-		applyIBB( f, BC, Info.nu, gxWall, gyWall, gzWall, wallData, wallMap, linkLengthView );
+		applyIBB( fView, NBR, esotwistFlipper, f, BC, Info.nu, gxWall, gyWall, gzWall, wallData, wallMap, linkLengthView );
 		
 		// write all directions. If there is a wall, switch the writing index to next pre-collision and inverse direction
 		int cellWriteIndex = 0; 
