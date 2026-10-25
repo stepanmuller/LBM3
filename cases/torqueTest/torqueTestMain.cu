@@ -1,12 +1,12 @@
-constexpr float REFINEMENT_RADIUS = 9.9f;
+constexpr float REFINEMENT_RADIUS = 150.f;
 
 // coarse
-constexpr float RES_GLOBAL = 0.2f; 
-constexpr float uNominal = 0.01f; 
-constexpr int GRID_LEVEL_COUNT = 2;
-constexpr int ITERATION_COUNT = 10000; 														
+constexpr float RES_GLOBAL = 0.3f; 
+constexpr float uNominal = 0.02f; 
+constexpr int GRID_LEVEL_COUNT = 1;
+constexpr int ITERATION_COUNT = 100000; 														
 
-constexpr int PLOTTER_PERIOD = 5000;
+constexpr int PLOTTER_PERIOD = 10000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
 constexpr int TRACKER_PERIOD = 1;
@@ -14,18 +14,18 @@ constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = false;
 constexpr bool TRACK_OPEN_BOUNDARIES = false;
 
-constexpr float NU_PHYS = 1.5e-5f; // m2/s, air
-constexpr float RHO_PHYS = 1.225f; // kg/m3, air
+constexpr float RHO_PHYS = 997.0f;	// kg/m3 water
+constexpr float NU_PHYS = 1e-6;		// m2/s water
 
-constexpr float uNominalPhys = 10.f;	// m/s
-constexpr float radiansPerSecond = ( uNominalPhys / 0.01f );								// rad/s
+constexpr float radiansPerSecond = -200.f;						// rad/s
+constexpr float uNominalPhys = 0.15f * radiansPerSecond;		// m/s
 
 constexpr float DT_PHYS_GLOBAL = (uNominal / uNominalPhys) * (RES_GLOBAL/1000.f); // s
 
 #include "../../include/types.h"
 
 std::string STLPathStator = "statorSTL.STL"; 
-std::string STLPathRotor = "rotorD20L20STL.STL";
+std::string STLPathRotor = "rotorSTL.STL";
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
