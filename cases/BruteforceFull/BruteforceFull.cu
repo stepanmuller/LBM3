@@ -129,13 +129,13 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	if ( Info.gridID == 0 || Info.gridID == 1 ) 
 	{
 		BC.collisionLimiter = 0.f; // switch to K15 for coarsest levels
-		BC.overwriteIBBLinks = 0.5f;
+		BC.useIBB = false;
 	}
 	if ( Info.gridID == 2 ) BC.collisionLimiter = 0.01f;
 	if ( z <= -140.f ) 
 	{
 		BC.collisionLimiter = 0.f;
-		BC.overwriteIBBLinks = 0.5f;
+		BC.useIBB = false;
 	}
 	if ( z >= Info.Bounds.zMax-19.f ) 
 	{
@@ -144,7 +144,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	} 
 	if ( z >= Info.Bounds.zMax-10.f && rz > 20.f ) 
 	{
-		BC.overwriteIBBLinks = 0.5f;
+		BC.useIBB = false;
 	} 
 }
 

@@ -67,38 +67,54 @@ __cuda_callable__ void applyIBB( 	const FloatArray2DType::ViewType &fView, const
 			continue;
 		}
 		
-		// read new code if needed
-		if ( linkIndex % 4 == 0 )
-		{
-			const int packedIndex = linkIndex / 4;
-			code = linkLengthView( packedIndex, wallMap );
-		}
-				
-        const int bitShift = 8 * (linkIndex % 4);
-		const uint32_t linkCode = (code >> bitShift) & 255u;
-		float gamma = std::clamp( static_cast<float>(linkCode) / 254.f, 0.01f, 1.f );
-        linkIndex++;
+		const float eiDotUw =
+			  static_cast<float>(CX_DIRECTIONS[inverseDirection]) * BC.ux
+			+ static_cast<float>(CY_DIRECTIONS[inverseDirection]) * BC.uy
+			+ static_cast<float>(CZ_DIRECTIONS[inverseDirection]) * BC.uz;
 
-		// note that the links are ordered so that link[direction] points to the wall at x + cx[direction]
-		// from this wall we will be pulling f[inverseDirection] so that is what we need to calculate
-		if ( BC.overwriteIBBLinks >= 0.f ) gamma = BC.overwriteIBBLinks;
-		// need to restore fPreOriginal[ direction ] from fPost
-		// Geier 2015 (E.4) 
-		// Need to extend this formula to account for forcing! This caused trouble where rotor cell was also wall adjacent
-		int preCellIndex;
-		int preFIndex;
-		getPreCollisionIndexSingle( preCellIndex, preFIndex, NBR, esotwistFlipper, direction );
-		const float fPreDirection = fView(preFIndex, preCellIndex);
-		
-		// Interpolated bounceback by Weifeng Zhao, Wen-An Yong, 2017, single node scheme eq (10)
-		const float eiDotFi = (float)CX_DIRECTIONS[ inverseDirection ] * BC.ux 
-							+ (float)CY_DIRECTIONS[ inverseDirection ] * BC.uy 
-							+ (float)CZ_DIRECTIONS[ inverseDirection ] * BC.uz;
-		const float wallMovementTerm = ( 2.f / ( 1.f + gamma ) ) * DIRECTION_WEIGHTS[ inverseDirection ] * eiDotFi * 3.f * (1.f + dRho); 
-		const float fResultInverseDirection = (( 1.f - gamma ) / ( 1.f + gamma )) * fPreDirection 
-											+ ( gamma / ( 1.f + gamma ) ) * fPost[ inverseDirection ]
-											+ ( gamma / ( 1.f + gamma ) ) * fPost[ direction ]
-											+ wallMovementTerm;
+		// Standard moving-wall bounce-back correction.
+		// inverseDirection points from the wall into the fluid.
+		const float bouncebackMovementTerm =
+			6.f * DIRECTION_WEIGHTS[inverseDirection]
+			* (1.f + dRho) * eiDotUw;
+
+		float fResultInverseDirection;
+
+		if (BC.useIBB)
+		{
+			// Decode the distance only when interpolation is enabled.
+			if (linkIndex % 4 == 0)
+			{
+				const int packedIndex = linkIndex / 4;
+				code = linkLengthView(packedIndex, wallMap);
+			}
+
+			const int bitShift = 8 * (linkIndex % 4);
+			const uint32_t linkCode = (code >> bitShift) & 255u;
+			const float gamma = std::clamp(
+				static_cast<float>(linkCode) / 254.f, 0.01f, 1.f);
+			++linkIndex;
+
+			int preCellIndex;
+			int preFIndex;
+			getPreCollisionIndexSingle(
+				preCellIndex, preFIndex, NBR, esotwistFlipper, direction);
+
+			const float fPreDirection = fView(preFIndex, preCellIndex);
+			const float invDenominator = 1.f / (1.f + gamma);
+
+			fResultInverseDirection =
+				  ((1.f - gamma) * invDenominator) * fPreDirection
+				+ (gamma * invDenominator) * fPost[inverseDirection]
+				+ (gamma * invDenominator) * fPost[direction]
+				+ invDenominator * bouncebackMovementTerm;
+		}
+		else
+		{
+			// Standard halfway bounce-back: reflect the outgoing
+			// post-collision population, including wall motion.
+			fResultInverseDirection = fPost[direction] + bouncebackMovementTerm;
+		}
 		// track force exerted on the fluid using momentum exchange method
 		// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
 		// Analysis on the force evaluation by the momentum exchange 

@@ -84,7 +84,7 @@ __cuda_callable__ void getLocalBC( BCStruct &BC, const int& iCell, const int& jC
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
-	BC.overwriteIBBLinks = 0.5f;
+	BC.useIBB = false;
 }
 
 #include "../../include/gridBuilderFunctions.h"
