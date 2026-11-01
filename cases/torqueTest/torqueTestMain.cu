@@ -1,11 +1,46 @@
-constexpr float REFINEMENT_RADIUS = 50.f;
+// Reynolds number based on inner-wall speed and annular gap:
+// REYNOLDS = |Omega| * Ri * (Ro - Ri) / nu
+constexpr float REYNOLDS = 10.f;
 
-// coarse
-constexpr float RES_GLOBAL = 0.2f; 
+// Geometry: millimetres, matching the STLs.
+// AXIAL_LENGTH_PHYS sets the active periodic length, excluding ghost planes.
+// The STLs must extend beyond both ends of this cropped domain.
+constexpr float INNER_RADIUS_MM = 10.f;
+constexpr float OUTER_RADIUS_MM = 30.f;
+constexpr float REFINEMENT_RADIUS = 12.f;
+
+constexpr float INNER_RADIUS_PHYS = INNER_RADIUS_MM / 1000.f;
+constexpr float OUTER_RADIUS_PHYS = OUTER_RADIUS_MM / 1000.f;
+constexpr float AXIAL_LENGTH_PHYS = 0.020f;
+constexpr float GAP_PHYS = OUTER_RADIUS_PHYS - INNER_RADIUS_PHYS;
+
+// Model fluid: density retained, viscosity increased for the benchmark.
+constexpr float RHO_PHYS = 997.f;       // kg/m^3
+constexpr float NU_PHYS = 0.015f;       // m^2/s
+
+// Rotation: use a positive speed magnitude for unit conversion.
+// Change ROTATION_SIGN to +1.f to reverse rotation.
+constexpr float ROTATION_SIGN = -1.f;
+constexpr float OMEGA_MAG_PHYS =
+    REYNOLDS * NU_PHYS / (INNER_RADIUS_PHYS * GAP_PHYS);
+
+constexpr float radiansPerSecond = ROTATION_SIGN * OMEGA_MAG_PHYS;
+constexpr float uNominalPhys = OMEGA_MAG_PHYS * INNER_RADIUS_PHYS;
+
+// Coarse-grid spacing [mm] and inner-wall lattice speed.
+constexpr float RES_GLOBAL = 1.f;
+constexpr float uNominal = 0.02f;
+
+constexpr float DT_PHYS_GLOBAL =
+    (uNominal / uNominalPhys) * (RES_GLOBAL / 1000.f);
+
+// One level for the uniform-grid reference.
+// Keep one level: the current periodic builder gives different axial periods
+// on refined levels. The length check below rejects that inconsistent setup.
 constexpr int GRID_LEVEL_COUNT = 1;
-constexpr int ITERATION_COUNT = 1000000; 														
 
-constexpr int PLOTTER_PERIOD = 50000;
+constexpr int ITERATION_COUNT = 100000;
+constexpr int PLOTTER_PERIOD = 10000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
 constexpr int TRACKER_PERIOD = 1;
@@ -13,14 +48,16 @@ constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = false;
 constexpr bool TRACK_OPEN_BOUNDARIES = false;
 
-constexpr float RHO_PHYS = 1000.f;
-constexpr float NU_PHYS = 1.0e-6;		
-
-constexpr float uNominal = 0.05f; 
-constexpr float radiansPerSecond = 300.f;						// rad/s
-constexpr float uNominalPhys = 0.01f * radiansPerSecond;		// m/s
-
-constexpr float DT_PHYS_GLOBAL = (uNominal / uNominalPhys) * (RES_GLOBAL/1000.f); // s
+// Analytical steady torque magnitude for the periodic annulus.
+// This includes cylindrical sidewall torque only; there are no end caps.
+constexpr float PI = 3.14159265358979323846f;
+constexpr float EXPECTED_TORQUE_MAG_PHYS =
+    4.f * PI * RHO_PHYS * NU_PHYS * AXIAL_LENGTH_PHYS
+    * OMEGA_MAG_PHYS
+    * INNER_RADIUS_PHYS * INNER_RADIUS_PHYS
+    * OUTER_RADIUS_PHYS * OUTER_RADIUS_PHYS
+    / (OUTER_RADIUS_PHYS * OUTER_RADIUS_PHYS
+       - INNER_RADIUS_PHYS * INNER_RADIUS_PHYS);
 
 #include "../../include/types.h"
 
@@ -53,11 +90,8 @@ __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, cons
 __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 									const InfoStruct& Info )
 {
-	if ( kCell == 0 || kCell == Info.cellCountZ-1 )
-	{
-		BC.dirichletRho = true;
-		BC.dRho = 0.f;
-	}
+	// Periodic along the cylinder axis; the radial boundaries are STL walls.
+	BC.periodic = ( kCell == 0 || kCell == Info.cellCountZ - 1 );
 }
 
 __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
@@ -65,9 +99,8 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 {
 	float x, y, z;
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
-	const float r = std::sqrt( x * x + y * y );
-	const float vtPhys = radiansPerSecond * (r / 1000.f);
-	const float vt = vtPhys * ( uNominal / uNominalPhys );
+	// Rigid rotation, converted from mm and rad/s to lattice velocity.
+	const float rotationScale = radiansPerSecond * Info.dtPhys / Info.res;
 	if ( BC.wallID == 0 ) // stator
 	{
 		BC.ux = 0.f;
@@ -76,12 +109,11 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	}
 	if ( BC.wallID == 1 ) // rotor
 	{
-		BC.ux = - vt * (y / r);
-		BC.uy = vt * (x / r);
+		BC.ux = - rotationScale * y;
+		BC.uy = rotationScale * x;
 		BC.uz = 0.f;
 	}
 	BC.collisionLimiter = 0.f; // use K15
-	BC.useIBB = false;
 }
 
 #include "../../include/gridBuilderFunctions.h"
@@ -92,11 +124,11 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
-	// ZY section cut shows the inlet pipe
+	// Axial section through the annulus
 	float xCut = 0.f;
 	exportSectionCutPlotZY( grids, xCut, iterationsFinished + 0 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
-	// XY section cut shows the rotor and the outlet pipe
+	// Cross-section normal to the cylinder axis
 	float zCut = 0.f;
 	exportSectionCutPlotXY( grids, zCut, iterationsFinished + 1 );
 	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
@@ -116,10 +148,42 @@ int main(int argc, char **argv)
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
-	DomainBounds.zMin += 0.5f;
-	DomainBounds.zMax -= 0.5f;
-	
+	// The periodic builder copies the first/last planes from the opposite
+	// interior planes. Add one ghost plane per end to the requested length.
+	const float axialLengthMM = AXIAL_LENGTH_PHYS * 1000.f;
+	const float halfLength = 0.5f * axialLengthMM;
+	const float boundsEpsilon = 1e-6f * axialLengthMM;
+	DomainBounds.zMin = -halfLength - RES_GLOBAL - boundsEpsilon;
+	DomainBounds.zMax =  halfLength + RES_GLOBAL + boundsEpsilon;
+	for ( const auto &STL : gridStaticSTLs )
+	{
+		if ( DomainBounds.zMin <= STL.Bounds.zMin || DomainBounds.zMax >= STL.Bounds.zMax )
+			throw std::runtime_error("Periodic domain must lie inside both STL extrusions, away from end caps.");
+	}
+
+	// Check the actual grid dimensions before allocating the full grids.
+	// initializeGridInfo rounds the coarse dimensions to even cell counts.
+	{
+		std::vector<GridBuilderStruct> gridInfoCheck( GRID_LEVEL_COUNT );
+		initializeGridInfo( gridInfoCheck, DomainBounds, 0 );
+		for ( const auto &GridBuilder : gridInfoCheck )
+		{
+			const InfoStruct &Info = GridBuilder.Info;
+			const float activeLengthMM = (Info.cellCountZ - 2) * Info.res;
+			if ( Info.cellCountZ <= 2 || std::abs(activeLengthMM - axialLengthMM) > 1e-4f * RES_GLOBAL )
+				throw std::runtime_error("Axial period differs from AXIAL_LENGTH_PHYS. Use an even number of active axial cells and one grid level; refined periodic halos need alignment first.");
+		}
+	}
+
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
+
+	std::cout << "Taylor-Couette: Re = " << REYNOLDS
+	          << ", periodic length = " << axialLengthMM << " mm"
+	          << ", Omega = " << radiansPerSecond << " rad/s" << std::endl;
+	std::cout << "Expected steady torque on fluid: wall 1 (inner) = "
+	          << ROTATION_SIGN * EXPECTED_TORQUE_MAG_PHYS
+	          << " Nm, wall 0 (outer) = " << -ROTATION_SIGN * EXPECTED_TORQUE_MAG_PHYS
+	          << " Nm" << std::endl;
 	
 	TrackerStruct Tracker;
 	initializeTracker( Tracker, grids );
