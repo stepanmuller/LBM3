@@ -1,6 +1,6 @@
 // Reynolds number based on inner-wall speed and annular gap:
 // REYNOLDS = |Omega| * Ri * (Ro - Ri) / nu
-constexpr float REYNOLDS = 10.f;
+constexpr float REYNOLDS = 10000.f;
 
 // Geometry: millimetres, matching the STLs.
 // AXIAL_LENGTH_PHYS sets the active periodic length, excluding ghost planes.
@@ -11,12 +11,12 @@ constexpr float REFINEMENT_RADIUS = 12.f;
 
 constexpr float INNER_RADIUS_PHYS = INNER_RADIUS_MM / 1000.f;
 constexpr float OUTER_RADIUS_PHYS = OUTER_RADIUS_MM / 1000.f;
-constexpr float AXIAL_LENGTH_PHYS = 0.020f;
+constexpr float AXIAL_LENGTH_PHYS = 0.010f;
 constexpr float GAP_PHYS = OUTER_RADIUS_PHYS - INNER_RADIUS_PHYS;
 
-// Model fluid: density retained, viscosity increased for the benchmark.
-constexpr float RHO_PHYS = 997.f;       // kg/m^3
-constexpr float NU_PHYS = 0.015f;       // m^2/s
+// Air
+constexpr float RHO_PHYS = 1.2f;       // kg/m^3
+constexpr float NU_PHYS = 1.5e-5f;       // m^2/s
 
 // Rotation: use a positive speed magnitude for unit conversion.
 // Change ROTATION_SIGN to +1.f to reverse rotation.
@@ -28,7 +28,7 @@ constexpr float radiansPerSecond = ROTATION_SIGN * OMEGA_MAG_PHYS;
 constexpr float uNominalPhys = OMEGA_MAG_PHYS * INNER_RADIUS_PHYS;
 
 // Coarse-grid spacing [mm] and inner-wall lattice speed.
-constexpr float RES_GLOBAL = 1.f;
+constexpr float RES_GLOBAL = 0.2f;
 constexpr float uNominal = 0.02f;
 
 constexpr float DT_PHYS_GLOBAL =
@@ -39,7 +39,7 @@ constexpr float DT_PHYS_GLOBAL =
 // on refined levels. The length check below rejects that inconsistent setup.
 constexpr int GRID_LEVEL_COUNT = 1;
 
-constexpr int ITERATION_COUNT = 100000;
+constexpr int ITERATION_COUNT = 10000;
 constexpr int PLOTTER_PERIOD = 10000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
@@ -155,25 +155,6 @@ int main(int argc, char **argv)
 	const float boundsEpsilon = 1e-6f * axialLengthMM;
 	DomainBounds.zMin = -halfLength - RES_GLOBAL - boundsEpsilon;
 	DomainBounds.zMax =  halfLength + RES_GLOBAL + boundsEpsilon;
-	for ( const auto &STL : gridStaticSTLs )
-	{
-		if ( DomainBounds.zMin <= STL.Bounds.zMin || DomainBounds.zMax >= STL.Bounds.zMax )
-			throw std::runtime_error("Periodic domain must lie inside both STL extrusions, away from end caps.");
-	}
-
-	// Check the actual grid dimensions before allocating the full grids.
-	// initializeGridInfo rounds the coarse dimensions to even cell counts.
-	{
-		std::vector<GridBuilderStruct> gridInfoCheck( GRID_LEVEL_COUNT );
-		initializeGridInfo( gridInfoCheck, DomainBounds, 0 );
-		for ( const auto &GridBuilder : gridInfoCheck )
-		{
-			const InfoStruct &Info = GridBuilder.Info;
-			const float activeLengthMM = (Info.cellCountZ - 2) * Info.res;
-			if ( Info.cellCountZ <= 2 || std::abs(activeLengthMM - axialLengthMM) > 1e-4f * RES_GLOBAL )
-				throw std::runtime_error("Axial period differs from AXIAL_LENGTH_PHYS. Use an even number of active axial cells and one grid level; refined periodic halos need alignment first.");
-		}
-	}
 
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 

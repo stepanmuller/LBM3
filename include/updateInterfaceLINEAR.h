@@ -1,3 +1,5 @@
+// LINEAR INTERFACE VERSION
+
 #pragma once
 
 #include "./esotwistStreamingFunctions.h"

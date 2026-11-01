@@ -1229,6 +1229,49 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 					<< Grid.CoarseToFineInterface.leftoverCount << " out of " 
 					<< Grid.CoarseToFineInterface.interfaceCount * 8 + Grid.CoarseToFineInterface.leftoverCount << std::endl;
 	}
+	// Disable force tracking throughout the periodic overlap.
+	// One coarse ghost layer corresponds to 2^level cells on this grid.
+	const int periodicOverlapLayers = 1 << level;
+	auto periodicOverlapLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{
+		if ( wallMarkerView( cell ) ) return;
+		const int iCell = iBuilderView( cell );
+		const int jCell = jBuilderView( cell );
+		const int kCell = kBuilderView( cell );
+
+		bool periodicOverlap = false;
+		// Project onto the corresponding X boundary.
+		if ( iCell < periodicOverlapLayers || iCell >= Info.cellCountX - periodicOverlapLayers )
+		{
+			const int iBoundary = ( iCell < periodicOverlapLayers ) ? 0 : Info.cellCountX - 1;
+			BCStruct BC;
+			getOpenBC( BC, iBoundary, jCell, kCell, Info );
+			periodicOverlap |= BC.periodic;
+		}
+		// Project onto the corresponding Y boundary.
+		if ( jCell < periodicOverlapLayers || jCell >= Info.cellCountY - periodicOverlapLayers )
+		{
+			const int jBoundary = ( jCell < periodicOverlapLayers ) ? 0 : Info.cellCountY - 1;
+			BCStruct BC;
+			getOpenBC( BC, iCell, jBoundary, kCell, Info );
+			periodicOverlap |= BC.periodic;
+		}
+		// Project onto the corresponding Z boundary.
+		if ( kCell < periodicOverlapLayers || kCell >= Info.cellCountZ - periodicOverlapLayers )
+		{
+			const int kBoundary = ( kCell < periodicOverlapLayers ) ? 0 : Info.cellCountZ - 1;
+			BCStruct BC;
+			getOpenBC( BC, iCell, jCell, kBoundary, Info );
+			periodicOverlap |= BC.periodic;
+		}
+		if ( !periodicOverlap ) return;
+		// Mark the original cell, preserving existing interface exclusions.
+		const int wallMap = wallMapView( cell );
+		if ( wallMap >= 0 )	wallDataView( wallMap ) |= 1u;
+		else if ( wallMap == -1 ) wallMapView( cell ) = -2;
+	};
+
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, Info.cellCount, periodicOverlapLambda );
 	
 	// 6) Build OpenBCs
 	IntArrayType BCIDArray( Grid.Info.cellCount );
@@ -1386,11 +1429,6 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		}
 		if ( sourceCell >= 0 && wallMarkerView( sourceCell ) ) sourceCell = -1;
 		sourceView( index ) = sourceCell;
-		
-		// Disable force tracking for periodic cells (those are ghost cells that repeat information from the interior)
-		const int wallMap = wallMapView( cell );
-		if ( wallMap >= 0 )	wallDataView( wallMap ) |= 1u; 	// Wall-adjacent fluid: preserve its wall mapping and set bit 0.
-		else if ( wallMap == -1 ) wallMapView( cell ) = -2; // Free fluid: use the existing "do not track force" marker.
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, periodicBCLambda2 );
 	// check if all sources are valid. If not, throw error immediately.

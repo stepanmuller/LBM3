@@ -1,3 +1,5 @@
+// GEIER QUADRATIC INTERFACE VERSION
+
 #pragma once
 
 #include "./esotwistStreamingFunctions.h"
