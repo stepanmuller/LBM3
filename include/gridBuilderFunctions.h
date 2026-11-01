@@ -1353,12 +1353,15 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		int iSource = iBuilderView( cell );
 		int jSource = jBuilderView( cell );
 		int kSource = kBuilderView( cell );
-		if ( iSource == 0 ) iSource = Info.cellCountX-2;
-		else if ( iSource == Info.cellCountX-1 ) iSource = 1;
-		if ( jSource == 0 ) jSource = Info.cellCountY-2;
-		else if ( jSource == Info.cellCountY-1 ) jSource = 1;
-		if ( kSource == 0 ) kSource = Info.cellCountZ-2;
-		else if ( kSource == Info.cellCountZ-1 ) kSource = 1;
+		// we want the same periodic length across all grid levels
+		// so the effective domain is always only as long as the coarsest level minus two coarse ghost cells
+		int cellsPerCoarsestCell = std::round(std::pow( 2, Info.gridID ));
+		if ( iSource == 0 ) iSource = Info.cellCountX - 2 * cellsPerCoarsestCell;
+		else if ( iSource == Info.cellCountX-1 ) iSource = 2 * cellsPerCoarsestCell - 1;
+		if ( jSource == 0 ) jSource = Info.cellCountY - 2 * cellsPerCoarsestCell;
+		else if ( jSource == Info.cellCountY-1 ) jSource = 2 * cellsPerCoarsestCell - 1;
+		if ( kSource == 0 ) kSource = Info.cellCountZ - 2 * cellsPerCoarsestCell;
+		else if ( kSource == Info.cellCountZ-1 ) kSource = 2 * cellsPerCoarsestCell - 1;
 		// Now find the source cell using binary search in iBuilderView, jBuilderView, kBuilderView.
 		// If the source cell does not exist, or if source is marked as wall, write -1 and the error will be handled after this lambda
 		int start = 0;
