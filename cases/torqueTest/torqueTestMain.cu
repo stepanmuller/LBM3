@@ -3,9 +3,9 @@ constexpr float REFINEMENT_RADIUS = 50.f;
 // coarse
 constexpr float RES_GLOBAL = 0.2f; 
 constexpr int GRID_LEVEL_COUNT = 1;
-constexpr int ITERATION_COUNT = 10000000; 														
+constexpr int ITERATION_COUNT = 1000000; 														
 
-constexpr int PLOTTER_PERIOD = 100000;
+constexpr int PLOTTER_PERIOD = 50000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
 constexpr int TRACKER_PERIOD = 1;
@@ -13,8 +13,8 @@ constexpr bool TRACK_WALL_FORCE = true;
 constexpr bool TRACK_ROTOR_FORCE = false;
 constexpr bool TRACK_OPEN_BOUNDARIES = false;
 
-constexpr float RHO_PHYS = 1000.0f;
-constexpr float NU_PHYS = 1e-6;		
+constexpr float RHO_PHYS = 1000.f;
+constexpr float NU_PHYS = 1.0e-6;		
 
 constexpr float uNominal = 0.05f; 
 constexpr float radiansPerSecond = 300.f;						// rad/s
@@ -53,7 +53,11 @@ __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, cons
 __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 									const InfoStruct& Info )
 {
-	// there are no open BC
+	if ( kCell == 0 || kCell == Info.cellCountZ-1 )
+	{
+		BC.dirichletRho = true;
+		BC.dRho = 0.f;
+	}
 }
 
 __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
@@ -112,6 +116,8 @@ int main(int argc, char **argv)
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
+	DomainBounds.zMin += 0.5f;
+	DomainBounds.zMax -= 0.5f;
 	
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 	

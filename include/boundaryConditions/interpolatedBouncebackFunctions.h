@@ -67,20 +67,22 @@ __cuda_callable__ void applyIBB( 	const FloatArray2DType::ViewType &fView, const
 			continue;
 		}
 		
-		const float eiDotUw =
+		const float eiDotFi =
 			  static_cast<float>(CX_DIRECTIONS[inverseDirection]) * BC.ux
 			+ static_cast<float>(CY_DIRECTIONS[inverseDirection]) * BC.uy
 			+ static_cast<float>(CZ_DIRECTIONS[inverseDirection]) * BC.uz;
 
 		// Standard moving-wall bounce-back correction.
 		// inverseDirection points from the wall into the fluid.
-		const float bouncebackMovementTerm =
+		const float wallMovementTerm =
 			6.f * DIRECTION_WEIGHTS[inverseDirection]
-			* (1.f + dRho) * eiDotUw;
+			* (1.f + dRho) * eiDotFi;
 
 		float fResultInverseDirection;
-
-		if (BC.useIBB)
+		
+		float gamma = 0.5f;
+		
+		if ( BC.useIBB )
 		{
 			// Decode the distance only when interpolation is enabled.
 			if (linkIndex % 4 == 0)
@@ -91,30 +93,27 @@ __cuda_callable__ void applyIBB( 	const FloatArray2DType::ViewType &fView, const
 
 			const int bitShift = 8 * (linkIndex % 4);
 			const uint32_t linkCode = (code >> bitShift) & 255u;
-			const float gamma = std::clamp(
+			gamma = std::clamp(
 				static_cast<float>(linkCode) / 254.f, 0.01f, 1.f);
 			++linkIndex;
-
-			int preCellIndex;
-			int preFIndex;
-			getPreCollisionIndexSingle(
-				preCellIndex, preFIndex, NBR, esotwistFlipper, direction);
-
-			const float fPreDirection = fView(preFIndex, preCellIndex);
-			const float invDenominator = 1.f / (1.f + gamma);
-
-			fResultInverseDirection =
-				  ((1.f - gamma) * invDenominator) * fPreDirection
-				+ (gamma * invDenominator) * fPost[inverseDirection]
-				+ (gamma * invDenominator) * fPost[direction]
-				+ invDenominator * bouncebackMovementTerm;
 		}
-		else
-		{
-			// Standard halfway bounce-back: reflect the outgoing
-			// post-collision population, including wall motion.
-			fResultInverseDirection = fPost[direction] + bouncebackMovementTerm;
-		}
+		// if useIBB is disabled, keep the link length at 0.5
+		// this does NOT give the simple BB formula; using the IBB equation
+		// with gamma set to 0.5 seems to behave better overall so we choose that instead of simple BB
+		int preCellIndex;
+		int preFIndex;
+		getPreCollisionIndexSingle(
+			preCellIndex, preFIndex, NBR, esotwistFlipper, direction);
+
+		const float fPreDirection = fView(preFIndex, preCellIndex);
+		const float invDenominator = 1.f / (1.f + gamma);
+
+		fResultInverseDirection =
+			  ((1.f - gamma) * invDenominator) * fPreDirection
+			+ (gamma * invDenominator) * fPost[inverseDirection]
+			+ (gamma * invDenominator) * fPost[direction]
+			+ invDenominator * wallMovementTerm;
+		
 		// track force exerted on the fluid using momentum exchange method
 		// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu
 		// Analysis on the force evaluation by the momentum exchange 
