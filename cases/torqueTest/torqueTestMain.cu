@@ -39,8 +39,8 @@ constexpr float DT_PHYS_GLOBAL =
 // on refined levels. The length check below rejects that inconsistent setup.
 constexpr int GRID_LEVEL_COUNT = 1;
 
-constexpr int ITERATION_COUNT = 10000;
-constexpr int PLOTTER_PERIOD = 10000;
+constexpr int ITERATION_COUNT = 1000000;
+constexpr int PLOTTER_PERIOD = 50000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
 constexpr int TRACKER_PERIOD = 1;
@@ -101,6 +101,8 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
 	// Rigid rotation, converted from mm and rad/s to lattice velocity.
 	const float rotationScale = radiansPerSecond * Info.dtPhys / Info.res;
+	// Lattice velocity correction per unit density deviation. This corrects for the mass drift error
+    constexpr float MASS_P_GAIN = 0.002f;
 	if ( BC.wallID == 0 ) // stator
 	{
 		BC.ux = 0.f;
@@ -109,9 +111,11 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 	}
 	if ( BC.wallID == 1 ) // rotor
 	{
-		BC.ux = - rotationScale * y;
-		BC.uy = rotationScale * x;
-		BC.uz = 0.f;
+		const float r = std::sqrt( x*x + y*y );
+		const float inwardScale = MASS_P_GAIN * BC.dRho / r;
+        BC.ux = -rotationScale * y - inwardScale * x;
+        BC.uy =  rotationScale * x - inwardScale * y;
+        BC.uz = 0.f;
 	}
 	BC.collisionLimiter = 0.f; // use K15
 }
