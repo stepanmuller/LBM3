@@ -1,12 +1,12 @@
 // Reynolds number based on inner-wall speed and annular gap:
 // REYNOLDS = |Omega| * Ri * (Ro - Ri) / nu
-constexpr float REYNOLDS = 10000.f;
+constexpr float REYNOLDS = 5000.f;
 
 // Geometry: millimetres, matching the STLs.
 // AXIAL_LENGTH_PHYS sets the active periodic length, excluding ghost planes.
 // The STLs must extend beyond both ends of this cropped domain.
 constexpr float INNER_RADIUS_MM = 10.f;
-constexpr float OUTER_RADIUS_MM = 30.f;
+constexpr float OUTER_RADIUS_MM = 12.5f;
 constexpr float REFINEMENT_RADIUS = 12.f;
 
 constexpr float INNER_RADIUS_PHYS = INNER_RADIUS_MM / 1000.f;
@@ -28,7 +28,7 @@ constexpr float radiansPerSecond = ROTATION_SIGN * OMEGA_MAG_PHYS;
 constexpr float uNominalPhys = OMEGA_MAG_PHYS * INNER_RADIUS_PHYS;
 
 // Coarse-grid spacing [mm] and inner-wall lattice speed.
-constexpr float RES_GLOBAL = 0.2f;
+constexpr float RES_GLOBAL = 0.1f;
 constexpr float uNominal = 0.02f;
 
 constexpr float DT_PHYS_GLOBAL =
