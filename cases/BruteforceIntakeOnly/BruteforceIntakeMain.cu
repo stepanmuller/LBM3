@@ -1,7 +1,7 @@
 constexpr float RES_GLOBAL = 1.2f; 
 constexpr float uzInlet = 0.01f; 
 constexpr int GRID_LEVEL_COUNT = 3;
-constexpr int ITERATION_COUNT = 200000; 												
+constexpr int ITERATION_COUNT = 100000; 												
 
 constexpr int PLOTTER_PERIOD = 10000;
 
@@ -25,7 +25,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "BruteforceIntakeSTL_v2.STL";
+std::string STLPathIntake = "BruteforceIntakeSTL_v3.STL";
 std::string STLPathHull = "HullBlockSimpleSTL.STL";
 
 #include "../../include/STLFunctions.h"
