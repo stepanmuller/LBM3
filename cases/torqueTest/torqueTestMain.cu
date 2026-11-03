@@ -1,6 +1,6 @@
 // Reynolds number based on inner-wall speed and annular gap:
 // REYNOLDS = |Omega| * Ri * (Ro - Ri) / nu
-constexpr float REYNOLDS = 5000.f;
+constexpr float REYNOLDS = 1000.f;
 
 // Geometry: millimetres, matching the STLs.
 // AXIAL_LENGTH_PHYS sets the active periodic length, excluding ghost planes.
@@ -28,7 +28,7 @@ constexpr float radiansPerSecond = ROTATION_SIGN * OMEGA_MAG_PHYS;
 constexpr float uNominalPhys = OMEGA_MAG_PHYS * INNER_RADIUS_PHYS;
 
 // Coarse-grid spacing [mm] and inner-wall lattice speed.
-constexpr float RES_GLOBAL = 0.1f;
+constexpr float RES_GLOBAL = 0.05f;
 constexpr float uNominal = 0.02f;
 
 constexpr float DT_PHYS_GLOBAL =
@@ -39,7 +39,7 @@ constexpr float DT_PHYS_GLOBAL =
 // on refined levels. The length check below rejects that inconsistent setup.
 constexpr int GRID_LEVEL_COUNT = 1;
 
-constexpr int ITERATION_COUNT = 1000000;
+constexpr int ITERATION_COUNT = 2000000;
 constexpr int PLOTTER_PERIOD = 50000;
 
 constexpr int WALL_REFINEMENT_COUNT = 3;
