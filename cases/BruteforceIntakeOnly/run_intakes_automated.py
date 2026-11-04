@@ -11,16 +11,16 @@ CASE_DIR = Path("/home/stepan/Documents/GitHub/LBM3/cases/BruteforceIntakeOnly")
 
 # (Source STL filename, destination folder name inside results/)
 CASES = [
-    ("M35IntakeSTL.STL", "M35_rerun"),
-    ("BruteforceIntakeSTL.STL", "BF_rerun"),
-    ("BruteforceIntakeSTL_v2.STL", "BF_v2_rerun"),
-    ("BruteforceIntakeSTL_v3.STL", "BF_v3_rerun"),
-    ("BruteforceIntakeSTL_v4.STL", "BF_v4_rerun"),
-    ("BruteforceIntakeSTL_v5.STL", "BF_v5_rerun"),
-    ("BruteforceIntakeSTL_v7.STL", "BF_v7_rerun"),
-    ("BruteforceIntakeSTL_v8.STL", "BF_v8_rerun"),
-    ("BruteforceIntakeSTL_v9.STL", "BF_v9_rerun"),
-    ("BruteforceIntakeSTL_v10.STL", "BF_v10_rerun"),
+    ("M35IntakeSTL.STL", "M35_rerun3"),
+    ("BruteforceIntakeSTL.STL", "BF_rerun3"),
+    ("BruteforceIntakeSTL_v2.STL", "BF_v2_rerun3"),
+    ("BruteforceIntakeSTL_v3.STL", "BF_v3_rerun3"),
+    ("BruteforceIntakeSTL_v4.STL", "BF_v4_rerun3"),
+    ("BruteforceIntakeSTL_v5.STL", "BF_v5_rerun3"),
+    ("BruteforceIntakeSTL_v7.STL", "BF_v7_rerun3"),
+    ("BruteforceIntakeSTL_v8.STL", "BF_v8_rerun3"),
+    ("BruteforceIntakeSTL_v9.STL", "BF_v9_rerun3"),
+    ("BruteforceIntakeSTL_v10.STL", "BF_v10_rerun3"),
 ]
 
 # Match the compiled solver: final plots are 100000.png ... 100031.png.
