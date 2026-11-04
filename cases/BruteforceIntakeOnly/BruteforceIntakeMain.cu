@@ -3,7 +3,7 @@ constexpr float uzInlet = 0.01f;
 constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int ITERATION_COUNT = 100000; 												
 
-constexpr int PLOTTER_PERIOD = 10000;
+constexpr int PLOTTER_PERIOD = 20000;
 
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr int TRACKER_PERIOD = 1;
@@ -25,7 +25,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "BruteforceIntakeSTL_v7.STL";
+std::string STLPathIntake = "IntakeSTL.STL";
 std::string STLPathHull = "HullBlockSimpleSTL.STL";
 
 #include "../../include/STLFunctions.h"
@@ -251,7 +251,15 @@ int main(int argc, char **argv)
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorOutlet = grids[0].Info.iRegulatorOutlet;
 			
 			// regulate lake outlet to achieve zero pressure power at lake inlet
-			grids[0].Info.iRegulatorInlet += Tracker.pressurePower[0] * iRegulatorInletStrength * regulatorDt / pressurePerDRho;
+			FlowReportStruct lakeReference;
+			BoundsStruct referenceBounds{};
+			referenceBounds.xMin = -40.f;
+			referenceBounds.xMax =  40.f;
+			referenceBounds.yMin = -140.f;
+			referenceBounds.yMax =  -80.f;
+			getFlowReportXY(lakeReference, grids, referenceBounds, -200.f);
+			const float inletVolumeFlow = -Tracker.massFlow[0] / RHO_PHYS;
+			grids[0].Info.iRegulatorInlet -= lakeReference.pressure * inletVolumeFlow * iRegulatorInletStrength * regulatorDt / pressurePerDRho;
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorInlet = grids[0].Info.iRegulatorInlet;
 		}
 		
