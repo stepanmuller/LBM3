@@ -78,7 +78,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.ux = 0.f;
 		BC.uy = uyInlet;
 		BC.uz = uzInlet;
-		BC.nonReflective = true;
+		BC.nonReflective = false;
 	}
 	else if ( kCell == Info.cellCountZ-1 && y < 1.f ) 
 	{	// lake outlet
@@ -86,7 +86,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.dirichletRho = true;
 		//BC.dRho = Info.iRegulatorInlet;
 		BC.dRho = 0.f;
-		BC.nonReflective = false;
+		BC.nonReflective = true;
 	}
 	else if ( kCell == Info.cellCountZ-1 && y >= 1.f ) 
 	{	// pump outlet
