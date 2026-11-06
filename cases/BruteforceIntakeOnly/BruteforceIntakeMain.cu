@@ -3,7 +3,7 @@ constexpr float uzInlet = 0.01f;
 constexpr int GRID_LEVEL_COUNT = 3;
 constexpr int ITERATION_COUNT = 100000; 												
 
-constexpr int PLOTTER_PERIOD = 10000;
+constexpr int PLOTTER_PERIOD = 20000;
 
 constexpr int WALL_REFINEMENT_COUNT = 6;
 constexpr int TRACKER_PERIOD = 1;
@@ -19,13 +19,13 @@ constexpr float uyInlet = 0.f; // 0.0436 * uzInlet; 			// this is due to the 2.5
 constexpr float targetMassFlow = 4.f; // kg/s
 
 constexpr float iRegulatorOutletStrength = 250000000.f;
-constexpr float iRegulatorInletStrength = 500.f;
+//constexpr float iRegulatorInletStrength = 500.f;
 
 constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); // s
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "BruteforceIntakeSTL_v7.STL";
+std::string STLPathIntake = "IntakeSTL.STL";
 std::string STLPathHull = "HullBlockSimpleSTL.STL";
 
 #include "../../include/STLFunctions.h"
@@ -84,7 +84,9 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 	{	// lake outlet
 		BC.openBCID = 1;
 		BC.dirichletRho = true;
-		BC.dRho = Info.iRegulatorInlet;
+		//BC.dRho = Info.iRegulatorInlet;
+		BC.dRho = 0.f;
+		BC.nonReflective = true;
 	}
 	else if ( kCell == Info.cellCountZ-1 && y >= 1.f ) 
 	{	// pump outlet
@@ -139,9 +141,9 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	}
 	
 	// XY details
-	BoundsStruct Bounds;
-	Bounds = grids[1].Info.Bounds;
-	Bounds.yMax = grids[GRID_LEVEL_COUNT-1].Info.Bounds.yMax;
+	//BoundsStruct Bounds;
+	//Bounds = grids[1].Info.Bounds;
+	//Bounds.yMax = grids[GRID_LEVEL_COUNT-1].Info.Bounds.yMax;
 	for ( float zCut = -130.f; zCut < 20.f; zCut += 10.f )
 	{
 		//exportSectionCutPlotXY( grids, Bounds, zCut, iterationsFinished + counter );
@@ -218,7 +220,7 @@ int main(int argc, char **argv)
 			const float massFlow = FlowReportIntake.massFlow;
 			
 			// 2) intake momentum
-			const float intakeMomentum = FlowReportIntake.momentumThrust;
+			//const float intakeMomentum = FlowReportIntake.momentumThrust;
 						
 			// 3) intake power
 			const float intakePower = FlowReportIntake.pressurePower + 0.5f * massFlow * FlowReportIntake.normalVelocity * FlowReportIntake.normalVelocity;
@@ -251,8 +253,18 @@ int main(int argc, char **argv)
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorOutlet = grids[0].Info.iRegulatorOutlet;
 			
 			// regulate lake outlet to achieve zero pressure power at lake inlet
-			grids[0].Info.iRegulatorInlet += Tracker.pressurePower[0] * iRegulatorInletStrength * regulatorDt / pressurePerDRho;
+			/*
+			FlowReportStruct lakeReference;
+			BoundsStruct referenceBounds{};
+			referenceBounds.xMin = -40.f;
+			referenceBounds.xMax =  40.f;
+			referenceBounds.yMin = -140.f;
+			referenceBounds.yMax =  -80.f;
+			getFlowReportXY(lakeReference, grids, referenceBounds, -200.f);
+			const float inletVolumeFlow = -Tracker.massFlow[0] / RHO_PHYS;
+			grids[0].Info.iRegulatorInlet -= lakeReference.pressure * inletVolumeFlow * iRegulatorInletStrength * regulatorDt / pressurePerDRho;
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorInlet = grids[0].Info.iRegulatorInlet;
+			*/
 		}
 		
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )
