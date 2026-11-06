@@ -25,7 +25,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "IntakeSTL.STL";
+std::string STLPathIntake = "BruteforceIntakeSTL_v13.STL";
 std::string STLPathHull = "HullBlockSimpleSTL.STL";
 
 #include "../../include/STLFunctions.h"
@@ -188,8 +188,8 @@ int main(int argc, char **argv)
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
 	
-	Tracker.customNames = { "Mass flow", "Intake power", "Intake efficiency", "Intake drag", "Intake downforce", "Intake downforce Z coordinate" };
-	Tracker.customUnits = { "kg/s", "W", "[1]", "N", "N", "mm" };
+	Tracker.customNames = { "Mass flow", "Intake power", "Intake efficiency", "Intake drag", "Intake downforce", "Intake X moment" };
+	Tracker.customUnits = { "kg/s", "W", "[1]", "N", "N", "Nm" };
 	initializeTracker( Tracker, grids );
 	
 	plotGrids( 0, grids );
@@ -239,10 +239,10 @@ int main(int argc, char **argv)
 				- FlowReportIntake.massFlow * uzInletPhys;
 			
 			const float intakeDownforce = Tracker.wallFy[0]; // Positive = downward on intake
-			const float downforceZmm = -1000.f * Tracker.wallTx[0] / intakeDownforce;
+			const float intakeXMoment = Tracker.wallTx[0];
 
 			// pass results to tracker
-			trackCustomVariables(Tracker, {	massFlow, intakePower, etaIntake, intakeDrag, intakeDownforce, downforceZmm	});
+			trackCustomVariables(Tracker, {	massFlow, intakePower, etaIntake, intakeDrag, intakeDownforce, intakeXMoment });
 			
 			// regulate pump outlet to achieve target mass flow
 			const InfoStruct& coarseInfo = grids[0].Info;
