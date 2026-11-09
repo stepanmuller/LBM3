@@ -14,9 +14,9 @@ constexpr bool TRACK_OPEN_BOUNDARIES = true;
 constexpr float RHO_PHYS = 997.0f;								// kg/m3 water
 constexpr float NU_PHYS = 1e-6;									// m2/s water
 
-constexpr float uzInletPhys = 3.f;								// m/s
+constexpr float uzInletPhys = 15.f;								// m/s
 constexpr float uyInlet = 0.f; // 0.0436 * uzInlet; 			// this is due to the 2.5 deg intake angle
-constexpr float targetMassFlow = 6.f; // kg/s
+constexpr float targetMassFlow = 4.f; // kg/s
 
 constexpr float iRegulatorOutletStrength = 250000000.f;
 //constexpr float iRegulatorInletStrength = 500.f;
