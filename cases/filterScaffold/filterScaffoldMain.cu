@@ -3,16 +3,16 @@ constexpr float NU_PHYS = 1.5e-5f;														// m2/s
 constexpr float RHO_PHYS = 1.225f;														// kg/m3
 
 // coarse settings
-//constexpr float RES_GLOBAL = 0.175f;
-//constexpr int GRID_LEVEL_COUNT = 2;
-//constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-//constexpr int ITERATION_COUNT = 50000;
+constexpr float RES_GLOBAL = 0.175f;
+constexpr int GRID_LEVEL_COUNT = 1;
+constexpr float uxInlet = 0.00037135f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+constexpr int ITERATION_COUNT = 50000 * (0.002f / uxInlet);
 
 // medium settings
-constexpr float RES_GLOBAL = 0.5f * 0.175f;
-constexpr int GRID_LEVEL_COUNT = 2;
-constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-constexpr int ITERATION_COUNT = 100000;
+//constexpr float RES_GLOBAL = 0.5f * 0.175f;
+//constexpr int GRID_LEVEL_COUNT = 2;
+//constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+//constexpr int ITERATION_COUNT = 100000;
 
 // fine settings
 //constexpr float RES_GLOBAL = 0.12f;
@@ -20,7 +20,7 @@ constexpr int ITERATION_COUNT = 100000;
 //constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
 //constexpr int ITERATION_COUNT = 30000;
 
-constexpr int PLOTTER_PERIOD = 10000;
+constexpr int PLOTTER_PERIOD = 50000;
 constexpr int TRACKER_PERIOD = 1;
 constexpr bool TRACK_WALL_FORCE = false;
 constexpr bool TRACK_ROTOR_FORCE = false;
@@ -32,8 +32,8 @@ constexpr float DT_PHYS_GLOBAL = (uxInlet / uxInletPhys) * (RES_GLOBAL/1000); 		
 
 #include "../../include/types.h"
 
-std::string STLPathFilter = "N2.stl";
-constexpr int NCOUNT = 2;
+std::string STLPathFilter = "N32.stl";
+constexpr int NCOUNT = 32;
 
 #include "../../include/STLFunctions.h"
 #include "../../include/voxelizerFunctions.h"
@@ -134,9 +134,9 @@ int main(int argc, char **argv)
 	
 	TrackerStruct Tracker;
 	Tracker.TRACK_CUSTOM_VARIABLES = true;
-	Tracker.customNames = { "Physical time", "Area averaged outlet pressure residual", "Area averaged pressure at measurement plane x=4.2mm", 
-							"Area averaged pressure loss = measurement - outlet", "Uniform inlet velocity", "Weakly compressible density error at measurement plane", "Area averaged pressure at x=140mm" };
-	Tracker.customUnits = { "s", "Pa", "Pa", "Pa", "m/s", "[1]", "Pa" };
+	Tracker.customNames = { "Physical time",  "Uniform inlet velocity", "Weakly compressible density error at x=4.2mmm", 
+							"Area averaged pressure at x=4.2mm", "Area averaged pressure at x=205.8mm",	"Area averaged pressure loss" };
+	Tracker.customUnits = { "s", "m/s", "[1]", "Pa", "Pa", "Pa" };
 	initializeTracker( Tracker, grids );
 	
 	plotGrids( 0, grids );
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
 	{
 		updateAllGrids( grids, 0 );
 		
-		if ( iterationsFinished % TRACKER_PERIOD == 0 )
+		if ( iterationsFinished % TRACKER_PERIOD == 0 || iterationsFinished == ITERATION_COUNT )
 		{
 			updateTracker( Tracker, grids );
 			
@@ -162,24 +162,24 @@ int main(int argc, char **argv)
 			float xCut = 4.2f;
 			getFlowReportZY( FlowReport, grids, Bounds, xCut );
 			
+			// get second pressure measurement flow report
+			FlowReportStruct FlowReport2; 
+			xCut = 205.8f;
+			getFlowReportZY( FlowReport2, grids, Bounds, xCut );
+			
 			// pressure loss
-			const float pressureLoss = FlowReport.pressure - Tracker.pressure[1];
+			const float pressureLoss = FlowReport.pressure - FlowReport2.pressure;
 			
 			// calculate density error
 			const float soundspeedPhys = INVSQRT3 * (grids[0].Info.res/1000.f) / grids[0].Info.dtPhys;
 			const float dRho = FlowReport.pressure / ( RHO_PHYS * soundspeedPhys * soundspeedPhys );
 			const float densityError = dRho;
 			
-			// get pressure measurement flow report
-			FlowReportStruct FlowReport2; 
-			xCut = 140.f;
-			getFlowReportZY( FlowReport2, grids, Bounds, xCut );
-			
 			// pass results to tracker
-			trackCustomVariables( Tracker, { physicalTime, Tracker.pressure[1], FlowReport.pressure, pressureLoss, Tracker.normalVelocity[0], densityError, FlowReport2.pressure });
+			trackCustomVariables( Tracker, { physicalTime, Tracker.normalVelocity[0], densityError, FlowReport.pressure, FlowReport2.pressure, pressureLoss });
 		}
 		
-		if ( iterationsFinished % PLOTTER_PERIOD == 0 )
+		if ( iterationsFinished % PLOTTER_PERIOD == 0 || iterationsFinished == ITERATION_COUNT )
 		{
 			lapTimer.stop();
 			std::cout << "Iterations finished: " << iterationsFinished << std::endl;
