@@ -339,15 +339,13 @@ void buildIJKFull( std::vector<GridBuilderStruct> &gridBuilders, const std::vect
 	{
 		GridBuilder.refinementMarkerArray.setSize( Info.cellCount );
 		GridBuilder.deepRefinementMarkerArray.setSize( Info.cellCount );
-		GridBuilder.fineToCoarseMarkerArray.setSize( Info.cellCount );
-		GridBuilder.coarseToFineMarkerArray.setSize( Info.cellCount );
+		GridBuilder.interfaceExtensionMarkerArray.setSize( Info.cellCount );
+		GridBuilder.interfaceMarkerArray.setSize( Info.cellCount );
 	}
 	if ( !iAmCoarsest )
 	{
 		GridBuilder.parentMapArray.setSize( Info.cellCount );
 		GridBuilder.parentInterfaceMarkerArray.setSize( Info.cellCount );
-		GridBuilder.parentFineToCoarseMarkerArray.setSize( Info.cellCount );
-		GridBuilder.needValuesFromCoarseMarkerArray.setSize( Info.cellCount );
 	}
 	
 	// 3) Build our grid = fill our IJK (we are the "finer grid" with respect to the grid we are taking spatial information from)
@@ -372,24 +370,20 @@ void buildIJKFull( std::vector<GridBuilderStruct> &gridBuilders, const std::vect
 	}
 	
 	// 7) Mark our cells that are part of the parent interface. A fine cell located at the parent interface:
-	//    - is blocked from getting deleted later (unless in the outermost layer)
+	//    - is blocked from getting deleted later
 	//	  - is blocked from getting deeply refined (interface with finer grid is still allowed)
 	//	  - inherits fluid / wall state from the parent, even if the voxelizer says otherwise
-	// Also, in another array mark cells that are specifically under the fineToCoarse interface of our parent
 	if ( !iAmCoarsest )
 	{
 		auto parentInterfaceMarkerView = GridBuilder.parentInterfaceMarkerArray.getView();
-		auto parentFineToCoarseMarkerView = GridBuilder.parentFineToCoarseMarkerArray.getView();
 		auto parentMapView = GridBuilder.parentMapArray.getConstView();
-		auto coarseToFineMarkerViewCoarse = GridBuilderCoarse.coarseToFineMarkerArray.getConstView();
-		auto fineToCoarseMarkerViewCoarse = GridBuilderCoarse.fineToCoarseMarkerArray.getConstView();
+		auto interfaceMarkerViewCoarse = GridBuilderCoarse.interfaceMarkerArray.getConstView();
+		auto interfaceExtensionMarkerViewCoarse = GridBuilderCoarse.interfaceExtensionMarkerArray.getConstView();
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
 			const int parentCell = parentMapView( cell );
-			const bool parentInterfaceMarker = (coarseToFineMarkerViewCoarse( parentCell ) + fineToCoarseMarkerViewCoarse( parentCell ));
+			const bool parentInterfaceMarker = (interfaceMarkerViewCoarse( parentCell ) + interfaceExtensionMarkerViewCoarse( parentCell ));
 			parentInterfaceMarkerView( cell ) = parentInterfaceMarker;
-			const bool parentFineToCoarseMarker = fineToCoarseMarkerViewCoarse( parentCell );
-			parentFineToCoarseMarkerView( cell ) = parentFineToCoarseMarker;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 	}
