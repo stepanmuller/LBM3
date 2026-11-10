@@ -448,51 +448,23 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	// 5) Remove deeply refined cells
 	if ( !iAmFinest ) GridBuilder.keepCellMarkerArray = GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray; 
 	
-	// 6) Delete the outermost layer of interface fine cells
-	// This is because Geier's interpolation cube sends information from 8 coarse cells
-	// to 8 fine cells in their center. The outermost layer is excessive.
-	// We identify this by spreading from the parentFineToCoarse array
-	// At the same time, mark the needValuesFromCoarseMarkerArray
-	if ( !iAmCoarsest )
-	{
-		markerSource = GridBuilder.parentFineToCoarseMarkerArray;
-		BoolArrayType coarseToFine3LayerArray( Info.cellCount );
-		spreadMarkers( coarseToFine3LayerArray, markerSource, GridBuilder );
-		coarseToFine3LayerArray.swap( markerSource );
-		spreadMarkers( coarseToFine3LayerArray, markerSource, GridBuilder );
-		coarseToFine3LayerArray.swap( markerSource );
-		spreadMarkers( coarseToFine3LayerArray, markerSource, GridBuilder );
-		// now the result is in the coarseToFine3LayerArray
-		// delete cells that are part of the parent interface but not in this 3Layer
-		BoolArrayType markToDelete( Info.cellCount );
-		markToDelete = GridBuilder.parentInterfaceMarkerArray * !coarseToFine3LayerArray;
-		GridBuilder.keepCellMarkerArray *= !markToDelete;
-		// now mark the needValuesFromCoarseMarkerArray
-		GridBuilder.needValuesFromCoarseMarkerArray = GridBuilder.parentInterfaceMarkerArray * GridBuilder.keepCellMarkerArray;
-		// use markerSource as temporary target
-		spreadMarkers( markerSource, GridBuilder.parentFineToCoarseMarkerArray, GridBuilder );
-		GridBuilder.needValuesFromCoarseMarkerArray *= !markerSource;
-	}
-	
-	// 7) Build fullToKeep map
+	// 6) Build fullToKeep map
 	IntArrayType fullToKeepMapArray( Info.cellCount );
 	intArrayFromBoolArray( fullToKeepMapArray, GridBuilder.keepCellMarkerArray );
 	TNL::Algorithms::inplaceExclusiveScan( fullToKeepMapArray, 0, Info.cellCount, TNL::Plus{} );
 	
-	// 8) Transform necessary information from full grid to the keep grid
-	// We need IJK, parentMapArray, needValuesFromCoarseMarkerArray,
-	// fineToCoarseInterfaceMarkerArray, coarseToFineInterfaceMarkerArray	
+	// 7) Transform necessary information from full grid to the keep grid
+	// We need IJK, parentMapArray, 
+	// interfaceExtensionMarkerArray, interfaceMarkerArray	
 	// starting a scope so that temporary arrays then go out of scope
 	{ 	
 		IJKArrayStruct IJKFull = GridBuilder.IJK;
 		IntArrayType parentMapArrayFull;
 		parentMapArrayFull = GridBuilder.parentMapArray;
-		BoolArrayType needValuesFromCoarseMarkerArrayFull;
-		needValuesFromCoarseMarkerArrayFull = GridBuilder.needValuesFromCoarseMarkerArray;
-		BoolArrayType fineToCoarseMarkerArrayFull;
-		fineToCoarseMarkerArrayFull = GridBuilder.fineToCoarseMarkerArray;
-		BoolArrayType coarseToFineMarkerArrayFull;
-		coarseToFineMarkerArrayFull = GridBuilder.coarseToFineMarkerArray;
+		BoolArrayType interfaceExtensionMarkerArrayFull;
+		interfaceExtensionMarkerArrayFull = GridBuilder.interfaceExtensionMarkerArray;
+		BoolArrayType interfaceMarkerArrayFull;
+		interfaceMarkerArrayFull = GridBuilder.interfaceMarkerArray;
 		
 		auto keepCellMarkerView = GridBuilder.keepCellMarkerArray.getConstView();
 		auto fullToKeepMapView = fullToKeepMapArray.getConstView();
@@ -501,16 +473,14 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 		auto jFullView = IJKFull.jArray.getConstView();
 		auto kFullView = IJKFull.kArray.getConstView();
 		auto parentMapFullView = parentMapArrayFull.getConstView();
-		auto needValuesFromCoarseMarkerFullView = needValuesFromCoarseMarkerArrayFull.getConstView();
-		auto fineToCoarseMarkerFullView = fineToCoarseMarkerArrayFull.getConstView();
-		auto coarseToFineMarkerFullView = coarseToFineMarkerArrayFull.getConstView();
+		auto interfaceExtensionMarkerFullView = interfaceExtensionMarkerArrayFull.getConstView();
+		auto interfaceMarkerFullView = interfaceMarkerArrayFull.getConstView();
 		auto iView = GridBuilder.IJK.iArray.getView();
 		auto jView = GridBuilder.IJK.jArray.getView();
 		auto kView = GridBuilder.IJK.kArray.getView();
 		auto parentMapView = GridBuilder.parentMapArray.getView();
-		auto needValuesFromCoarseMarkerView = GridBuilder.needValuesFromCoarseMarkerArray.getView();
-		auto fineToCoarseMarkerView = GridBuilder.fineToCoarseMarkerArray.getView();
-		auto coarseToFineMarkerView = GridBuilder.coarseToFineMarkerArray.getView();
+		auto interfaceExtensionMarkerView = GridBuilder.interfaceExtensionMarkerArray.getView();
+		auto interfaceMarkerView = GridBuilder.interfaceMarkerArray.getView();
 		
 		auto fullToKeepLambda = [=] __cuda_callable__ ( const int cellFull ) mutable
 		{
@@ -520,17 +490,16 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 			jView( cell ) = jFullView( cellFull );
 			kView( cell ) = kFullView( cellFull );
 			if (!iAmCoarsest) parentMapView( cell ) = parentMapFullView( cellFull );
-			if (!iAmCoarsest) needValuesFromCoarseMarkerView( cell ) = needValuesFromCoarseMarkerFullView( cellFull );
-			if (!iAmFinest) fineToCoarseMarkerView( cell ) = fineToCoarseMarkerFullView( cellFull );
-			if (!iAmFinest) coarseToFineMarkerView( cell ) = coarseToFineMarkerFullView( cellFull );
+			if (!iAmFinest) interfaceExtensionMarkerView( cell ) = interfaceExtensionMarkerFullView( cellFull );
+			if (!iAmFinest) interfaceMarkerView( cell ) = interfaceMarkerFullView( cellFull );
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, fullToKeepLambda );	
 	}
 	
-	// 9) set new cellCount
+	// 8) set new cellCount
 	Info.cellCount = TNL::sum( GridBuilder.keepCellMarkerArray );
 	
-	// 10) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
+	// 9) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
 	GridBuilder.IJK.iArray.resize( Info.cellCount );
 	GridBuilder.IJK.jArray.resize( Info.cellCount );
 	GridBuilder.IJK.kArray.resize( Info.cellCount );
@@ -543,20 +512,19 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	GridBuilder.interfaceOverlapMarkerArray.setSize( Info.cellCount );
 	GridBuilder.interfaceOverlapMarkerArray.setValue( false );
 	if (!iAmCoarsest) GridBuilder.parentMapArray.resize( Info.cellCount );
-	if (!iAmCoarsest) GridBuilder.needValuesFromCoarseMarkerArray.resize( Info.cellCount );
-	if (!iAmFinest) GridBuilder.fineToCoarseMarkerArray.resize( Info.cellCount );
-	if (!iAmFinest) GridBuilder.coarseToFineMarkerArray.resize( Info.cellCount );
+	if (!iAmFinest) GridBuilder.interfaceExtensionMarkerArray.resize( Info.cellCount );
+	if (!iAmFinest) GridBuilder.interfaceMarkerArray.resize( Info.cellCount );
 	
-	// 11) Forget the no longer necessary arrays
+	// 10) Forget the no longer necessary arrays
 	GridBuilder.SkeletonGrid.keepCellMarkerArray.resize( 0 );
 	GridBuilder.deepRefinementMarkerArray.resize( 0 );
 	GridBuilder.refinementMarkerArray.resize( 0 );
 	
-	// 12) Rebuild our NBR Plus
+	// 11) Rebuild our NBR Plus
 	buildNBRPlus( GridBuilder );
 	markGeometricNBRPlus( GridBuilder );
 	
-	// 13) Build our NBR Minus
+	// 12) Build our NBR Minus
 	auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
 	auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
 	auto jMinusView = GridBuilder.NBR.jMinusArray.getView();
@@ -568,7 +536,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
 	
-	// 14) fill grid bounds
+	// 13) fill grid bounds
 	Info.Bounds.xMin = Info.ox + Info.res * TNL::min( GridBuilder.IJK.iArray ) - 0.5f * Info.res;
 	Info.Bounds.xMax = Info.ox + Info.res * TNL::max( GridBuilder.IJK.iArray ) + 0.5f * Info.res;
 	Info.Bounds.yMin = Info.oy + Info.res * TNL::min( GridBuilder.IJK.jArray ) - 0.5f * Info.res;
@@ -576,7 +544,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	Info.Bounds.zMin = Info.oz + Info.res * TNL::min( GridBuilder.IJK.kArray ) - 0.5f * Info.res;
 	Info.Bounds.zMax = Info.oz + Info.res * TNL::max( GridBuilder.IJK.kArray ) + 0.5f * Info.res;
 	
-	// 15) Recursion
+	// 14) Recursion
 	if ( !iAmFinest ) deleteExcessCells( gridBuilders, voxelizers, level + 1 );
 	else std::cout << std::endl;
 }
