@@ -127,7 +127,6 @@ __host__ __device__ void getFeq( const float &dRho, const float &ux, const float
     const float ux2 = ux * ux;
     const float uy2 = uy * uy;
     const float uz2 = uz * uz;
-    #pragma unroll
     for (int q = 0; q < 27; ++q)
     {
         const float cx = float(CX_DIRECTIONS[q]);
