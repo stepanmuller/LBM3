@@ -11,13 +11,9 @@ CASE_DIR = Path("/home/stepan/Documents/GitHub/LBM3/cases/BruteforceIntakeOnly")
 
 # (Source STL filename, destination folder name inside results/)
 CASES = [
-    ("P1.STL", "P1"),
     ("P2.STL", "P2"),
-    ("P3.STL", "P3"),
     ("P4.STL", "P4"),
-    ("P5.STL", "P5"),
     ("P6.STL", "P6"),
-    ("P7.STL", "P7"),
     ("P8.STL", "P8"),
 ]
 

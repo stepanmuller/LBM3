@@ -25,7 +25,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "BruteforceIntakeSTL_v24.STL";
+std::string STLPathIntake = "IntakeSTL.STL";
 std::string STLPathHull = "HullBlockSimpleSTL.STL";
 
 #include "../../include/STLFunctions.h"
@@ -80,7 +80,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.uz = uzInlet;
 		BC.nonReflective = false;
 	}
-	else if ( kCell == Info.cellCountZ-1 && y < 1.f ) 
+	else if ( kCell == Info.cellCountZ-1 && y < 8.f ) 
 	{	// lake outlet
 		BC.openBCID = 1;
 		BC.dirichletRho = true;
@@ -88,7 +88,7 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 		BC.dRho = 0.f;
 		BC.nonReflective = true;
 	}
-	else if ( kCell == Info.cellCountZ-1 && y >= 1.f ) 
+	else if ( kCell == Info.cellCountZ-1 && y >= 8.f ) 
 	{	// pump outlet
 		BC.openBCID = 2;
 		BC.dirichletRho = true;
@@ -115,7 +115,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.collisionLimiter = 0.f;
 		BC.nuMultiplier = 200.f;
 	}
-	if ( z >= Info.Bounds.zMax-10.f && y < 1.f ) 
+	if ( z >= Info.Bounds.zMax-10.f && y < 8.f ) 
 	{
 		BC.useIBB = false;
 	} 
@@ -210,7 +210,7 @@ int main(int argc, char **argv)
 			// get intake flow report
 			FlowReportStruct FlowReportIntake;
 			BoundsStruct Bounds;
-			Bounds.xMin = -17.f; Bounds.xMax = 17.f; Bounds.yMin = 1.f; Bounds.yMax = 45.f;
+			Bounds.xMin = -17.f; Bounds.xMax = 17.f; Bounds.yMin = 8.f; Bounds.yMax = 45.f;
 			float zCut = 0.f;
 			getFlowReportXY( FlowReportIntake, grids, Bounds, zCut );
 			
@@ -223,11 +223,11 @@ int main(int argc, char **argv)
 			//const float intakeMomentum = FlowReportIntake.momentumThrust;
 						
 			// 3) intake power
-			const float intakePower = FlowReportIntake.pressurePower + 0.5f * massFlow * FlowReportIntake.normalVelocity * FlowReportIntake.normalVelocity;
+			float intakePower = FlowReportIntake.pressurePower + 0.5f * massFlow * FlowReportIntake.normalVelocity * FlowReportIntake.normalVelocity;
 			
 			// 4) intake efficiency
-			const float lakePower = 0.5f * uzInletPhys * uzInletPhys * massFlow;
-			const float etaIntake = intakePower / lakePower;
+			float lakePower = 0.5f * uzInletPhys * uzInletPhys * massFlow;
+			float etaIntake = intakePower / lakePower;
 			
 			// 5) intake drag
 			const float exitAreaM2 = FlowReportIntake.areamm2 * 1e-6f; 
@@ -238,9 +238,18 @@ int main(int argc, char **argv)
 				+ Tracker.momentumThrust[2]
 				- FlowReportIntake.massFlow * uzInletPhys;
 			
-			const float intakeDownforce = Tracker.wallFy[0]; // Positive = downward on intake
-			const float intakeXMoment = Tracker.wallTx[0];
-
+			float intakeDownforce = Tracker.wallFy[0]; // Positive = downward on intake
+			float intakeXMoment = Tracker.wallTx[0];
+			
+			// CORRECTION START: Reference pressure to the current lake-outlet mean.
+			const float pLake = Tracker.pressure[1];
+			const float dDownforce = pLake * (58e-3f * 169e-3f);
+			intakePower -= pLake * FlowReportIntake.normalVelocity * exitAreaM2;
+			etaIntake = intakePower / lakePower;
+			intakeDownforce += dDownforce;
+			intakeXMoment -= (-44.5e-3f) * dDownforce;
+			// CORRECTION END
+			
 			// pass results to tracker
 			trackCustomVariables(Tracker, {	massFlow, intakePower, etaIntake, intakeDrag, intakeDownforce, intakeXMoment });
 			
@@ -251,20 +260,6 @@ int main(int argc, char **argv)
 			convertToPhysicalPressure(pressurePerDRho, coarseInfo);
 			grids[0].Info.iRegulatorOutlet +=  ( massFlow - targetMassFlow ) * iRegulatorOutletStrength * regulatorDt / pressurePerDRho;
 			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorOutlet = grids[0].Info.iRegulatorOutlet;
-			
-			// regulate lake outlet to achieve zero pressure power at lake inlet
-			/*
-			FlowReportStruct lakeReference;
-			BoundsStruct referenceBounds{};
-			referenceBounds.xMin = -40.f;
-			referenceBounds.xMax =  40.f;
-			referenceBounds.yMin = -140.f;
-			referenceBounds.yMax =  -80.f;
-			getFlowReportXY(lakeReference, grids, referenceBounds, -200.f);
-			const float inletVolumeFlow = -Tracker.massFlow[0] / RHO_PHYS;
-			grids[0].Info.iRegulatorInlet -= lakeReference.pressure * inletVolumeFlow * iRegulatorInletStrength * regulatorDt / pressurePerDRho;
-			for ( int level = 0; level < GRID_LEVEL_COUNT; level++ ) grids[level].Info.iRegulatorInlet = grids[0].Info.iRegulatorInlet;
-			*/
 		}
 		
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )

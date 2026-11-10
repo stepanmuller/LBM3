@@ -121,6 +121,58 @@ __host__ __device__ void getOuterNormal( 	const int& iCell, const int& jCell, co
     else if 	( kCell == Info.cellCountZ - 1 ) 	outerNormalZ = 1;
 }
 
+// EQUILIBRIUM FUNCTIONS CONSISTENT WITH CUMULANT COLLISION
+__host__ __device__ void getFeq( const float &dRho, const float &ux, const float &uy, const float &uz, float (&feq)[27])
+{
+    const float ux2 = ux * ux;
+    const float uy2 = uy * uy;
+    const float uz2 = uz * uz;
+    #pragma unroll
+    for (int q = 0; q < 27; ++q)
+    {
+        const float cx = float(CX_DIRECTIONS[q]);
+        const float cy = float(CY_DIRECTIONS[q]);
+        const float cz = float(CZ_DIRECTIONS[q]);
+        
+        const float dx = 3.f * cx * ux + (4.5f * cx * cx - 1.5f) * ux2;
+        const float dy = 3.f * cy * uy + (4.5f * cy * cy - 1.5f) * uy2;
+        const float dz = 3.f * cz * uz + (4.5f * cz * cz - 1.5f) * uz2;
+
+        // Expanded product deviation:
+        // (1 + dx)(1 + dy)(1 + dz) - 1.
+        const float xy = dx + dy + dx * dy;
+        const float correction = xy + dz + xy * dz;
+
+        // Well conditioned equilibrium
+        feq[q] = DIRECTION_WEIGHTS[q] * ((dRho + correction) + dRho * correction);
+    }
+}
+
+__host__ __device__ inline float getFeqSingle( const float &dRho, const float &ux, const float &uy, const float &uz, const int &direction )
+{
+    const float ux2 = ux * ux;
+    const float uy2 = uy * uy;
+    const float uz2 = uz * uz;
+    
+    const float cx = float(CX_DIRECTIONS[direction]);
+    const float cy = float(CY_DIRECTIONS[direction]);
+    const float cz = float(CZ_DIRECTIONS[direction]);
+        
+    const float dx = 3.f * cx * ux + (4.5f * cx * cx - 1.5f) * ux2;
+    const float dy = 3.f * cy * uy + (4.5f * cy * cy - 1.5f) * uy2;
+    const float dz = 3.f * cz * uz + (4.5f * cz * cz - 1.5f) * uz2;
+
+    // Expanded product deviation:
+    // (1 + dx)(1 + dy)(1 + dz) - 1.
+    const float xy = dx + dy + dx * dy;
+    const float correction = xy + dz + xy * dz;
+    // Well conditioned equilibrium
+    const float feq = DIRECTION_WEIGHTS[direction] * ((dRho + correction) + dRho * correction);
+    return feq;
+}
+
+// OLDER STANDARD EQUILLIBRIUM VERSION
+/*
 __host__ __device__ void getFeq(
 	const float &dRho, const float &ux, const float &uy, const float &uz, 
 	float (&feq)[27]
@@ -196,6 +248,7 @@ __host__ __device__ inline float getFeqSingle( const float &dRho, const float &u
     const float cu = CX_DIRECTIONS[direction] * ux + CY_DIRECTIONS[direction] * uy + CZ_DIRECTIONS[direction] * uz;
     return DIRECTION_WEIGHTS[direction] * (dRho + (3.f*cu + 4.5f*cu*cu - 1.5f*u2) * (dRho + 1.f));
 }
+*/
 
 __host__ __device__ void getFneq(const float (&f)[27], const float (&feq)[27], float (&fneq)[27])
 {
