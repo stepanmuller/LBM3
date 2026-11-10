@@ -432,19 +432,16 @@ void markRefinementCells( GridBuilderStruct &GridBuilder, const std::vector<Voxe
 	// A fine cell located at the parent interface is blocked from getting deeply refined (interface with finer grid is still allowed)
 	if ( GridBuilder.Info.gridID > 0 )	GridBuilder.deepRefinementMarkerArray *= !GridBuilder.parentInterfaceMarkerArray;
 	GridBuilder.deepRefinementMarkerArray = GridBuilder.deepRefinementMarkerArray * GridBuilder.keepCellMarkerArray;
-	// search fine to coarse interface
-	GridBuilder.fineToCoarseMarkerArray = GridBuilder.deepRefinementMarkerArray;
-	GridBuilder.fineToCoarseMarkerArray.swap( markerBuffer );
-	spreadMarkers( GridBuilder.fineToCoarseMarkerArray, markerBuffer, GridBuilder );
-	GridBuilder.fineToCoarseMarkerArray = GridBuilder.fineToCoarseMarkerArray * GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray;
-	// search coarse to fine interface
-	GridBuilder.coarseToFineMarkerArray = GridBuilder.fineToCoarseMarkerArray;
-	GridBuilder.coarseToFineMarkerArray.swap( markerBuffer );
-	spreadMarkers( GridBuilder.coarseToFineMarkerArray, markerBuffer, GridBuilder );
-	// CoarseToFine has two layers -> do one more spread
-	GridBuilder.coarseToFineMarkerArray.swap( markerBuffer );
-	spreadMarkers( GridBuilder.coarseToFineMarkerArray, markerBuffer, GridBuilder );
-	GridBuilder.coarseToFineMarkerArray = GridBuilder.coarseToFineMarkerArray * GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray * !GridBuilder.fineToCoarseMarkerArray;
+	// search interface extension
+	GridBuilder.interfaceExtensionMarkerArray = GridBuilder.deepRefinementMarkerArray;
+	GridBuilder.interfaceExtensionMarkerArray.swap( markerBuffer );
+	spreadMarkers( GridBuilder.interfaceExtensionMarkerArray, markerBuffer, GridBuilder );
+	GridBuilder.interfaceExtensionMarkerArray = GridBuilder.interfaceExtensionMarkerArray * GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray;
+	// search interface
+	GridBuilder.interfaceMarkerArray = GridBuilder.interfaceExtensionMarkerArray;
+	GridBuilder.interfaceMarkerArray.swap( markerBuffer );
+	spreadMarkers( GridBuilder.interfaceMarkerArray, markerBuffer, GridBuilder );
+	GridBuilder.interfaceMarkerArray = GridBuilder.interfaceMarkerArray * GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray * !GridBuilder.interfaceExtensionMarkerArray;
 	// mark refinement all together
-	GridBuilder.refinementMarkerArray = GridBuilder.deepRefinementMarkerArray + GridBuilder.fineToCoarseMarkerArray + GridBuilder.coarseToFineMarkerArray;
+	GridBuilder.refinementMarkerArray = GridBuilder.deepRefinementMarkerArray + GridBuilder.interfaceExtensionMarkerArray + GridBuilder.interfaceMarkerArray;
 }
