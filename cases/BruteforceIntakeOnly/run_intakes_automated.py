@@ -11,18 +11,8 @@ CASE_DIR = Path("/home/stepan/Documents/GitHub/LBM3/cases/BruteforceIntakeOnly")
 
 # (Source STL filename, destination folder name inside results/)
 CASES = [
-    ("P2.STL", "P2"),
-    ("P4.STL", "P4"),
-    ("P6.STL", "P6"),
-    ("P8.STL", "P8"),
-    ("P9.STL", "P9"),
-    ("P10.STL", "P10"),
-    ("P11.STL", "P11"),
-    ("P12.STL", "P12"),
-    ("P13.STL", "P13"),
-    ("P14.STL", "P14"),
-    ("P15.STL", "P15"),
-    ("P16.STL", "P16"),
+    ("P19.STL", "P19"),
+    ("P20.STL", "P20"),
 ]
 
 # Match the compiled solver: final plots are 100000.png ... 100031.png.

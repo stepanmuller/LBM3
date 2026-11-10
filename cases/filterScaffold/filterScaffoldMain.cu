@@ -5,7 +5,7 @@ constexpr float RHO_PHYS = 1.225f;														// kg/m3
 // coarse settings
 constexpr float RES_GLOBAL = 0.175f;
 constexpr int GRID_LEVEL_COUNT = 1;
-constexpr float uxInlet = 0.00037135f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+constexpr float uxInlet = 0.000433242f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
 constexpr int ITERATION_COUNT = 50000 * (0.002f / uxInlet);
 
 // medium settings
