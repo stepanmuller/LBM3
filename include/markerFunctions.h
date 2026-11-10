@@ -429,8 +429,17 @@ void markRefinementCells( GridBuilderStruct &GridBuilder, const std::vector<Voxe
 		spreadMarkers( GridBuilder.deepRefinementMarkerArray, markerBuffer, GridBuilder );
 	}
 	applyUserRefinementModification( GridBuilder.deepRefinementMarkerArray, GridBuilder );
-	// A fine cell located at the parent interface is blocked from getting deeply refined (interface with finer grid is still allowed)
-	if ( GridBuilder.Info.gridID > 0 )	GridBuilder.deepRefinementMarkerArray *= !GridBuilder.parentInterfaceMarkerArray;
+	// A fine cell located at the parent interface is blocked from getting refined!
+	// Not even placing another interface on it is allowed
+	// Keep the entire finer interface outside the parent interface.
+	if ( GridBuilder.Info.gridID > 0 )
+	{
+		BoolArrayType refinementExclusionMarkerArray( GridBuilder.Info.cellCount );
+		// Spread parent interface marker twice -> this reserves space for two possible interface layers
+		spreadMarkers( markerBuffer, GridBuilder.parentInterfaceMarkerArray, GridBuilder );
+		spreadMarkers( refinementExclusionMarkerArray, markerBuffer, GridBuilder );
+		GridBuilder.deepRefinementMarkerArray *= !refinementExclusionMarkerArray;
+	}
 	GridBuilder.deepRefinementMarkerArray = GridBuilder.deepRefinementMarkerArray * GridBuilder.keepCellMarkerArray;
 	// search interface extension
 	GridBuilder.interfaceExtensionMarkerArray = GridBuilder.deepRefinementMarkerArray;

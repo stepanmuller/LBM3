@@ -550,8 +550,6 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 }
 
 void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::vector<VoxelizerStruct> &voxelizers, std::vector<STLStruct> &gridStaticSTLs, const int level )
-// Delete cells from each level that are deep inside a wall or deeply refined
-// Enforce keep cells that are part of the parent interface
 {
 	if ( level == 0 ) std::cout << "Marking walls for all grid levels" << std::endl; 
 	const bool iAmCoarsest = ( level == 0 );
@@ -675,27 +673,27 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	buildLinkLengthArray( GridBuilder, gridStaticSTLs );
 	
 	// 7) Fill interfaceOverlapMarker
-	// mark our fineToCoarse interface if applicable
-	if ( !iAmFinest ) GridBuilder.interfaceOverlapMarkerArray += GridBuilder.fineToCoarseMarkerArray;
+	// mark our interface extension if applicable
+	if ( !iAmFinest ) GridBuilder.interfaceOverlapMarkerArray += GridBuilder.interfaceExtensionMarkerArray;
 	// mark the parent interface but only the coarseToFine part
 	if ( !iAmCoarsest )
 	{
 		auto interfaceOverlapMarkerView = GridBuilder.interfaceOverlapMarkerArray.getView();
 		auto parentMapView = GridBuilder.parentMapArray.getConstView();
-		auto coarseCoarseToFineMarkerView = GridBuilderCoarse.coarseToFineMarkerArray.getConstView();
+		auto coarseInterfaceMarkerView = GridBuilderCoarse.interfaceMarkerArray.getConstView();
 		auto overlapLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{	
 			const int parentCell = parentMapView( cell );
 			if ( parentCell >= 0 ) 
 			{
-				const bool coarseToFineParentMarker = coarseCoarseToFineMarkerView( parentCell );
-				if ( coarseToFineParentMarker ) interfaceOverlapMarkerView( cell ) = true;
+				const bool interfaceParentMarker = coarseInterfaceMarkerView( parentCell );
+				if ( interfaceParentMarker ) interfaceOverlapMarkerView( cell ) = true;
 			}
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, overlapLambda );
 	}
 
-	// 3) Recursion
+	// 8) Recursion
 	if ( !iAmFinest ) buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, level + 1 );
 	else std::cout << std::endl;
 }	
