@@ -850,6 +850,107 @@ void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, indexListLambda );
 	
 	// Now we need to browse all interface cells and fill the direction masks
+	// TEMPORARY SOLUTION that only works for fully fluid-fluid interface with no walls and no boundaries nearby!
+	// The logic:
+	// outermost = False if all 26 surrounding geometric neighbours exist, else True
+	// source = target - latticeDirection[q];
+	// invalid = !sourceExists || outermost[source];
+	    // Fluid-fluid interfaces only, separated from walls and domain boundaries.
+    // Bit q == 1 means that population q must be supplied by the interface.
+    auto coarseTargetMaskView = Interface.coarseTargetMaskArray.getView();
+    auto fineTargetMaskView = Interface.fineTargetMaskArray.getView();
+
+    // The builder arrays are sorted lexicographically by (k, j, i).
+    auto findGeometricCell = [] __cuda_callable__ ( const IntConstViewType& iv, const IntConstViewType& jv,
+													const IntConstViewType& kv, const int count,
+													const int iw, const int jw, const int kw ) -> int
+    {
+        int first = 0;
+        int last = count;
+        while ( first < last )
+        {
+            const int mid = first + ( last - first ) / 2;
+            const int im = iv( mid );
+            const int jm = jv( mid );
+            const int km = kv( mid );
+
+            if ( km == kw && jm == jw && im == iw ) return mid;
+
+            const bool before = km < kw ||
+                ( km == kw && jm < jw ) ||
+                ( km == kw && jm == jw && im < iw );
+            if ( before ) first = mid + 1;
+            else last = mid;
+        }
+        return -1;
+    };
+
+    auto buildMask = [=] __cuda_callable__ ( const IntConstViewType& iv, const IntConstViewType& jv,
+											const IntConstViewType& kv, const int count,
+											const int target ) -> uint32_t
+    {
+        const int it = iv( target );
+        const int jt = jv( target );
+        const int kt = kv( target );
+        uint32_t mask = 0u;
+
+        // Include q=0: the rest population can be invalid on the fine grid
+        // after its second collision, even though it does not stream.
+        for ( int q = 0; q < 27; ++q )
+        {
+            const int is = it - CX_DIRECTIONS[q];
+            const int js = jt - CY_DIRECTIONS[q];
+            const int ks = kt - CZ_DIRECTIONS[q];
+            const int source = findGeometricCell( iv, jv, kv, count, is, js, ks );
+            bool invalid = ( source < 0 );
+
+            if ( !invalid )
+            {
+                // An existing source is outermost if any of its 26
+                // geometric neighbours is missing. Omit only the rest direction.
+                for ( int r = 1; r < 27; ++r )
+                {
+                    const int neighbour = findGeometricCell( iv, jv, kv, count, is + CX_DIRECTIONS[r], js + CY_DIRECTIONS[r], ks + CZ_DIRECTIONS[r] );
+                    if ( neighbour < 0 )
+                    {
+                        invalid = true;
+                        break;
+                    }
+                }
+            }
+
+            if ( invalid ) mask |= ( uint32_t{1} << q );
+        }
+        return mask;
+    };
+
+    auto linkValidityLambda = [=] __cuda_callable__ ( const int index ) mutable
+    {
+        const int cellCoarse = indexView( index );
+        coarseTargetMaskView( index ) = buildMask( iView, jView, kView, Info.cellCount, cellCoarse );
+
+        // All eight children exist. Their order is iAdd + 2*jAdd + 4*kAdd.
+        NBRStruct NBRFine{};
+        NBRFine.self = childMapView( index );
+        NBRFine.jPlus = jPlusGlobalViewFine( NBRFine.self );
+        NBRFine.kPlus = kPlusGlobalViewFine( NBRFine.self );
+        NBRFine.jkPlus = jPlusGlobalViewFine( NBRFine.kPlus );
+        finishNBRPlus( NBRFine, InfoFine );
+
+        const int children[8] = {
+            NBRFine.self,   NBRFine.iPlus,
+            NBRFine.jPlus,  NBRFine.ijPlus,
+            NBRFine.kPlus,  NBRFine.ikPlus,
+            NBRFine.jkPlus, NBRFine.ijkPlus
+        };
+        for ( int child = 0; child < 8; ++child )
+        {
+            fineTargetMaskView( child, index ) = buildMask(
+                iViewFine, jViewFine, kViewFine, InfoFine.cellCount,
+                children[child] );
+        }
+    };
+    TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, Interface.interfaceCount, linkValidityLambda );
 }
 
 void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vector<GridStruct> &grids, const int level )
