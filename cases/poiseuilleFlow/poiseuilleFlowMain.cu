@@ -5,7 +5,7 @@ constexpr float RES_GLOBAL = 0.4f; // mm
 
 constexpr float uzInlet = 0.01f; // mean lattice velocity; centreline velocity is twice this
 constexpr int ITERATION_COUNT = 20000;
-constexpr int PLOTTER_PERIOD = 5000;
+constexpr int PLOTTER_PERIOD = 20000;
 
 constexpr int WALL_REFINEMENT_COUNT = 0;
 constexpr int TRACKER_PERIOD = 1;
@@ -14,7 +14,8 @@ constexpr bool TRACK_ROTOR_FORCE = false;
 constexpr bool TRACK_OPEN_BOUNDARIES = true;
 
 constexpr float pipeDiameterPhys = 20.f; // mm
-constexpr float RInlet = 0.5f * pipeDiameterPhys; // mm
+constexpr float pipeLengthPhys = 20.f; 	 // mm
+constexpr float RInletPhys = 0.5f * pipeDiameterPhys; // mm
 constexpr float NU_PHYS = 1.5e-5f; // m2/s, air
 constexpr float RHO_PHYS = 1.225f; // kg/m3, air
 constexpr float uzInletPhys = reynoldsNumber * NU_PHYS / (pipeDiameterPhys / 1000.f); // m/s, mean velocity
@@ -33,10 +34,13 @@ __cuda_callable__ void getRefinementModifier( const int& iCell, const int& jCell
 {
 	float x, y, z;
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+	const float r2 = x*x + y*y;
+	const float refinementR2 = ( 0.5f * RInletPhys ) *  ( 0.5f * RInletPhys );
+	const float refinementZ = pipeLengthPhys * 0.25f;
 	refinementMarker = false;
 	if ( Info.gridID == 0 )
 	{
-		if ( z > 0 ) refinementMarker = true;
+		if ( r2 < refinementR2 && z > - refinementZ && z < refinementZ ) refinementMarker = true;
 	}
 }
 
@@ -46,7 +50,7 @@ __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, cons
 	float x, y, z;
 	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
 	const float r2 = x * x + y * y;
-	BC.uz = 2.f * uzInlet * std::max( 0.f, 1.f - r2 / (RInlet * RInlet) );
+	BC.uz = 2.f * uzInlet * std::max( 0.f, 1.f - r2 / (RInletPhys * RInletPhys) );
 }
 
 __cuda_callable__ void getOpenBC( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell,
@@ -61,7 +65,7 @@ __cuda_callable__ void getOpenBC( BCStruct &BC, const int& iCell, const int& jCe
 		BC.dirichletU = true;
 		BC.ux = 0.f;
 		BC.uy = 0.f;
-		BC.uz = 2.f * uzInlet * std::max( 0.f, 1.f - r2 / (RInlet * RInlet) );
+		BC.uz = 2.f * uzInlet * std::max( 0.f, 1.f - r2 / (RInletPhys * RInletPhys) );
 		BC.nonReflective = false;
 		BC.openBCID = 0;
 	}
@@ -98,7 +102,7 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	// ZY section cut
 	const float xCut = 0.f;
 	exportSectionCutPlotZY( grids, xCut, iterationsFinished );
-	if (system("python3 ../../include/plotter/plotGridsFull.py") != 0) {}
+	if (system("python3 plotGridsFullCustom.py") != 0) {}
 	std::cout << std::endl;
 }
 
@@ -113,8 +117,8 @@ int main(int argc, char **argv)
 	std::vector<GridStruct> grids( GRID_LEVEL_COUNT );
 	BoundsStruct DomainBounds;
 	DomainBounds = gridStaticSTLs[0].Bounds;
-	DomainBounds.zMin = -10.f;
-	DomainBounds.zMax = 10.f;
+	DomainBounds.zMin = - pipeLengthPhys*0.5f;
+	DomainBounds.zMax = pipeLengthPhys*0.5f;
 
 	long long fluidUpdatesPerIteration = buildGrids( grids, gridStaticSTLs, rotorSTLs, DomainBounds );
 
@@ -156,8 +160,14 @@ int main(int argc, char **argv)
 	
 	// Final ZY section cut for centerline pressure.
 	const float xCut = 0.f;
-	exportSectionCutPlotZY( grids, xCut, ITERATION_COUNT );
-	if (system("python3 plotCenterlinePressure.py") != 0) {}
+	exportSectionCutPlotZY(grids, xCut, ITERATION_COUNT);
+	const auto& imageInfo = grids.back().Info;
+	std::ostringstream command;
+	command << "python3 exportCenterlinePressure.py "
+			<< imageInfo.oz << ' ' << imageInfo.res << ' '
+			<< imageInfo.cellCountY << ' ' << imageInfo.cellCountZ;
+
+	if (system(command.str().c_str()) != 0) {}
 	
 	return EXIT_SUCCESS;
 }
