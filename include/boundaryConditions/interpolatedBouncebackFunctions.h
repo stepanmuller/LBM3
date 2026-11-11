@@ -108,11 +108,15 @@ __cuda_callable__ void applyIBB( 	const FloatArray2DType::ViewType &fView, const
 		const float fPreDirection = fView(preFIndex, preCellIndex);
 		const float invDenominator = 1.f / (1.f + gamma);
 
+		// IBB FORMULA
 		fResultInverseDirection =
 			  ((1.f - gamma) * invDenominator) * fPreDirection
 			+ (gamma * invDenominator) * fPost[inverseDirection]
 			+ (gamma * invDenominator) * fPost[direction]
 			+ invDenominator * wallMovementTerm;
+		
+		// SIMPLE BB FORMULA
+		// fResultInverseDirection = fPost[direction] + invDenominator * wallMovementTerm; 
 		
 		// track force exerted on the fluid using momentum exchange method
 		// Shuai Wang, Xinnan Wu, Cheng Peng, Songying Chen, Hao Liu

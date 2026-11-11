@@ -1,11 +1,11 @@
 constexpr float reynoldsNumber = 100.f; // based on mean velocity and pipe diameter
 
-constexpr int GRID_LEVEL_COUNT = 2;
-constexpr float RES_GLOBAL = 0.4f; // mm
+constexpr int GRID_LEVEL_COUNT = 1;
+constexpr float RES_GLOBAL = 0.2f; // mm
 
 constexpr float uzInlet = 0.01f; // mean lattice velocity; centreline velocity is twice this
-constexpr int ITERATION_COUNT = 20000;
-constexpr int PLOTTER_PERIOD = 20000;
+constexpr int ITERATION_COUNT = 40000;
+constexpr int PLOTTER_PERIOD = 40000;
 
 constexpr int WALL_REFINEMENT_COUNT = 0;
 constexpr int TRACKER_PERIOD = 1;
