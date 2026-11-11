@@ -9,8 +9,8 @@ constexpr float PI = 3.14159265358979323846f;
 // Uniform coarse: cellsPerDomain = 128, GRID_LEVEL_COUNT = 1
 // Uniform fine:   cellsPerDomain = 256, GRID_LEVEL_COUNT = 1
 // Refined:        cellsPerDomain = 128, GRID_LEVEL_COUNT = 2
-constexpr int cellsPerDomain = 128; // Active coarse cells per axis, excluding ghosts.
-constexpr int GRID_LEVEL_COUNT = 2;
+constexpr int cellsPerDomain = 256; // Active coarse cells per axis, excluding ghosts.
+constexpr int GRID_LEVEL_COUNT = 1;
 
 constexpr float reynoldsNumber = 1600.f;
 constexpr float machNumber = 0.1f;

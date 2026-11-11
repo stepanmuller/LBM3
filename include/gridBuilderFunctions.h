@@ -339,13 +339,15 @@ void buildIJKFull( std::vector<GridBuilderStruct> &gridBuilders, const std::vect
 	{
 		GridBuilder.refinementMarkerArray.setSize( Info.cellCount );
 		GridBuilder.deepRefinementMarkerArray.setSize( Info.cellCount );
-		GridBuilder.interfaceExtensionMarkerArray.setSize( Info.cellCount );
-		GridBuilder.interfaceMarkerArray.setSize( Info.cellCount );
+		GridBuilder.fineToCoarseMarkerArray.setSize( Info.cellCount );
+		GridBuilder.coarseToFineMarkerArray.setSize( Info.cellCount );
 	}
 	if ( !iAmCoarsest )
 	{
 		GridBuilder.parentMapArray.setSize( Info.cellCount );
 		GridBuilder.parentInterfaceMarkerArray.setSize( Info.cellCount );
+		GridBuilder.parentFineToCoarseMarkerArray.setSize( Info.cellCount );
+		GridBuilder.needValuesFromCoarseMarkerArray.setSize( Info.cellCount );
 	}
 	
 	// 3) Build our grid = fill our IJK (we are the "finer grid" with respect to the grid we are taking spatial information from)
@@ -370,20 +372,24 @@ void buildIJKFull( std::vector<GridBuilderStruct> &gridBuilders, const std::vect
 	}
 	
 	// 7) Mark our cells that are part of the parent interface. A fine cell located at the parent interface:
-	//    - is blocked from getting deleted later
+	//    - is blocked from getting deleted later (unless in the outermost layer)
 	//	  - is blocked from getting deeply refined (interface with finer grid is still allowed)
 	//	  - inherits fluid / wall state from the parent, even if the voxelizer says otherwise
+	// Also, in another array mark cells that are specifically under the fineToCoarse interface of our parent
 	if ( !iAmCoarsest )
 	{
 		auto parentInterfaceMarkerView = GridBuilder.parentInterfaceMarkerArray.getView();
+		auto parentFineToCoarseMarkerView = GridBuilder.parentFineToCoarseMarkerArray.getView();
 		auto parentMapView = GridBuilder.parentMapArray.getConstView();
-		auto interfaceMarkerViewCoarse = GridBuilderCoarse.interfaceMarkerArray.getConstView();
-		auto interfaceExtensionMarkerViewCoarse = GridBuilderCoarse.interfaceExtensionMarkerArray.getConstView();
+		auto coarseToFineMarkerViewCoarse = GridBuilderCoarse.coarseToFineMarkerArray.getConstView();
+		auto fineToCoarseMarkerViewCoarse = GridBuilderCoarse.fineToCoarseMarkerArray.getConstView();
 		auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{
 			const int parentCell = parentMapView( cell );
-			const bool parentInterfaceMarker = (interfaceMarkerViewCoarse( parentCell ) + interfaceExtensionMarkerViewCoarse( parentCell ));
+			const bool parentInterfaceMarker = (coarseToFineMarkerViewCoarse( parentCell ) + fineToCoarseMarkerViewCoarse( parentCell ));
 			parentInterfaceMarkerView( cell ) = parentInterfaceMarker;
+			const bool parentFineToCoarseMarker = fineToCoarseMarkerViewCoarse( parentCell );
+			parentFineToCoarseMarkerView( cell ) = parentFineToCoarseMarker;
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, cellLambda );	
 	}
@@ -448,23 +454,51 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	// 5) Remove deeply refined cells
 	if ( !iAmFinest ) GridBuilder.keepCellMarkerArray = GridBuilder.keepCellMarkerArray * !GridBuilder.deepRefinementMarkerArray; 
 	
-	// 6) Build fullToKeep map
+	// 6) Delete the outermost layer of interface fine cells
+	// This is because Geier's interpolation cube sends information from 8 coarse cells
+	// to 8 fine cells in their center. The outermost layer is excessive.
+	// We identify this by spreading from the parentFineToCoarse array
+	// At the same time, mark the needValuesFromCoarseMarkerArray
+	if ( !iAmCoarsest )
+	{
+		markerSource = GridBuilder.parentFineToCoarseMarkerArray;
+		BoolArrayType coarseToFine3LayerArray( Info.cellCount );
+		spreadMarkers( coarseToFine3LayerArray, markerSource, GridBuilder );
+		coarseToFine3LayerArray.swap( markerSource );
+		spreadMarkers( coarseToFine3LayerArray, markerSource, GridBuilder );
+		coarseToFine3LayerArray.swap( markerSource );
+		spreadMarkers( coarseToFine3LayerArray, markerSource, GridBuilder );
+		// now the result is in the coarseToFine3LayerArray
+		// delete cells that are part of the parent interface but not in this 3Layer
+		BoolArrayType markToDelete( Info.cellCount );
+		markToDelete = GridBuilder.parentInterfaceMarkerArray * !coarseToFine3LayerArray;
+		GridBuilder.keepCellMarkerArray *= !markToDelete;
+		// now mark the needValuesFromCoarseMarkerArray
+		GridBuilder.needValuesFromCoarseMarkerArray = GridBuilder.parentInterfaceMarkerArray * GridBuilder.keepCellMarkerArray;
+		// use markerSource as temporary target
+		spreadMarkers( markerSource, GridBuilder.parentFineToCoarseMarkerArray, GridBuilder );
+		GridBuilder.needValuesFromCoarseMarkerArray *= !markerSource;
+	}
+	
+	// 7) Build fullToKeep map
 	IntArrayType fullToKeepMapArray( Info.cellCount );
 	intArrayFromBoolArray( fullToKeepMapArray, GridBuilder.keepCellMarkerArray );
 	TNL::Algorithms::inplaceExclusiveScan( fullToKeepMapArray, 0, Info.cellCount, TNL::Plus{} );
 	
-	// 7) Transform necessary information from full grid to the keep grid
-	// We need IJK, parentMapArray, 
-	// interfaceExtensionMarkerArray, interfaceMarkerArray	
+	// 8) Transform necessary information from full grid to the keep grid
+	// We need IJK, parentMapArray, needValuesFromCoarseMarkerArray,
+	// fineToCoarseInterfaceMarkerArray, coarseToFineInterfaceMarkerArray	
 	// starting a scope so that temporary arrays then go out of scope
 	{ 	
 		IJKArrayStruct IJKFull = GridBuilder.IJK;
 		IntArrayType parentMapArrayFull;
 		parentMapArrayFull = GridBuilder.parentMapArray;
-		BoolArrayType interfaceExtensionMarkerArrayFull;
-		interfaceExtensionMarkerArrayFull = GridBuilder.interfaceExtensionMarkerArray;
-		BoolArrayType interfaceMarkerArrayFull;
-		interfaceMarkerArrayFull = GridBuilder.interfaceMarkerArray;
+		BoolArrayType needValuesFromCoarseMarkerArrayFull;
+		needValuesFromCoarseMarkerArrayFull = GridBuilder.needValuesFromCoarseMarkerArray;
+		BoolArrayType fineToCoarseMarkerArrayFull;
+		fineToCoarseMarkerArrayFull = GridBuilder.fineToCoarseMarkerArray;
+		BoolArrayType coarseToFineMarkerArrayFull;
+		coarseToFineMarkerArrayFull = GridBuilder.coarseToFineMarkerArray;
 		
 		auto keepCellMarkerView = GridBuilder.keepCellMarkerArray.getConstView();
 		auto fullToKeepMapView = fullToKeepMapArray.getConstView();
@@ -473,14 +507,16 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 		auto jFullView = IJKFull.jArray.getConstView();
 		auto kFullView = IJKFull.kArray.getConstView();
 		auto parentMapFullView = parentMapArrayFull.getConstView();
-		auto interfaceExtensionMarkerFullView = interfaceExtensionMarkerArrayFull.getConstView();
-		auto interfaceMarkerFullView = interfaceMarkerArrayFull.getConstView();
+		auto needValuesFromCoarseMarkerFullView = needValuesFromCoarseMarkerArrayFull.getConstView();
+		auto fineToCoarseMarkerFullView = fineToCoarseMarkerArrayFull.getConstView();
+		auto coarseToFineMarkerFullView = coarseToFineMarkerArrayFull.getConstView();
 		auto iView = GridBuilder.IJK.iArray.getView();
 		auto jView = GridBuilder.IJK.jArray.getView();
 		auto kView = GridBuilder.IJK.kArray.getView();
 		auto parentMapView = GridBuilder.parentMapArray.getView();
-		auto interfaceExtensionMarkerView = GridBuilder.interfaceExtensionMarkerArray.getView();
-		auto interfaceMarkerView = GridBuilder.interfaceMarkerArray.getView();
+		auto needValuesFromCoarseMarkerView = GridBuilder.needValuesFromCoarseMarkerArray.getView();
+		auto fineToCoarseMarkerView = GridBuilder.fineToCoarseMarkerArray.getView();
+		auto coarseToFineMarkerView = GridBuilder.coarseToFineMarkerArray.getView();
 		
 		auto fullToKeepLambda = [=] __cuda_callable__ ( const int cellFull ) mutable
 		{
@@ -490,16 +526,17 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 			jView( cell ) = jFullView( cellFull );
 			kView( cell ) = kFullView( cellFull );
 			if (!iAmCoarsest) parentMapView( cell ) = parentMapFullView( cellFull );
-			if (!iAmFinest) interfaceExtensionMarkerView( cell ) = interfaceExtensionMarkerFullView( cellFull );
-			if (!iAmFinest) interfaceMarkerView( cell ) = interfaceMarkerFullView( cellFull );
+			if (!iAmCoarsest) needValuesFromCoarseMarkerView( cell ) = needValuesFromCoarseMarkerFullView( cellFull );
+			if (!iAmFinest) fineToCoarseMarkerView( cell ) = fineToCoarseMarkerFullView( cellFull );
+			if (!iAmFinest) coarseToFineMarkerView( cell ) = coarseToFineMarkerFullView( cellFull );
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, fullToKeepLambda );	
 	}
 	
-	// 8) set new cellCount
+	// 9) set new cellCount
 	Info.cellCount = TNL::sum( GridBuilder.keepCellMarkerArray );
 	
-	// 9) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
+	// 10) Resize the necessary arrays. Note that NBR is now broken and will have to be rebuilt again
 	GridBuilder.IJK.iArray.resize( Info.cellCount );
 	GridBuilder.IJK.jArray.resize( Info.cellCount );
 	GridBuilder.IJK.kArray.resize( Info.cellCount );
@@ -512,19 +549,20 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	GridBuilder.interfaceOverlapMarkerArray.setSize( Info.cellCount );
 	GridBuilder.interfaceOverlapMarkerArray.setValue( false );
 	if (!iAmCoarsest) GridBuilder.parentMapArray.resize( Info.cellCount );
-	if (!iAmFinest) GridBuilder.interfaceExtensionMarkerArray.resize( Info.cellCount );
-	if (!iAmFinest) GridBuilder.interfaceMarkerArray.resize( Info.cellCount );
+	if (!iAmCoarsest) GridBuilder.needValuesFromCoarseMarkerArray.resize( Info.cellCount );
+	if (!iAmFinest) GridBuilder.fineToCoarseMarkerArray.resize( Info.cellCount );
+	if (!iAmFinest) GridBuilder.coarseToFineMarkerArray.resize( Info.cellCount );
 	
-	// 10) Forget the no longer necessary arrays
+	// 11) Forget the no longer necessary arrays
 	GridBuilder.SkeletonGrid.keepCellMarkerArray.resize( 0 );
 	GridBuilder.deepRefinementMarkerArray.resize( 0 );
 	GridBuilder.refinementMarkerArray.resize( 0 );
 	
-	// 11) Rebuild our NBR Plus
+	// 12) Rebuild our NBR Plus
 	buildNBRPlus( GridBuilder );
 	markGeometricNBRPlus( GridBuilder );
 	
-	// 12) Build our NBR Minus
+	// 13) Build our NBR Minus
 	auto jPlusView = GridBuilder.NBR.jPlusArray.getConstView();
 	auto kPlusView = GridBuilder.NBR.kPlusArray.getConstView();
 	auto jMinusView = GridBuilder.NBR.jMinusArray.getView();
@@ -536,7 +574,7 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, NBRMinusLambda );
 	
-	// 13) fill grid bounds
+	// 14) fill grid bounds
 	Info.Bounds.xMin = Info.ox + Info.res * TNL::min( GridBuilder.IJK.iArray ) - 0.5f * Info.res;
 	Info.Bounds.xMax = Info.ox + Info.res * TNL::max( GridBuilder.IJK.iArray ) + 0.5f * Info.res;
 	Info.Bounds.yMin = Info.oy + Info.res * TNL::min( GridBuilder.IJK.jArray ) - 0.5f * Info.res;
@@ -544,12 +582,14 @@ void deleteExcessCells( std::vector<GridBuilderStruct> &gridBuilders, const std:
 	Info.Bounds.zMin = Info.oz + Info.res * TNL::min( GridBuilder.IJK.kArray ) - 0.5f * Info.res;
 	Info.Bounds.zMax = Info.oz + Info.res * TNL::max( GridBuilder.IJK.kArray ) + 0.5f * Info.res;
 	
-	// 14) Recursion
+	// 15) Recursion
 	if ( !iAmFinest ) deleteExcessCells( gridBuilders, voxelizers, level + 1 );
 	else std::cout << std::endl;
 }
 
 void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::vector<VoxelizerStruct> &voxelizers, std::vector<STLStruct> &gridStaticSTLs, const int level )
+// Delete cells from each level that are deep inside a wall or deeply refined
+// Enforce keep cells that are part of the parent interface
 {
 	if ( level == 0 ) std::cout << "Marking walls for all grid levels" << std::endl; 
 	const bool iAmCoarsest = ( level == 0 );
@@ -673,33 +713,63 @@ void buildWallMarkers( std::vector<GridBuilderStruct> &gridBuilders, const std::
 	buildLinkLengthArray( GridBuilder, gridStaticSTLs );
 	
 	// 7) Fill interfaceOverlapMarker
-	// mark our interface extension if applicable
-	if ( !iAmFinest ) GridBuilder.interfaceOverlapMarkerArray += GridBuilder.interfaceExtensionMarkerArray;
+	// mark our fineToCoarse interface if applicable
+	if ( !iAmFinest ) GridBuilder.interfaceOverlapMarkerArray += GridBuilder.fineToCoarseMarkerArray;
 	// mark the parent interface but only the coarseToFine part
 	if ( !iAmCoarsest )
 	{
 		auto interfaceOverlapMarkerView = GridBuilder.interfaceOverlapMarkerArray.getView();
 		auto parentMapView = GridBuilder.parentMapArray.getConstView();
-		auto coarseInterfaceMarkerView = GridBuilderCoarse.interfaceMarkerArray.getConstView();
+		auto coarseCoarseToFineMarkerView = GridBuilderCoarse.coarseToFineMarkerArray.getConstView();
 		auto overlapLambda = [=] __cuda_callable__ ( const int cell ) mutable
 		{	
 			const int parentCell = parentMapView( cell );
 			if ( parentCell >= 0 ) 
 			{
-				const bool interfaceParentMarker = coarseInterfaceMarkerView( parentCell );
-				if ( interfaceParentMarker ) interfaceOverlapMarkerView( cell ) = true;
+				const bool coarseToFineParentMarker = coarseCoarseToFineMarkerView( parentCell );
+				if ( coarseToFineParentMarker ) interfaceOverlapMarkerView( cell ) = true;
 			}
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Info.cellCount, overlapLambda );
 	}
 
-	// 8) Recursion
+	// 3) Recursion
 	if ( !iAmFinest ) buildWallMarkers( gridBuilders, voxelizers, gridStaticSTLs, level + 1 );
 	else std::cout << std::endl;
 }	
 
-void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, const IntArrayType &childMapArrayGlobal, 
-					const GridBuilderStruct &GridBuilder, const GridBuilderStruct &GridBuilderFine )
+void fillFineToCoarseInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, 
+					const IntArrayType &childMapArrayGlobal, const GridBuilderStruct &GridBuilder )
+{
+	const int cellCountTotal = markerArray.getSize();
+	Interface.interfaceCount = TNL::sum( markerArray );
+	Interface.indexArray.setSize( Interface.interfaceCount );
+	Interface.childMapArray.setSize( Interface.interfaceCount );
+	
+	IntArrayType scanArray( markerArray.getSize() );
+	intArrayFromBoolArray( scanArray, markerArray );
+	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, cellCountTotal, TNL::Plus{} );
+	
+	auto scanView = scanArray.getConstView();
+	auto indexView = Interface.indexArray.getView();
+	auto childMapView = Interface.childMapArray.getView();
+	auto markerView = markerArray.getConstView();
+	auto childMapGlobalView = childMapArrayGlobal.getConstView();
+	
+	auto cellLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( !markerView( cell ) ) return;
+		const int child = childMapGlobalView( cell );
+		const int index = scanView( cell );
+		
+		indexView( index ) = cell;
+		childMapView( index ) = child;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, cellLambda );
+}
+
+void fillCoarseToFineInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray, const IntArrayType &childMapArrayGlobal, 
+								const GridBuilderStruct &GridBuilder, const GridBuilderStruct &GridBuilderFine )
 {
 	const InfoStruct &Info = GridBuilder.Info;
 	const InfoStruct &InfoFine = GridBuilderFine.Info;
@@ -726,231 +796,237 @@ void fillInterface( InterfaceStruct &Interface, const BoolArrayType &markerArray
 	auto markerView = markerArray.getConstView();
 	auto childMapGlobalView = childMapArrayGlobal.getConstView();
 	
-	Interface.interfaceCount = TNL::sum( markerArray );
+	BoolArrayType iSeeFullBlockMarkerArray( cellCountTotal );
+	iSeeFullBlockMarkerArray.setValue( false );
+	auto iSeeFullBlockMarkerView = iSeeFullBlockMarkerArray.getView();
+	
+	auto iSeeFullBlockLambda = [=] __cuda_callable__ ( const int cell ) mutable
+	{	
+		if ( !markerView( cell ) ) return;
+		NBRStruct NBR;
+		NBR.self = cell;
+		NBR.jPlus = jPlusGlobalView( cell );
+		NBR.kPlus = kPlusGlobalView( cell );
+		NBR.jkPlus = jPlusGlobalView( NBR.kPlus );
+		finishNBRPlus( NBR, Info );
+		
+		// check if this is part of the interface, this includes a wall check already (the supplied markerArray does not contain walls)
+		if ( !markerView( NBR.iPlus ) || !markerView( NBR.jPlus ) || !markerView( NBR.ijPlus ) || !markerView( NBR.kPlus ) 
+			|| !markerView( NBR.ikPlus ) || !markerView( NBR.jkPlus ) || !markerView( NBR.ijkPlus ) ) return;
+		// check for position
+		const int iCell = iView( cell );
+		const int jCell = jView( cell );
+		const int kCell = kView( cell );
+		if ( iView( NBR.iPlus ) != iCell+1 || iView( NBR.jPlus ) != iCell || iView( NBR.ijPlus ) != iCell+1 || iView( NBR.kPlus ) != iCell 
+			|| iView( NBR.ikPlus ) != iCell+1 || iView( NBR.jkPlus ) != iCell || iView( NBR.ijkPlus ) != iCell+1 ) return;
+		if ( jView( NBR.iPlus ) != jCell || jView( NBR.jPlus ) != jCell+1 || jView( NBR.ijPlus ) != jCell+1 || jView( NBR.kPlus ) != jCell 
+			|| jView( NBR.ikPlus ) != jCell || jView( NBR.jkPlus ) != jCell+1 || jView( NBR.ijkPlus ) != jCell+1 ) return;
+		if ( kView( NBR.iPlus ) != kCell || kView( NBR.jPlus ) != kCell || kView( NBR.ijPlus ) != kCell || kView( NBR.kPlus ) != kCell+1 
+			|| kView( NBR.ikPlus ) != kCell+1 || kView( NBR.jkPlus ) != kCell+1 || kView( NBR.ijkPlus ) != kCell+1 ) return;
+		
+		const int cellFineTop = childMapGlobalView( NBR.ijkPlus );
+		// check if the child exists
+		if ( cellFineTop < 0 ) return;
+		NBRStruct NBRFine;
+		NBRFine.ijkPlus = cellFineTop;
+		NBRFine.jkPlus = NBRFine.ijkPlus - 1; if ( NBRFine.jkPlus < 0 ) NBRFine.jkPlus = InfoFine.cellCount - 1;
+		NBRFine.kPlus = jMinusGlobalViewFine( NBRFine.jkPlus );
+		NBRFine.self = kMinusGlobalViewFine( NBRFine.kPlus );
+		NBRFine.jPlus = jPlusGlobalViewFine( NBRFine.self );
+		finishNBRPlus( NBRFine, InfoFine );
+		// check position of all children
+		if ( iViewFine( NBRFine.self ) != 2*iCell+1 || jViewFine( NBRFine.self ) != 2*jCell+1 || kViewFine( NBRFine.self ) != 2*kCell+1 ) return;
+		if ( iViewFine( NBRFine.iPlus ) != 2*iCell+2 || iViewFine( NBRFine.jPlus ) != 2*iCell+1 || iViewFine( NBRFine.ijPlus ) != 2*iCell+2 || iViewFine( NBRFine.kPlus ) != 2*iCell+1 
+			|| iViewFine( NBRFine.ikPlus ) != 2*iCell+2 || iViewFine( NBRFine.jkPlus ) != 2*iCell+1 || iViewFine( NBRFine.ijkPlus ) != 2*iCell+2 ) return;
+		if ( jViewFine( NBRFine.iPlus ) != 2*jCell+1 || jViewFine( NBRFine.jPlus ) != 2*jCell+2 || jViewFine( NBRFine.ijPlus ) != 2*jCell+2 || jViewFine( NBRFine.kPlus ) != 2*jCell+1 
+			|| jViewFine( NBRFine.ikPlus ) != 2*jCell+1 || jViewFine( NBRFine.jkPlus ) != 2*jCell+2 || jViewFine( NBRFine.ijkPlus ) != 2*jCell+2 ) return;
+		if ( kViewFine( NBRFine.iPlus ) != 2*kCell+1 || kViewFine( NBRFine.jPlus ) != 2*kCell+1 || kViewFine( NBRFine.ijPlus ) != 2*kCell+1 || kViewFine( NBRFine.kPlus ) != 2*kCell+2 
+			|| kViewFine( NBRFine.ikPlus ) != 2*kCell+2 || kViewFine( NBRFine.jkPlus ) != 2*kCell+2 || kViewFine( NBRFine.ijkPlus ) != 2*kCell+2 ) return;
+		// all checks passed -> this is a full Geier block		
+		iSeeFullBlockMarkerView( cell ) = true;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, iSeeFullBlockLambda );
+	
+	Interface.interfaceCount = TNL::sum( iSeeFullBlockMarkerArray );
 	Interface.indexArray.setSize( Interface.interfaceCount );
 	Interface.childMapArray.setSize( Interface.interfaceCount );
-	Interface.iPlusStencilArray.setSize( Interface.interfaceCount );
-	Interface.jPlusStencilArray.setSize( Interface.interfaceCount );
-	Interface.kPlusStencilArray.setSize( Interface.interfaceCount );
-	Interface.iMinusStencilArray.setSize( Interface.interfaceCount );
-	Interface.jMinusStencilArray.setSize( Interface.interfaceCount );
-	Interface.kMinusStencilArray.setSize( Interface.interfaceCount );
-	Interface.coarseTargetMaskArray.setSize( Interface.interfaceCount );
-	Interface.fineTargetMaskArray.setSizes( 8, Interface.interfaceCount );
 	
-	IntArrayType scanArray( markerArray.getSize() );
-	intArrayFromBoolArray( scanArray, markerArray );
+	IntArrayType scanArray( iSeeFullBlockMarkerArray.getSize() );
+	intArrayFromBoolArray( scanArray, iSeeFullBlockMarkerArray );
 	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, cellCountTotal, TNL::Plus{} );
 	
 	auto scanView = scanArray.getConstView();
 	auto indexView = Interface.indexArray.getView();
 	auto childMapView = Interface.childMapArray.getView();
-	auto iPlusStencilView = Interface.iPlusStencilArray.getView();
-	auto jPlusStencilView = Interface.jPlusStencilArray.getView();
-	auto kPlusStencilView = Interface.kPlusStencilArray.getView();
-	auto iMinusStencilView = Interface.iMinusStencilArray.getView();
-	auto jMinusStencilView = Interface.jMinusStencilArray.getView();
-	auto kMinusStencilView = Interface.kMinusStencilArray.getView();
 	
-	auto indexListLambda = [=] __cuda_callable__ ( const int cellCoarse ) mutable
+	auto indexListLambda = [=] __cuda_callable__ ( const int cell ) mutable
 	{	
-		if ( !markerView( cellCoarse ) ) return;
-		const int index = scanView( cellCoarse );
-		indexView( index ) = cellCoarse;
-		const int cellFine = childMapGlobalView( cellCoarse );
-		childMapView( index ) = cellFine;
+		if ( !iSeeFullBlockMarkerView( cell ) ) return;
+		const int index = scanView( cell );
+		indexView( index ) = cell;
 		
-		// fill the stencil neighbours according to rules
-		// a stencil cell is available if it is a correctly placed geometric neighbour that is not marked as wall
-		// first try writing the actual existing neighbour in the correct direction
-		// if that is not available, try if there is an existing negative neighbour, if so, write it with index (-index - 1)
-		// that distinguishes the negative fallback
-		// if not even the negative neighbour is available, keep the initially set constant fallback to the center cell
+		NBRStruct NBR;
+		NBR.self = cell;
+		NBR.jPlus = jPlusGlobalView( cell );
+		NBR.kPlus = kPlusGlobalView( cell );
+		NBR.jkPlus = jPlusGlobalView( NBR.kPlus );
+		finishNBRPlus( NBR, Info );
 		
-		const int iCoarse = iView(cellCoarse);
-		const int jCoarse = jView(cellCoarse);
-		const int kCoarse = kView(cellCoarse);
-
-		int iPlus = cellCoarse; int jPlus = cellCoarse; int kPlus = cellCoarse;
-		int iMinus = cellCoarse; int jMinus = cellCoarse; int kMinus = cellCoarse;
-		int candidateI; int candidateJ; int candidateK;
+		const int cellFineTop = childMapGlobalView( NBR.ijkPlus );
+		NBRStruct NBRFine;
+		NBRFine.ijkPlus = cellFineTop;
+		NBRFine.jkPlus = NBRFine.ijkPlus - 1; if ( NBRFine.jkPlus < 0 ) NBRFine.jkPlus = InfoFine.cellCount - 1;
+		NBRFine.kPlus = jMinusGlobalViewFine( NBRFine.jkPlus );
+		NBRFine.self = kMinusGlobalViewFine( NBRFine.kPlus );
 		
-		// iPlus direction
-		candidateI = cellCoarse + 1; if ( candidateI >= Info.cellCount ) candidateI = 0;
-		if ( !wallMarkerView( candidateI ) && iView( candidateI ) == iCoarse+1 
-		&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) iPlus = candidateI;
-		else // positive candidate is not available -> try negative one
-		{
-			candidateI = cellCoarse - 1; if ( candidateI < 0 ) candidateI = Info.cellCount-1;
-			if ( !wallMarkerView( candidateI ) && iView( candidateI ) == iCoarse-1 
-			&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) iPlus =  - candidateI - 1; 
-			// coding the inverse side as negative index
-		}
-		// iMinus direction
-		candidateI = cellCoarse - 1; if ( candidateI < 0 ) candidateI = Info.cellCount-1;
-		if ( !wallMarkerView( candidateI ) && iView( candidateI ) == iCoarse-1 
-		&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) iMinus = candidateI;
-		else // negative candidate is not available -> try positive one
-		{
-			candidateI = cellCoarse + 1; if ( candidateI >= Info.cellCount ) candidateI = 0;
-			if ( !wallMarkerView( candidateI ) && iView( candidateI ) == iCoarse+1 
-			&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) iMinus = - candidateI - 1; 
-			// coding the inverse side as negative index
-		}
-		
-		// jPlus direction
-		candidateJ = jPlusGlobalView( cellCoarse );
-		if ( !wallMarkerView( candidateJ ) && iView( candidateJ ) == iCoarse 
-		&& jView( candidateJ ) == jCoarse+1 && kView( candidateJ ) == kCoarse ) jPlus = candidateJ;
-		else // positive candidate is not available -> try negative one
-		{
-			candidateJ = jMinusGlobalView( cellCoarse );
-			if ( !wallMarkerView( candidateJ ) && iView( candidateJ ) == iCoarse 
-			&& jView( candidateJ ) == jCoarse-1 && kView( candidateJ ) == kCoarse ) jPlus = - candidateJ - 1;
-		}
-		// jMinus direction
-		candidateJ = jMinusGlobalView( cellCoarse );
-		if ( !wallMarkerView( candidateJ ) && iView( candidateJ ) == iCoarse 
-		&& jView( candidateJ ) == jCoarse-1 && kView( candidateJ ) == kCoarse ) jMinus = candidateJ;
-		else // negative candidate is not available -> try positive one
-		{
-			candidateJ = jPlusGlobalView( cellCoarse );
-			if ( !wallMarkerView( candidateJ ) && iView( candidateJ ) == iCoarse 
-			&& jView( candidateJ ) == jCoarse+1 && kView( candidateJ ) == kCoarse ) jMinus = - candidateJ - 1;
-		}
-		
-		// kPlus direction
-		candidateK = kPlusGlobalView( cellCoarse );
-		if ( !wallMarkerView( candidateK ) && iView( candidateK ) == iCoarse 
-		&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse+1 ) kPlus = candidateK;
-		else // positive candidate is not available -> try negative one
-		{
-			candidateK = kMinusGlobalView( cellCoarse );
-			if ( !wallMarkerView( candidateK ) && iView( candidateK ) == iCoarse 
-			&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse-1 ) kPlus = - candidateK - 1;
-		}
-		// kMinus direction
-		candidateK = kMinusGlobalView( cellCoarse );
-		if ( !wallMarkerView( candidateK ) && iView( candidateK ) == iCoarse 
-		&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse-1 ) kMinus = candidateK;
-		else // negative candidate is not available -> try positive one
-		{
-			candidateK = kPlusGlobalView( cellCoarse );
-			if ( !wallMarkerView( candidateK ) && iView( candidateK ) == iCoarse 
-			&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse+1 ) kMinus = - candidateK - 1;
-		}
-		
-		iPlusStencilView( index ) = iPlus;
-		jPlusStencilView( index ) = jPlus;
-		kPlusStencilView( index ) = kPlus;
-		iMinusStencilView( index ) = iMinus;
-		jMinusStencilView( index ) = jMinus;
-		kMinusStencilView( index ) = kMinus;
+		childMapView( index ) = NBRFine.self;
 	};
 	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, cellCountTotal, indexListLambda );
 	
-	// Now we need to browse all interface cells and fill the direction masks
-	// TEMPORARY SOLUTION that only works for fully fluid-fluid interface with no walls and no boundaries nearby!
-	// The logic:
-	// outermost = False if all 26 surrounding geometric neighbours exist, else True
-	// source = target - latticeDirection[q];
-	// invalid = !sourceExists || outermost[source];
-	    // Fluid-fluid interfaces only, separated from walls and domain boundaries.
-    // Bit q == 1 means that population q must be supplied by the interface.
-    auto coarseTargetMaskView = Interface.coarseTargetMaskArray.getView();
-    auto fineTargetMaskView = Interface.fineTargetMaskArray.getView();
-
-    // The builder arrays are sorted lexicographically by (k, j, i).
-    auto findGeometricCell = [] __cuda_callable__ ( const IntConstViewType& iv, const IntConstViewType& jv,
-													const IntConstViewType& kv, const int count,
-													const int iw, const int jw, const int kw ) -> int
-    {
-        int first = 0;
-        int last = count;
-        while ( first < last )
-        {
-            const int mid = first + ( last - first ) / 2;
-            const int im = iv( mid );
-            const int jm = jv( mid );
-            const int km = kv( mid );
-
-            if ( km == kw && jm == jw && im == iw ) return mid;
-
-            const bool before = km < kw ||
-                ( km == kw && jm < jw ) ||
-                ( km == kw && jm == jw && im < iw );
-            if ( before ) first = mid + 1;
-            else last = mid;
-        }
-        return -1;
-    };
-
-    auto buildMask = [=] __cuda_callable__ ( const IntConstViewType& iv, const IntConstViewType& jv,
-											const IntConstViewType& kv, const int count,
-											const int target ) -> uint32_t
-    {
-        const int it = iv( target );
-        const int jt = jv( target );
-        const int kt = kv( target );
-        uint32_t mask = 0u;
-
-        // Include q=0: the rest population can be invalid on the fine grid
-        // after its second collision, even though it does not stream.
-        for ( int q = 0; q < 27; ++q )
-        {
-            const int is = it - CX_DIRECTIONS[q];
-            const int js = jt - CY_DIRECTIONS[q];
-            const int ks = kt - CZ_DIRECTIONS[q];
-            const int source = findGeometricCell( iv, jv, kv, count, is, js, ks );
-            bool invalid = ( source < 0 );
-
-            if ( !invalid )
-            {
-                // An existing source is outermost if any of its 26
-                // geometric neighbours is missing. Omit only the rest direction.
-                for ( int r = 1; r < 27; ++r )
-                {
-                    const int neighbour = findGeometricCell( iv, jv, kv, count, is + CX_DIRECTIONS[r], js + CY_DIRECTIONS[r], ks + CZ_DIRECTIONS[r] );
-                    if ( neighbour < 0 )
-                    {
-                        invalid = true;
-                        break;
-                    }
-                }
-            }
-
-            if ( invalid ) mask |= ( uint32_t{1} << q );
-        }
-        return mask;
-    };
-
-    auto linkValidityLambda = [=] __cuda_callable__ ( const int index ) mutable
-    {
-        const int cellCoarse = indexView( index );
-        coarseTargetMaskView( index ) = buildMask( iView, jView, kView, Info.cellCount, cellCoarse );
-
-        // All eight children exist. Their order is iAdd + 2*jAdd + 4*kAdd.
-        NBRStruct NBRFine{};
-        NBRFine.self = childMapView( index );
-        NBRFine.jPlus = jPlusGlobalViewFine( NBRFine.self );
-        NBRFine.kPlus = kPlusGlobalViewFine( NBRFine.self );
-        NBRFine.jkPlus = jPlusGlobalViewFine( NBRFine.kPlus );
-        finishNBRPlus( NBRFine, InfoFine );
-
-        const int children[8] = {
-            NBRFine.self,   NBRFine.iPlus,
-            NBRFine.jPlus,  NBRFine.ijPlus,
-            NBRFine.kPlus,  NBRFine.ikPlus,
-            NBRFine.jkPlus, NBRFine.ijkPlus
-        };
-        for ( int child = 0; child < 8; ++child )
-        {
-            fineTargetMaskView( child, index ) = buildMask(
-                iViewFine, jViewFine, kViewFine, InfoFine.cellCount,
-                children[child] );
-        }
-    };
-    TNL::Algorithms::parallelFor<TNL::Devices::Cuda>( 0, Interface.interfaceCount, linkValidityLambda );
+	BoolArrayType valueReceivedMarkerArrayFine( GridBuilderFine.Info.cellCount );
+	valueReceivedMarkerArrayFine.setValue( false );
+	auto valueReceivedMarkerViewFine = valueReceivedMarkerArrayFine.getView();
+	auto jPlusViewFine = GridBuilderFine.NBR.jPlusArray.getConstView();
+	auto kPlusViewFine = GridBuilderFine.NBR.kPlusArray.getConstView();
+	
+	auto valueReceivedLambda = [=] __cuda_callable__ ( const int index ) mutable
+	{	
+		const int cellFine = childMapView( index );
+		NBRStruct NBR;
+		NBR.self = cellFine;
+		NBR.jPlus = jPlusViewFine( cellFine );
+		NBR.kPlus = kPlusViewFine( cellFine );
+		NBR.jkPlus = jPlusViewFine( NBR.kPlus );
+		finishNBRPlus( NBR, InfoFine );
+		valueReceivedMarkerViewFine( NBR.self ) = true;
+		valueReceivedMarkerViewFine( NBR.iPlus ) = true;
+		valueReceivedMarkerViewFine( NBR.jPlus ) = true;
+		valueReceivedMarkerViewFine( NBR.ijPlus ) = true;
+		valueReceivedMarkerViewFine( NBR.kPlus ) = true;
+		valueReceivedMarkerViewFine( NBR.ikPlus ) = true;
+		valueReceivedMarkerViewFine( NBR.jkPlus ) = true;
+		valueReceivedMarkerViewFine( NBR.ijkPlus ) = true;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, Interface.interfaceCount, valueReceivedLambda );
+	
+	BoolArrayType leftoverMarkerArray( GridBuilderFine.Info.cellCount );
+	leftoverMarkerArray = GridBuilderFine.needValuesFromCoarseMarkerArray
+						* !GridBuilderFine.wallMarkerArray
+						* !valueReceivedMarkerArrayFine;
+	
+	Interface.leftoverCount = TNL::sum( leftoverMarkerArray );
+	Interface.leftoverIndexArray.resize( Interface.leftoverCount );
+	Interface.leftoverParentMapArray.resize( Interface.leftoverCount );
+	Interface.leftoverNbrIArray.resize( Interface.leftoverCount );
+	Interface.leftoverNbrJArray.resize( Interface.leftoverCount );
+	Interface.leftoverNbrKArray.resize( Interface.leftoverCount );
+	
+	scanArray.resize( GridBuilderFine.Info.cellCount );
+	intArrayFromBoolArray( scanArray, leftoverMarkerArray );
+	TNL::Algorithms::inplaceExclusiveScan( scanArray, 0, GridBuilderFine.Info.cellCount, TNL::Plus{} );
+	
+	auto leftoverMarkerView = leftoverMarkerArray.getConstView();
+	auto scanView2 = scanArray.getConstView();
+	auto leftoverIndexView = Interface.leftoverIndexArray.getView();
+	auto leftoverParentMapView = Interface.leftoverParentMapArray.getView();
+	auto parentMapGlobalView = GridBuilderFine.parentMapArray.getConstView();
+	auto leftoverNbrIView = Interface.leftoverNbrIArray.getView();
+	auto leftoverNbrJView = Interface.leftoverNbrJArray.getView();
+	auto leftoverNbrKView = Interface.leftoverNbrKArray.getView();
+	
+	auto leftoverLambda = [=] __cuda_callable__ ( const int cellFine ) mutable
+	{	
+		if ( !leftoverMarkerView( cellFine ) ) return;
+		const int index = scanView2( cellFine );
+		leftoverIndexView( index ) = cellFine;
+		const int cellCoarse = parentMapGlobalView( cellFine );
+		leftoverParentMapView( index ) = cellCoarse;
+		const int iFine = iViewFine( cellFine );
+		const int jFine = jViewFine( cellFine );
+		const int kFine = kViewFine( cellFine );
+		const int iCoarse = iView( cellCoarse );
+		const int jCoarse = jView( cellCoarse );
+		const int kCoarse = kView( cellCoarse );
+		int nbrI = cellCoarse; int nbrJ = cellCoarse; int nbrK = cellCoarse;
+		if ( iFine % 2 == 1 ) // iPlus direction
+		{
+			int candidateI = cellCoarse + 1; if ( candidateI >= Info.cellCount ) candidateI = 0;
+			if ( markerView( candidateI ) && iView( candidateI ) == iCoarse+1 
+			&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI = candidateI;
+			else // positive candidate is not available -> try negative one
+			{
+				candidateI = cellCoarse - 1; if ( candidateI < 0 ) candidateI = Info.cellCount-1;
+				if ( markerView( candidateI ) && iView( candidateI ) == iCoarse-1 
+				&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI =  - candidateI - 1; 
+				// coding the inverse side as negative index
+			}
+		}
+		else // iMinus direction
+		{
+			int candidateI = cellCoarse - 1; if ( candidateI < 0 ) candidateI = Info.cellCount-1;
+			if ( markerView( candidateI ) && iView( candidateI ) == iCoarse-1 
+			&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI = candidateI;
+			else // negative candidate is not available -> try positive one
+			{
+				candidateI = cellCoarse + 1; if ( candidateI >= Info.cellCount ) candidateI = 0;
+				if ( markerView( candidateI ) && iView( candidateI ) == iCoarse+1 
+				&& jView( candidateI ) == jCoarse && kView( candidateI ) == kCoarse ) nbrI = - candidateI - 1; 
+				// coding the inverse side as negative index
+			}
+		}
+		if ( jFine % 2 == 1 ) // jPlus direction
+		{
+			int candidateJ = jPlusGlobalView( cellCoarse );
+			if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
+			&& jView( candidateJ ) == jCoarse+1 && kView( candidateJ ) == kCoarse ) nbrJ = candidateJ;
+			else // positive candidate is not available -> try negative one
+			{
+				candidateJ = jMinusGlobalView( cellCoarse );
+				if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
+				&& jView( candidateJ ) == jCoarse-1 && kView( candidateJ ) == kCoarse ) nbrJ = - candidateJ - 1;
+			}
+		}
+		else // jMinus direction
+		{
+			int candidateJ = jMinusGlobalView( cellCoarse );
+			if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
+			&& jView( candidateJ ) == jCoarse-1 && kView( candidateJ ) == kCoarse ) nbrJ = candidateJ;
+			else // negative candidate is not available -> try positive one
+			{
+				candidateJ = jPlusGlobalView( cellCoarse );
+				if ( markerView( candidateJ ) && iView( candidateJ ) == iCoarse 
+				&& jView( candidateJ ) == jCoarse+1 && kView( candidateJ ) == kCoarse ) nbrJ = - candidateJ - 1;
+			}
+		}
+		if ( kFine % 2 == 1 ) // kPlus direction
+		{
+			int candidateK = kPlusGlobalView( cellCoarse );
+			if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
+			&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse+1 ) nbrK = candidateK;
+			else // positive candidate is not available -> try negative one
+			{
+				candidateK = kMinusGlobalView( cellCoarse );
+				if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
+				&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse-1 ) nbrK = - candidateK - 1;
+			}
+		}
+		else // kMinus direction
+		{
+			int candidateK = kMinusGlobalView( cellCoarse );
+			if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
+			&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse-1 ) nbrK = candidateK;
+			else // negative candidate is not available -> try positive one
+			{
+				candidateK = kPlusGlobalView( cellCoarse );
+				if ( markerView( candidateK ) && iView( candidateK ) == iCoarse 
+				&& jView( candidateK ) == jCoarse && kView( candidateK ) == kCoarse+1 ) nbrK = - candidateK - 1;
+			}
+		}
+		leftoverNbrIView( index ) = nbrI;
+		leftoverNbrJView( index ) = nbrJ;
+		leftoverNbrKView( index ) = nbrK;
+	};
+	TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridBuilderFine.Info.cellCount, leftoverLambda );
 }
 
 void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vector<GridStruct> &grids, const int level )
@@ -1142,10 +1218,16 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		};
 		TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(0, GridBuilderFiner.Info.cellCount, childFillLambda );
 		
-		// Fill interface
 		BoolArrayType markerArray( Info.cellCount );
-		markerArray = GridBuilder.interfaceMarkerArray * !GridBuilder.wallMarkerArray;
-		fillInterface( Grid.Interface, markerArray, childMapArrayGlobal, GridBuilder, GridBuilderFiner );
+		// Fine to coarse
+		markerArray = GridBuilder.fineToCoarseMarkerArray * !GridBuilder.wallMarkerArray;
+		fillFineToCoarseInterface( Grid.FineToCoarseInterface, markerArray, childMapArrayGlobal, GridBuilder );
+		// Coarse to fine
+		markerArray = GridBuilder.coarseToFineMarkerArray * !GridBuilder.wallMarkerArray;
+		fillCoarseToFineInterface( Grid.CoarseToFineInterface, markerArray, childMapArrayGlobal, GridBuilder, GridBuilderFiner );
+		std::cout << "	Leftover fine cells on interface between grids " << level << ", " << level+1 << ": " 
+					<< Grid.CoarseToFineInterface.leftoverCount << " out of " 
+					<< Grid.CoarseToFineInterface.interfaceCount * 8 + Grid.CoarseToFineInterface.leftoverCount << std::endl;
 	}
 	// Disable force tracking throughout the periodic overlap.
 	// One coarse ghost layer corresponds to 2^level cells on this grid.
@@ -1427,9 +1509,9 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 		Info.gridMemoryBytes += 6LL * (long long)Grid.IJKNBR.iArray.getSize() * 4LL; // compressed iArray, jArray, kArray, jPlusArray, kPlusArray, jkPlusArray
 		Info.gridMemoryBytes += 9LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // index array + wall data + linkLengths
 		if constexpr (TRACK_WALL_FORCE) Info.gridMemoryBytes += 3LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // wall force tracker
-		//Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
-		//Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
-		//Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
+		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
+		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
+		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
 		for ( int rotorID = 0; rotorID < (int)Grid.rotors.size(); rotorID++ )
 		{
 			Info.gridMemoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMapArray.getSize() * 4LL; // rotorMap

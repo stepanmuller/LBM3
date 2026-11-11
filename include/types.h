@@ -60,6 +60,12 @@ using IntArray3DType = TNL::Containers::NDArray< int,
 												TNL::Containers::SizesHolder< size_t, 0, 0, 0 >,
 												std::index_sequence< 0, 1, 2 >,
 												TNL::Devices::Cuda >;
+												
+
+using IntArray2DType = TNL::Containers::NDArray< int, 
+												TNL::Containers::SizesHolder< size_t, 0, 0 >,
+												std::index_sequence< 0, 1 >,
+												TNL::Devices::Cuda >;
 
 using IntPairType = TNL::Containers::StaticArray< 2, int >;											
 using IntTripleType = TNL::Containers::StaticArray< 3, int >;
@@ -184,18 +190,18 @@ struct GridBuilderStruct { 	InfoStruct Info; IJKArrayStruct IJK; NBRArrayStruct 
 							BoolArray2DType linkExistenceMarkerArray; FloatArray2DType linkLengthArray; BoolArray2DType linkPiercesInterfaceMarkerArray;
 							BoolArrayType keepCellMarkerArray; BoolArrayType wallMarkerArray; 
 							BoolArrayType refinementMarkerArray; BoolArrayType deepRefinementMarkerArray;
-							BoolArrayType interfaceMarkerArray; BoolArrayType interfaceExtensionMarkerArray;
+							BoolArrayType fineToCoarseMarkerArray; BoolArrayType coarseToFineMarkerArray;
 							BoolArrayType parentInterfaceMarkerArray; BoolArrayType interfaceOverlapMarkerArray;
+							BoolArrayType parentFineToCoarseMarkerArray; BoolArrayType needValuesFromCoarseMarkerArray;
 							SkeletonGridStruct SkeletonGrid; }; 
 
 struct InterfaceStruct { 	int interfaceCount = 0; IntArrayType indexArray; IntArrayType childMapArray; 
-							IntArrayType iPlusStencilArray; IntArrayType jPlusStencilArray; IntArrayType kPlusStencilArray;
-							IntArrayType iMinusStencilArray; IntArrayType jMinusStencilArray; IntArrayType kMinusStencilArray;
-							Uint32_tArrayType coarseTargetMaskArray; Uint32_tArray2DType fineTargetMaskArray; };
+							int leftoverCount = 0; IntArrayType leftoverIndexArray; IntArrayType leftoverParentMapArray;
+							IntArrayType leftoverNbrIArray; IntArrayType leftoverNbrJArray; IntArrayType leftoverNbrKArray; };
 	
 struct WallStruct{ int wallAdjacentCount = 0; IntArrayType indexArray; IntArrayType wallMapArray; Uint32_tArrayType wallDataArray; Uint32_tArray2DType linkLengthArray;
 					FloatArrayType gxArray; FloatArrayType gyArray; FloatArrayType gzArray; };
-// wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell excluded from force tracking due to interface overlap, -1 = free fluid
+// wallMapArray contains: -3 = this cell itself is a wall, -2 = free fluid cell under a parent interface so dont track force, -1 = free fluid
 
 struct RotorInfoStruct { 	float rotorID = 0; float radiansPerSecond = 0.f; double radiansElapsed = 0.f;
 							BoundsStruct Bounds; float res = 1.f; int cellCountX = 0; int cellCountY = 0; int cellCountZ = 0; 
@@ -225,7 +231,7 @@ struct GridStruct { InfoStruct Info;
 					CompressedIJKNBRStruct IJKNBR;
 					WallStruct Wall;
 					std::vector<RotorStruct> rotors; RotorViewsType rotorViews;
-					InterfaceStruct Interface; // Interface between this grid and the next finer grid
+					InterfaceStruct CoarseToFineInterface; InterfaceStruct FineToCoarseInterface; 
 					std::vector<OpenBCArrayStruct> openBCs; PeriodicBCStruct PeriodicBC; }; 	
 					
 struct STLStructCPU { 	int triangleCount = 0;

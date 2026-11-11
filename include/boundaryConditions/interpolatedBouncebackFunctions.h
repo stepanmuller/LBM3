@@ -185,10 +185,10 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 	auto jMinusView = GridBuilder.NBR.jMinusArray.getConstView();
 	auto kMinusView = GridBuilder.NBR.kMinusArray.getConstView();
 	auto parentMapView = GridBuilder.parentMapArray.getConstView();
-	auto interfaceExtensionMarkerView = GridBuilder.interfaceExtensionMarkerArray.getConstView();
-	auto interfaceMarkerView = GridBuilder.interfaceMarkerArray.getConstView();
+	auto fineToCoarseMarkerView = GridBuilder.fineToCoarseMarkerArray.getConstView();
+	auto coarseToFineMarkerView = GridBuilder.coarseToFineMarkerArray.getConstView();
 	const bool iAmCoarsest = (GridBuilder.parentMapArray.getSize() == 0);
-	const bool iAmFinest = (GridBuilder.interfaceExtensionMarkerArray.getSize() == 0);
+	const bool iAmFinest = (GridBuilder.fineToCoarseMarkerArray.getSize() == 0);
 	auto wallMarkerView = GridBuilder.wallMarkerArray.getConstView();
 	auto wallAdjacentCellListView = GridBuilder.wallAdjacentCellList.getConstView();
 	const int wallAdjacentCellCount = GridBuilder.wallAdjacentCellList.getSize();
@@ -213,8 +213,8 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 		}
 		if ( !iAmFinest )
 		{ 
-			if ( interfaceExtensionMarkerView( cell ) ) iAmInterface = true;
-			if ( interfaceMarkerView( cell ) ) iAmInterface = true;
+			if ( fineToCoarseMarkerView( cell ) ) iAmInterface = true;
+			if ( coarseToFineMarkerView( cell ) ) iAmInterface = true;
 		}
 		
 		NBRStruct NBR;
@@ -341,8 +341,8 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 				}
 				if ( !iAmFinest )
 				{ 
-					if ( interfaceExtensionMarkerView( nbr ) ) nbrIsInterface = true;
-					if ( interfaceMarkerView( nbr ) ) nbrIsInterface = true;
+					if ( fineToCoarseMarkerView( nbr ) ) nbrIsInterface = true;
+					if ( coarseToFineMarkerView( nbr ) ) nbrIsInterface = true;
 				}
 				// nbr is a true geometric wall neighbour and will be correctly reached -> mark the link existence
 				linkExistenceMarkerView( direction, index ) = true;
@@ -380,8 +380,8 @@ void buildLinkExistenceMarkerArray( GridBuilderStruct &GridBuilder )
 			}
 			if ( !iAmFinest )
 			{ 
-				if ( interfaceExtensionMarkerView( nbr ) ) nbrIsInterface = true;
-				if ( interfaceMarkerView( nbr ) ) nbrIsInterface = true;
+				if ( fineToCoarseMarkerView( nbr ) ) nbrIsInterface = true;
+				if ( coarseToFineMarkerView( nbr ) ) nbrIsInterface = true;
 			}
 			// nbr is a true geometric wall neighbour and will be correctly reached -> mark the link existence
 			linkExistenceMarkerView( direction, index ) = true;
