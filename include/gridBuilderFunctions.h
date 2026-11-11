@@ -1427,9 +1427,9 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 		Info.gridMemoryBytes += 6LL * (long long)Grid.IJKNBR.iArray.getSize() * 4LL; // compressed iArray, jArray, kArray, jPlusArray, kPlusArray, jkPlusArray
 		Info.gridMemoryBytes += 9LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // index array + wall data + linkLengths
 		if constexpr (TRACK_WALL_FORCE) Info.gridMemoryBytes += 3LL * (long long)Grid.Wall.wallAdjacentCount * 4LL; // wall force tracker
-		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
-		Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
-		Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
+		//Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.interfaceCount * 4LL; // indexArray, childMap
+		//Info.gridMemoryBytes += 2LL * (long long)Grid.CoarseToFineInterface.leftoverCount * 4LL; // leftoverIndexArray, leftoverParentMap
+		//Info.gridMemoryBytes += 2LL * (long long)Grid.FineToCoarseInterface.interfaceCount * 4LL; // indexArray, childMap
 		for ( int rotorID = 0; rotorID < (int)Grid.rotors.size(); rotorID++ )
 		{
 			Info.gridMemoryBytes += 1LL * (long long)Grid.rotors[ rotorID ].rotorMapArray.getSize() * 4LL; // rotorMap
