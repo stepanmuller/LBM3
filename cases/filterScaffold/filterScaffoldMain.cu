@@ -5,7 +5,7 @@ constexpr float RHO_PHYS = 1.225f;														// kg/m3
 // coarse settings
 constexpr float RES_GLOBAL = 0.175f;
 constexpr int GRID_LEVEL_COUNT = 1;
-constexpr float uxInlet = 0.000154729f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+constexpr float uxInlet = 6.18917e-05f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
 constexpr int ITERATION_COUNT = 50000 * (0.002f / uxInlet);
 
 // medium settings
@@ -83,13 +83,15 @@ __cuda_callable__ void getOpenBC( 	BCStruct &BC, const int& iCell, const int& jC
 __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& jCell, const int& kCell, 
 									const InfoStruct& Info )
 {
-	BC.collisionLimiter = 0.f; // use K15
+	float x, y, z;
+	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
 	if ( BC.wallID >= 0 ) 
 	{
 		BC.ux = 0.f;
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
+	if ( x < Info.Bounds.xMin + 3.f || x > Info.Bounds.xMax - 3.f ) BC.collisionLimiter = 0.f; // use K15 in proximity to inlet and outlet
 }
 
 #include "../../include/gridBuilderFunctions.h"
