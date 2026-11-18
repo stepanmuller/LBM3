@@ -53,6 +53,7 @@
 *.png
 __pycache__
 *.pyc
+*.vtk
 gitignoreBackup.txt
 
 !/M35Full/dimensions.png

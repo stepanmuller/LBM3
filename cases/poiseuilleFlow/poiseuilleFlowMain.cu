@@ -103,9 +103,9 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	const float xCut = 0.f;
 	exportSectionCutPlotZY( grids, xCut, iterationsFinished );
 	if (system("python3 plotGridsFullCustom.py") != 0) {}
-	const float zCut = pipeLengthPhys * 0.5f - RES_GLOBAL;
-	exportSectionCutPlotXY( grids, zCut, iterationsFinished+1 );
-	if (system("python3 plotGridsFullCustom.py") != 0) {}
+	//const float zCut = pipeLengthPhys * 0.5f - RES_GLOBAL;
+	//exportSectionCutPlotXY( grids, zCut, iterationsFinished+1 );
+	//if (system("python3 plotGridsFullCustom.py") != 0) {}
 	std::cout << std::endl;
 }
 

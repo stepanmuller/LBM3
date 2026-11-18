@@ -5,10 +5,10 @@ constexpr float RHO_PHYS = 1.225f;														// kg/m3
 constexpr float LIMITER = 0.01f;
 
 // coarse settings
-//constexpr float RES_GLOBAL = 0.175f;
-//constexpr int GRID_LEVEL_COUNT = 1;
-//constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-//constexpr int ITERATION_COUNT = 50000 * (0.002f / uxInlet);
+constexpr float RES_GLOBAL = 0.175f;
+constexpr int GRID_LEVEL_COUNT = 1;
+constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+constexpr int ITERATION_COUNT = 50000 * (0.002f / uxInlet);
 
 // medium settings
 //constexpr float RES_GLOBAL = 0.5f * 0.175f;
@@ -17,10 +17,10 @@ constexpr float LIMITER = 0.01f;
 //constexpr int ITERATION_COUNT = 100000;
 
 // fine settings
-constexpr float RES_GLOBAL = 0.25f * 0.175f;
-constexpr int GRID_LEVEL_COUNT = 1;
-constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-constexpr int ITERATION_COUNT = 200000;
+//constexpr float RES_GLOBAL = 0.25f * 0.175f;
+//constexpr int GRID_LEVEL_COUNT = 1;
+//constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+//constexpr int ITERATION_COUNT = 200000;
 
 constexpr int PLOTTER_PERIOD = 50000;
 constexpr int TRACKER_PERIOD = 1;
@@ -103,6 +103,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 #include "../../include/flowReportFunctions.h"
 #include "../../include/plotter/exportSectionCutPlot.h"
 #include "../../include/plotter/plotTracker.h"
+#include "../../include/exportVTK.h"
 
 void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 {
@@ -201,6 +202,8 @@ int main(int argc, char **argv)
 			lapTimer.start();
 		}
 	}
+	
+	exportVTK(grids, "filterScaffoldVTK.vtk");
 	
 	return EXIT_SUCCESS;
 }
