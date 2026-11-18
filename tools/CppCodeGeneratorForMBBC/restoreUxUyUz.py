@@ -1,7 +1,7 @@
 import re
 import numpy as np
 
-def restoreUxUyUz(index, normal, fk, inv, SCMfk, SCQ):
+def restoreUxUyUz(index, normal, fk, inv, SCMfk, SCQ, faceVelocityLines):
 	lines = []
 	normalCode = (normal[0] + 5) * 100 + (normal[1] + 5) * 10 + (normal[2] + 5)
 	if index == 0:
@@ -21,6 +21,12 @@ def restoreUxUyUz(index, normal, fk, inv, SCMfk, SCQ):
 	else:
 		lines.append("	else if ( normalCode == " + str(normalCode) + " )")
 	lines.append("	{")
+	if faceVelocityLines:
+		lines += faceVelocityLines
+		lines.append("	}")
+		return lines
+
+	# Non-face cells retain the linear raw-moment system below unchanged.
 	lines.append("		// Multiply SCMfk fk")
 	for i, row in enumerate(SCMfk):
 		line = "		const float scmf" + str(i) + " = ( "

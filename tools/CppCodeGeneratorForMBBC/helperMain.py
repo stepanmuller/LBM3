@@ -5,10 +5,9 @@ import os
 import re
 
 from applyMBBC import *
-from restoreRhoUxUyUz import *
 from restoreUxUyUz import *
+from restoreFaceUxUyUz import restoreFaceUxUyUz
 from restoreRho import *
-from applyMirror import *
 from getLatex import *
 
 f    =  [ f"f_{{{i}}}" for i in range(27) ]
@@ -284,25 +283,6 @@ allLines.append("}")
 with open("results/applyMBBC.h", "w") as file:
 	file.write("\n".join(allLines) + "\n")
 	
-#### restoreRhoU
-allLines = []
-for index, normal in enumerate(allNormals):
-	fk, fu, mfk, mfu, C, S, Sq, Su, Srho = getBCdata(normal)
-	for i, fi in enumerate(fk):
-		match = re.search(r"\d+", fi)
-		number = int(match.group())
-		fk[i] = "f[" + str(number) + "]"
-		
-	inv = (Sq * C.T * Q).inv()
-	full = inv * Sq * C.T * mfk	
-	
-	full = sympyToCppStrings(full)
-	
-	allLines += restoreRhoUxUyUz(index, normal, fk, full)
-allLines.append("}")
-with open("results/restoreRhoUxUyUz.h", "w") as file:
-	file.write("\n".join(allLines))
-	
 #### restoreU
 allLines = []
 for index, normal in enumerate(allNormals):
@@ -321,7 +301,9 @@ for index, normal in enumerate(allNormals):
 	SCQ = Su * C.T * Qrho
 	SCQ = sympyToCppStrings(SCQ, bracketsEverywhere = True)
 	
-	allLines += restoreUxUyUz(index, normal, fk, inv, SCMfk, SCQ)
+	# Six faces use central moments; edges and corners keep the old system.
+	faceVelocityLines = restoreFaceUxUyUz(normal, cx, cy, cz)
+	allLines += restoreUxUyUz(index, normal, fk, inv, SCMfk, SCQ, faceVelocityLines)
 allLines.append("}")
 with open("results/restoreUxUyUz.h", "w") as file:
 	file.write("\n".join(allLines) + "\n")
@@ -357,19 +339,3 @@ normal = [1, -1, 1]
 fk, fu, mfk, mfu, C, S, Sq, Su, Srho = getBCdata(normal)
 latexCode = getLatex(f, normal, fk, fu, mfk, mfu, C, S, Sq, Q, Su, Qu, Srho, Qrho)
 """
-
-#### applyMirror
-allLines = []
-for index, normal in enumerate(allNormals):
-	fk, fu, mfk, mfu, C, S, Sq, Su, Srho = getBCdata(normal)
-	fuIndexList = []
-	for i, fi in enumerate(fu):
-		match = re.search(r"\d+", fi)
-		number = int(match.group())
-		fu[i] = "f[" + str(number) + "]"
-		fuIndexList.append(number)
-	
-	allLines += applyMirror(index, normal, fu, fuIndexList, cx, cy, cz)
-allLines.append("}")
-with open("results/applyMirror.h", "w") as file:
-	file.write("\n".join(allLines))
