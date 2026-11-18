@@ -7,14 +7,19 @@ def restoreRho(index, normal, fk, SCQrho, SCMfk, SCQu):
 	if index == 0:
 		lines.append("__host__ __device__ void restoreRho(")
 		lines.append("	const int &outerNormalX, const int &outerNormalY, const int &outerNormalZ,")
-		lines.append("	float &rho, const float &ux, const float &uy, const float &uz,")
+		lines.append("	BCStruct &BC,")
 		lines.append("	const float (&f)[27]")
 		lines.append(")")
 		lines.append("{")
+		lines.append("	float rho = BC.dRho + 1.f;")
+		lines.append("	const float &ux = BC.ux;")
+		lines.append("	const float &uy = BC.uy;")
+		lines.append("	const float &uz = BC.uz;")
+		lines.append("\t")
 		lines.append("	const int normalCode = (outerNormalX + 5) * 100 + (outerNormalY + 5) * 10 + (outerNormalZ + 5);")
 		lines.append("	if ( normalCode == " + str(normalCode) + " )")
 	else:
-		lines.append("	if ( normalCode == " + str(normalCode) + " )")
+		lines.append("	else if ( normalCode == " + str(normalCode) + " )")
 	lines.append("	{")
 	
 	directions = ["x", "y", "z"]

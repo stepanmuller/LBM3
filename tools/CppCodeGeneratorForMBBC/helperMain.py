@@ -282,7 +282,7 @@ for index, normal in enumerate(allNormals):
 	allLines += applyMBBC(index, normal, fk, fu, inv, Sm, Smfk)
 allLines.append("}")
 with open("results/applyMBBC.h", "w") as file:
-	file.write("\n".join(allLines))
+	file.write("\n".join(allLines) + "\n")
 	
 #### restoreRhoU
 allLines = []
@@ -324,7 +324,7 @@ for index, normal in enumerate(allNormals):
 	allLines += restoreUxUyUz(index, normal, fk, inv, SCMfk, SCQ)
 allLines.append("}")
 with open("results/restoreUxUyUz.h", "w") as file:
-	file.write("\n".join(allLines))
+	file.write("\n".join(allLines) + "\n")
 	
 #### restoreRho
 allLines = []
@@ -346,9 +346,10 @@ for index, normal in enumerate(allNormals):
 	SCQu = sympyToCppStrings(SCQu, bracketsEverywhere = True)
 	
 	allLines += restoreRho(index, normal, fk, SCQrho, SCMfk, SCQu)
+allLines.append("\tBC.dRho = rho - 1.f;")
 allLines.append("}")
 with open("results/restoreRho.h", "w") as file:
-	file.write("\n".join(allLines))
+	file.write("\n".join(allLines) + "\n")
 
 """
 #### Latex Tables

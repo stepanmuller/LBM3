@@ -2,23 +2,25 @@ constexpr float uxInletPhys = 0.05305f;													// m/s
 constexpr float NU_PHYS = 1.5e-5f;														// m2/s
 constexpr float RHO_PHYS = 1.225f;														// kg/m3
 
+constexpr float LIMITER = 0.01f;
+
 // coarse settings
-constexpr float RES_GLOBAL = 0.175f;
-constexpr int GRID_LEVEL_COUNT = 1;
-constexpr float uxInlet = 6.18917e-05f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-constexpr int ITERATION_COUNT = 50000 * (0.002f / uxInlet);
+//constexpr float RES_GLOBAL = 0.175f;
+//constexpr int GRID_LEVEL_COUNT = 1;
+//constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+//constexpr int ITERATION_COUNT = 50000 * (0.002f / uxInlet);
 
 // medium settings
 //constexpr float RES_GLOBAL = 0.5f * 0.175f;
-//constexpr int GRID_LEVEL_COUNT = 2;
+//constexpr int GRID_LEVEL_COUNT = 1;
 //constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
 //constexpr int ITERATION_COUNT = 100000;
 
 // fine settings
-//constexpr float RES_GLOBAL = 0.12f;
-//constexpr int GRID_LEVEL_COUNT = 3;
-//constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
-//constexpr int ITERATION_COUNT = 30000;
+constexpr float RES_GLOBAL = 0.25f * 0.175f;
+constexpr int GRID_LEVEL_COUNT = 1;
+constexpr float uxInlet = 0.002f; // in this case uzInlet has to be set very very low to reduce weakly compressible density error to acceptable level
+constexpr int ITERATION_COUNT = 200000;
 
 constexpr int PLOTTER_PERIOD = 50000;
 constexpr int TRACKER_PERIOD = 1;
@@ -91,6 +93,7 @@ __cuda_callable__ void getLocalBC( 	BCStruct &BC, const int& iCell, const int& j
 		BC.uy = 0.f;
 		BC.uz = 0.f;
 	}
+	BC.collisionLimiter = LIMITER;
 	if ( x < Info.Bounds.xMin + 3.f || x > Info.Bounds.xMax - 3.f ) BC.collisionLimiter = 0.f; // use K15 in proximity to inlet and outlet
 }
 

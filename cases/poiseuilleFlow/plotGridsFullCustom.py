@@ -365,7 +365,7 @@ def main():
 		colorbar_axes[0],
 		velocity_planar,
 		is_solid,
-		"Planar velocity [m/s]",
+		"In-plane velocity [m/s]",
 		n_vertical,
 		n_horizontal,
 		marker_rgba=marker_rgba,
