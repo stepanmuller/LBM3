@@ -1,11 +1,11 @@
-constexpr float reynoldsNumber = 100.f; // based on mean velocity and pipe diameter
+constexpr float reynoldsNumber = 10.f; // based on mean velocity and pipe diameter
 
 constexpr int GRID_LEVEL_COUNT = 1;
 constexpr float RES_GLOBAL = 0.2f; // mm
 
 constexpr float uzInlet = 0.01f; // mean lattice velocity; centreline velocity is twice this
-constexpr int ITERATION_COUNT = 40000;
-constexpr int PLOTTER_PERIOD = 40000;
+constexpr int ITERATION_COUNT = 20000;
+constexpr int PLOTTER_PERIOD = 20000;
 
 constexpr int WALL_REFINEMENT_COUNT = 0;
 constexpr int TRACKER_PERIOD = 1;
@@ -73,7 +73,7 @@ __cuda_callable__ void getOpenBC( BCStruct &BC, const int& iCell, const int& jCe
 	{
 		BC.dirichletRho = true;
 		BC.dRho = 0.f;
-		BC.nonReflective = true;
+		BC.nonReflective = false;
 		BC.openBCID = 1;
 	}
 }
@@ -103,9 +103,9 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	const float xCut = 0.f;
 	exportSectionCutPlotZY( grids, xCut, iterationsFinished );
 	if (system("python3 plotGridsFullCustom.py") != 0) {}
-	//const float zCut = pipeLengthPhys * 0.5f - RES_GLOBAL;
-	//exportSectionCutPlotXY( grids, zCut, iterationsFinished+1 );
-	//if (system("python3 plotGridsFullCustom.py") != 0) {}
+	const float zCut = pipeLengthPhys * 0.5f - RES_GLOBAL * 0.5f;
+	exportSectionCutPlotXY( grids, zCut, iterationsFinished+1 );
+	if (system("python3 plotGridsFullCustom.py") != 0) {}
 	std::cout << std::endl;
 }
 
@@ -129,7 +129,7 @@ int main(int argc, char **argv)
 	Tracker.TRACK_CUSTOM_VARIABLES = false;
 	initializeTracker( Tracker, grids );
 
-	plotGrids( 0, grids );
+	//plotGrids( 0, grids );
 
 	TNL::Timer lapTimer;
 	lapTimer.reset();
