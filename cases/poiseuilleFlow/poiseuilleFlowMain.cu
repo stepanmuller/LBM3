@@ -1,4 +1,4 @@
-constexpr float reynoldsNumber = 10.f; // based on mean velocity and pipe diameter
+constexpr float reynoldsNumber = 100.f; // based on mean velocity and pipe diameter
 
 constexpr int GRID_LEVEL_COUNT = 1;
 constexpr float RES_GLOBAL = 0.2f; // mm
@@ -103,9 +103,9 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	const float xCut = 0.f;
 	exportSectionCutPlotZY( grids, xCut, iterationsFinished );
 	if (system("python3 plotGridsFullCustom.py") != 0) {}
-	const float zCut = pipeLengthPhys * 0.5f - RES_GLOBAL * 0.5f;
-	exportSectionCutPlotXY( grids, zCut, iterationsFinished+1 );
-	if (system("python3 plotGridsFullCustom.py") != 0) {}
+	//const float zCut = pipeLengthPhys * 0.5f - RES_GLOBAL * 0.5f;
+	//exportSectionCutPlotXY( grids, zCut, iterationsFinished+1 );
+	//if (system("python3 plotGridsFullCustom.py") != 0) {}
 	std::cout << std::endl;
 }
 
