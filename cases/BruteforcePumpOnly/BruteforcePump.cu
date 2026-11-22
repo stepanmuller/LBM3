@@ -47,13 +47,13 @@ constexpr float inletAreamm2 = 3.14159f * ( RInlet * RInlet - RInletShaft * RInl
 constexpr float uzInletPhys = massFlowReference / ( RHO_PHYS * ( inletAreamm2 / 1000000.f) );	// m/s
 constexpr float uzInletVariation = 0.6f; // from the nominal value, vary the uzInlet half up and half down to match the actual intake flow
 constexpr float uzInletVariationDistance = 5.f;
-constexpr float targetInletPowerNormalized = 786.f / 5.4f; // Watts per kg/s of mass flow
+constexpr float targetInletPowerNormalized = 33.75f; //786.f / 5.4f; // Watts per kg/s of mass flow
 //constexpr float hullVelocityPhys = 20.f; // m/s reference hull velocity from which the inlet power was sampled
 
 constexpr float rotationStartDistance = 10.f;				// mm, distance from inlet where the shaft starts rotating (avoid full rotation at the very start)
 const float boundaryLayerThickness = 0.25f + RES_GLOBAL;	// mm
 
-constexpr float radiansPerSecond = 2700.f;					// rad/s
+constexpr float radiansPerSecond = 2153.f; // 2700.f;					// rad/s
 
 constexpr float iRegulatorInletStrength = 200.f;				// this will regulate inlet velocity to converge towards target inlet power
 constexpr float iRegulatorOutletStrength = 200000.f;			// this will regulate outlet pressure to achieve zero pressure at the actual outlet z coordinate

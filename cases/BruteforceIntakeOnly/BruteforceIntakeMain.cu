@@ -25,7 +25,7 @@ constexpr float DT_PHYS_GLOBAL = (uzInlet / uzInletPhys) * (RES_GLOBAL/1000.f); 
 
 #include "../../include/types.h"
 
-std::string STLPathIntake = "IntakeSTL.STL";
+std::string STLPathIntake = "P21.STL";
 std::string STLPathHull = "HullBlockSimpleSTL.STL";
 
 #include "../../include/STLFunctions.h"
