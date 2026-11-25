@@ -6,8 +6,8 @@ constexpr int GRID_LEVEL_COUNT = 1;
 constexpr float RES_GLOBAL = 0.2f; // mm
 
 constexpr float uzInlet = 0.01f; // mean lattice velocity; centreline velocity is twice this
-constexpr int ITERATION_COUNT = 20000;
-constexpr int PLOTTER_PERIOD = 20000;
+constexpr int ITERATION_COUNT = 50000;
+constexpr int PLOTTER_PERIOD = 50000;
 
 constexpr int WALL_REFINEMENT_COUNT = 0;
 constexpr int TRACKER_PERIOD = 1;
@@ -49,10 +49,11 @@ __cuda_callable__ void getRefinementModifier( const int& iCell, const int& jCell
 __cuda_callable__ void getInitialCondition( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell,
 										const InfoStruct& Info )
 {
-	float x, y, z;
-	getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
-	const float r2 = x * x + y * y;
-	BC.uz = 2.f * uzInlet * std::max( 0.f, 1.f - r2 / (RInletPhys * RInletPhys) );
+	// leave default zeros
+	//float x, y, z;
+	//getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+	//const float r2 = x * x + y * y;
+	//BC.uz = 2.f * uzInlet * std::max( 0.f, 1.f - r2 / (RInletPhys * RInletPhys) );
 }
 
 __cuda_callable__ void getOpenBC( BCStruct &BC, const int& iCell, const int& jCell, const int& kCell,
@@ -111,6 +112,89 @@ void plotGrids( const int &iterationsFinished, std::vector<GridStruct>& grids )
 	std::cout << std::endl;
 }
 
+float getInletProfileError( const GridStruct &Grid )
+{
+    using ErrorSums = TNL::Containers::StaticArray<2, float>;
+
+    const InfoStruct Info = Grid.Info;
+    const auto &Inlet = Grid.openBCs.at( 0 );
+    const bool esotwistFlipper = Info.esotwistFlipper;
+
+    auto indexView = Inlet.indexArray.getConstView();
+    auto fView = Grid.fArray.getConstView();
+    auto shifterView = Grid.IJKNBR.shifterArray.getConstView();
+    auto iView = Grid.IJKNBR.iArray.getConstView();
+    auto jView = Grid.IJKNBR.jArray.getConstView();
+    auto kView = Grid.IJKNBR.kArray.getConstView();
+    auto jPlusView = Grid.IJKNBR.jPlusArray.getConstView();
+    auto kPlusView = Grid.IJKNBR.kPlusArray.getConstView();
+    auto jkPlusView = Grid.IJKNBR.jkPlusArray.getConstView();
+    auto wallMapView = Grid.Wall.wallMapArray.getConstView();
+    auto wallDataView = Grid.Wall.wallDataArray.getConstView();
+
+    auto fetch = [=] __cuda_callable__ ( const int index ) mutable -> ErrorSums
+    {
+        ErrorSums result( 0.0 );
+        const int cell = indexView( index );
+
+        // Use the same active-fluid mask as the boundary tracker.
+        const int wallMap = wallMapView( cell );
+        if ( wallMap == -3 || wallMap == -2 ) return result;
+        if ( wallMap >= 0 )
+        {
+            int wallID;
+            bool interfaceOverlapMarker;
+            unpackWallID( wallDataView( wallMap ), wallID, interfaceOverlapMarker );
+            if ( interfaceOverlapMarker ) return result;
+        }
+
+        int iCell, jCell, kCell;
+        NBRStruct NBR;
+        getCompressedIJKNBR( cell, iCell, jCell, kCell, NBR,
+                            shifterView, iView, jView, kView,
+                            jPlusView, kPlusView, jkPlusView, Info );
+        if ( kCell != 0 ) return result; // This test's inlet is the lower Z face.
+
+        // Read the completed state using the current esotwist layout.
+        float f[27];
+        int cellIndex[27], fIndex[27];
+        getPreCollisionIndex( cellIndex, fIndex, NBR, esotwistFlipper );
+        for ( int direction = 0; direction < 27; direction++ )
+            f[direction] = fView( fIndex[direction], cellIndex[direction] );
+
+        float dRho, ux, uy, uz;
+        getDRhoUxUyUz( dRho, ux, uy, uz, f );
+
+        // Obtain the prescribed profile before any non-reflecting adjustment.
+        BCStruct Target;
+        getOpenBC( Target, iCell, jCell, kCell, Info );
+
+        const float uzTarget = static_cast<float>( Target.uz );
+        const float error = static_cast<float>( uz ) - uzTarget;
+        result[0] = error * error;
+        result[1] = uzTarget * uzTarget;
+        return result;
+    };
+
+    auto reduction = [] __cuda_callable__
+        ( const ErrorSums &a, const ErrorSums &b ) -> ErrorSums
+    {
+        ErrorSums result;
+        result[0] = a[0] + b[0];
+        result[1] = a[1] + b[1];
+        return result;
+    };
+
+    const ErrorSums sums = TNL::Algorithms::reduce<TNL::Devices::Cuda>(
+        0, Inlet.openBCCount, fetch, reduction, ErrorSums( 0.0 ) );
+
+    // A zero target norm makes the relative error undefined.
+    if ( !( sums[1] > 0.0 ) )
+        return std::numeric_limits<float>::quiet_NaN();
+
+    return std::sqrt( sums[0] / sums[1] );
+}
+
 int main(int argc, char **argv)
 {
 	// STLs
@@ -136,7 +220,7 @@ int main(int argc, char **argv)
 	if ( !inletOutput ) throw std::runtime_error( "Cannot open inletHistory.txt" );
 	inletOutput.exceptions( std::ios::failbit | std::ios::badbit );
 	inletOutput.precision( std::numeric_limits<float>::max_digits10 );
-	inletOutput << "Iteration;Area averaged inlet velocity [m/s];Area averaged pressure [Pa]\n";
+	inletOutput << "Iteration;Area averaged inlet velocity [m/s];Area averaged pressure [Pa];Normalized inlet velocity error [1]\n";
 
 	TNL::Timer lapTimer;
 	lapTimer.reset();
@@ -147,10 +231,12 @@ int main(int argc, char **argv)
 		updateAllGrids( grids, 0 );
 
 		updateTracker( Tracker, grids );
-		// Inlet ID 0: retain the tracker's outward-normal sign (negative inflow).
+		const float inletProfileError = getInletProfileError( grids[0] );
+
 		inletOutput << Tracker.iterationsFinished << ';'
-		            << Tracker.normalVelocity( 0 ) << ';'
-		            << Tracker.pressure( 0 ) << '\n';
+					<< Tracker.normalVelocity( 0 ) << ';'
+					<< Tracker.pressure( 0 ) << ';'
+					<< inletProfileError << '\n';
 
 		if ( iterationsFinished % PLOTTER_PERIOD == 0 )
 		{
