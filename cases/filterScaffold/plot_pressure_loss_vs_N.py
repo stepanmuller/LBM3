@@ -13,15 +13,15 @@ markerTypes = []
 markerColors = []
 
 # COARSE RES 0.175
-xLists.append([2, 4, 8, 16, 32])  # Fill with N values [1].
-yLists.append([0.28271, 0.44459, 0.76832, 1.4154, 2.7089])  # Fill with corresponding pressure losses [Pa].
+xLists.append([0, 2, 4, 8, 16, 32])  # Fill with N values [1].
+yLists.append([0.080595, 0.28271, 0.44459, 0.76832, 1.4154, 2.7089])  # Fill with corresponding pressure losses [Pa].
 labels.append("Res 0.175mm")
 markerTypes.append("x")
 markerColors.append("teal")
 
 # MEDIUM RES 0.175/2
-xLists.append([32, 16, 8, 4, 2])  # Fill with N values [1].
-yLists.append([2.7692, 1.4406, 0.77989, 0.45032, 0.28577])  # Fill with corresponding pressure losses [Pa].
+xLists.append([0, 2, 4, 8, 16, 32])  # Fill with N values [1].
+yLists.append([0.080494, 0.28577, 0.45032, 0.77989, 1.4406, 2.7692])  # Fill with corresponding pressure losses [Pa].
 labels.append("Res 0.0875mm")
 markerTypes.append("x")
 markerColors.append("orange")
@@ -73,18 +73,83 @@ ax.set_xlabel(r"$N\ [1]$")
 ax.set_ylabel(r"$\mathrm{Area\ averaged\ pressure\ loss}\ [\mathrm{Pa}]$")
 ax.ticklabel_format(axis="x", style="plain", useOffset=False)
 ax.minorticks_on()
-ax.grid(True, which="major", color="0.88", linewidth=0.6)
+ax.grid(True, which="major", color="0.83", linewidth=0.4)
+ax.grid(True, which="minor", color="0.92", linewidth=0.25)
 ax.set_axisbelow(True)
 ax.margins(x=0.05, y=0.08)
 if ax.collections:
     ax.legend()
-ax.set_title("Pressure loss vs N for physical inlet velocity 0.05305 m/s")
+ax.set_title("Pressure loss absolute vs N for physical inlet velocity 0.05305 m/s")
 
 # Axis limits are automatic. Uncomment and edit to set them manually.
 # ax.set_xlim(0.0, 100.0)
 # ax.set_ylim(0.0, 10.0)
 
-output = Path(__file__).resolve().parent / "pressure_loss_vs_N.png"
+output = Path(__file__).resolve().parent / "pressure_loss_vs_N_absolute.png"
 fig.savefig(output, facecolor="white", bbox_inches="tight")
 plt.show()
 plt.close(fig)
+
+# Additional plot: subtract each dataset's N=0 reference.
+figAdjusted, axAdjusted = plt.subplots(
+    figsize=(6.6, 4.4), layout="constrained"
+)
+
+for x, y, label, markerType, markerColor in zip(
+    xLists, yLists, labels, markerTypes, markerColors
+):
+    # Only include datasets containing N=0.
+    if 0 not in x:
+        continue
+
+    y0 = y[x.index(0)]
+    adjustedY = [value - y0 for value in y]
+
+    axAdjusted.scatter(
+        x, adjustedY,
+        s=markerSize,
+        marker=markerType,
+        color=markerColor,
+        linewidths=1.3,
+        label=label,
+        zorder=3,
+    )
+
+    if 32 in x:
+        # Exact line through (0, 0) and the adjusted N=32 point.
+        slope = adjustedY[x.index(32)] / 32
+        fitX = [min(x), max(x)]
+        fitY = [slope * n for n in fitX]
+
+        axAdjusted.plot(
+            fitX, fitY,
+            color=markerColor,
+            linestyle="-",
+            linewidth=0.7,
+            label=f"{label}, fit through [0, 0] and relative N32",
+            zorder=2,
+        )
+
+axAdjusted.set_title("Pressure loss relative to N0 reference vs N for physical inlet velocity 0.05305 m/s")
+axAdjusted.set_xlabel(ax.get_xlabel())
+axAdjusted.set_ylabel(r"$\Delta p(N) - \Delta p(0)\ [\mathrm{Pa}]$")
+axAdjusted.ticklabel_format(axis="x", style="plain", useOffset=False)
+axAdjusted.minorticks_on()
+axAdjusted.grid(True, which="major", color="0.83", linewidth=0.4)
+axAdjusted.grid(True, which="minor", color="0.92", linewidth=0.25)
+axAdjusted.set_axisbelow(True)
+axAdjusted.margins(x=0.05, y=0.08)
+
+if axAdjusted.collections:
+    axAdjusted.legend()
+
+outputAdjusted = (
+    Path(__file__).resolve().parent
+    / "pressure_loss_vs_N_relative.png"
+)
+figAdjusted.savefig(
+    outputAdjusted, facecolor="white", bbox_inches="tight"
+)
+
+plt.show()
+plt.close(figAdjusted)
