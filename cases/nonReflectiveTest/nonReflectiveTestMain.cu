@@ -1,11 +1,11 @@
-constexpr float RHO_REFLECTION_TOLERANCE = 1.e-4f; // Density tolerance for the impedance scheme
+constexpr float RHO_REFLECTION_TOLERANCE = 2.e-5f; // Density tolerance for the impedance scheme
 
 constexpr float reynoldsNumber = 1000.f; // based on mean velocity and pipe diameter
 
 constexpr int GRID_LEVEL_COUNT = 1;
 constexpr float RES_GLOBAL = 0.2f; // mm
 
-constexpr float uzInlet = 0.01f; // mean lattice velocity; centreline velocity is twice this
+constexpr float uzInlet = 0.03f; // mean lattice velocity; centreline velocity is twice this
 constexpr int ITERATION_COUNT = 50000;
 constexpr int PLOTTER_PERIOD = 50000;
 
