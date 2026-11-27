@@ -1359,6 +1359,130 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		Grid.openBCs[ BCID ].trackFlowCount = TNL::sum( trackFlowMarkerArray );
 	}
 		
+	// Build source list for open BC. The boundary can then extrapolate some quantities from interior cells as needed.
+    for ( int BCID = 0; BCID < BCIDCount; BCID++ )
+    {
+        OpenBCArrayStruct &OpenBC = Grid.openBCs[ BCID ];
+        OpenBC.sourceArray.setSize( OpenBC.openBCCount );
+        if ( OpenBC.openBCCount == 0 ) continue;
+
+        auto indexView = OpenBC.indexArray.getConstView();
+        auto sourceView = OpenBC.sourceArray.getView();
+
+        auto sourceLambda = [=] __cuda_callable__ ( const int index ) mutable
+        {
+            const int cell = indexView( index );
+            const int iCell = iBuilderView( cell );
+            const int jCell = jBuilderView( cell );
+            const int kCell = kBuilderView( cell );
+
+            int outerNormalX, outerNormalY, outerNormalZ;
+            getOuterNormal( iCell, jCell, kCell, outerNormalX, outerNormalY, outerNormalZ, Info );
+
+            const int adjacentFaceCount = ( outerNormalX != 0 ) + ( outerNormalY != 0 ) + ( outerNormalZ != 0 );
+
+            BCStruct BC;
+            getOpenBC( BC, iCell, jCell, kCell, Info );
+
+            const bool tryEdgeFallback = BC.dirichletU && adjacentFaceCount == 2;
+            int preferredShift = 0;
+            if ( tryEdgeFallback )
+            {
+                // Move away from the nearer corner; ties use the positive direction.
+                if ( outerNormalX == 0 )
+                    preferredShift = iCell <= Info.cellCountX - 1 - iCell ? 1 : -1;
+                else if ( outerNormalY == 0 )
+                    preferredShift = jCell <= Info.cellCountY - 1 - jCell ? 1 : -1;
+                else
+                    preferredShift = kCell <= Info.cellCountZ - 1 - kCell ? 1 : -1;
+            }
+
+            int sourceCell = -1;
+            const int candidateCount = tryEdgeFallback ? 3 : 1;
+            for ( int candidate = 0; candidate < candidateCount; candidate++ )
+            {
+                int iSource = iCell - outerNormalX;
+                int jSource = jCell - outerNormalY;
+                int kSource = kCell - outerNormalZ;
+
+                if ( candidate > 0 )
+                {
+                    const int shift = candidate == 1 ? preferredShift : -preferredShift;
+
+                    if ( outerNormalX == 0 ) iSource += shift;
+                    else if ( outerNormalY == 0 ) jSource += shift;
+                    else kSource += shift;
+                }
+
+                // A source must be inside the domain, not on another open boundary.
+                if ( iSource <= 0 || iSource >= Info.cellCountX - 1 ||
+                     jSource <= 0 || jSource >= Info.cellCountY - 1 ||
+                     kSource <= 0 || kSource >= Info.cellCountZ - 1 ) continue;
+
+                // The builder cells are sorted by k, then j, then i.
+                int start = 0;
+                int end = Info.cellCount;
+                int foundCell = -1;
+                while ( start < end )
+                {
+                    const int mid = start + ( end - start ) / 2;
+                    const int iMid = iBuilderView( mid );
+                    const int jMid = jBuilderView( mid );
+                    const int kMid = kBuilderView( mid );
+
+                    if ( iMid == iSource && jMid == jSource && kMid == kSource )
+                    {
+                        foundCell = mid;
+                        break;
+                    }
+
+                    const bool beforeSource =
+                        kMid < kSource ||
+                        ( kMid == kSource && jMid < jSource ) ||
+                        ( kMid == kSource && jMid == jSource && iMid < iSource );
+
+                    if ( beforeSource ) start = mid + 1;
+                    else end = mid;
+                }
+
+                if ( foundCell < 0 ) continue;
+                if ( BC.dirichletU && adjacentFaceCount > 1 && wallMarkerView( foundCell ) ) continue;
+
+                sourceCell = foundCell;
+                break;
+            }
+
+            sourceView( index ) = sourceCell;
+
+            if ( sourceCell < 0 )
+            {
+                float x, y, z;
+                getXYZFromIJKCellIndex( iCell, jCell, kCell, x, y, z, Info );
+
+                printf( "No valid open-BC source: grid=%d, BCID=%d, "
+                        "IJK=(%d,%d,%d), XYZ=(%g,%g,%g) mm\n",
+                        (int)Info.gridID, BCID, iCell, jCell, kCell,
+                        x, y, z );
+            }
+        };
+
+        TNL::Algorithms::parallelFor<TNL::Devices::Cuda>(
+            0, OpenBC.openBCCount, sourceLambda );
+    }
+
+    // Check all source arrays now, throw error if invalid source is found.
+    for ( int BCID = 0; BCID < BCIDCount; BCID++ )
+    {
+        const auto &OpenBC = Grid.openBCs[ BCID ];
+        if ( OpenBC.openBCCount == 0 ) continue;
+
+        const int sourceMin = TNL::min( OpenBC.sourceArray );
+        if ( sourceMin < 0 )
+            throw std::runtime_error(
+                "Building open BC failed: no valid source for some cells. "
+                "See the GPU diagnostics above." );
+    }
+		
 	// 7) Build periodic BC
 	// mark periodic BC cells
 	BoolArrayType &periodicMarkerArray = BCIDMarkerArray; 	// reuse the previous array here
@@ -1438,7 +1562,6 @@ void gridBuilderToGrid( std::vector<GridBuilderStruct> &gridBuilders, std::vecto
 		std::cout<< "	Building periodic BC failed, some source cells do not exist or are marked as wall. Terminating" << std::endl; 
 		throw std::runtime_error("Building periodic BC failed, some source cells do not exist or are marked as wall. Terminating");
 	}
-	// END OF PERIODIC BC
 		
 	// 8) Recursion
 	if ( !iAmFinest ) gridBuilderToGrid( gridBuilders, grids, level + 1 );
@@ -1520,7 +1643,7 @@ long long buildGrids( std::vector<GridStruct> &grids, std::vector<STLStruct> &gr
 		}
 		for ( int openBCID = 0; openBCID < (int)Grid.openBCs.size(); openBCID++ )
 		{
-			Info.gridMemoryBytes += 3LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // indexList, rhoPrev, uNormalPrev
+			Info.gridMemoryBytes += 4LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // indexArray, sourceArray, rhoPrev, uNormalPrev
 			if constexpr (TRACK_OPEN_BOUNDARIES) Info.gridMemoryBytes += 2LL * (long long)Grid.openBCs[ openBCID ].openBCCount * 4LL; // rhoCumulative, uNormalCumulative
 		}
 		Info.gridMemoryBytes += 2LL * (long long)Grid.PeriodicBC.periodicBCCount * 4LL; // indexArray, sourceArray

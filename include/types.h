@@ -220,7 +220,8 @@ struct RotorViewStruct{ RotorInfoStruct Info;
 						
 using RotorViewsType = std::vector<RotorViewStruct, TNL::Allocators::CudaManaged<RotorViewStruct>>;	
 
-struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; IntArrayType indexArray; 
+struct OpenBCArrayStruct{ int openBCID = 0; int openBCCount = 0; int trackFlowCount = 0; 
+							IntArrayType indexArray; IntArrayType sourceArray;
 							FloatArrayType dRhoRefArray; FloatArrayType uNormalRefArray; 
 							FloatArrayType dRhoCumulativeArray; FloatArrayType uNormalCumulativeArray; };
 							
